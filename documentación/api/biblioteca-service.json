@@ -1,0 +1,1628 @@
+{
+  "components" : {
+    "schemas" : {
+      "AnotacionDTO" : {
+        "description" : "Anotacion sobre el texto de un libro",
+        "properties" : {
+          "capitulo" : {
+            "example" : 3,
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "cfi" : {
+            "example" : "epubcfi(/6/8!/4/2/10,/1:0,/1:42)",
+            "type" : "string"
+          },
+          "color" : {
+            "example" : "amarillo",
+            "type" : "string"
+          },
+          "creado" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "editado" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "example" : "3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "fraseFin" : {
+            "example" : "c003-s00124",
+            "type" : "string"
+          },
+          "fraseInicio" : {
+            "example" : "c003-s00123",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "nota" : {
+            "example" : "Me encanta este comienzo",
+            "type" : "string"
+          },
+          "offsetFin" : {
+            "example" : 42,
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "offsetInicio" : {
+            "example" : 0,
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "prefijo" : {
+            "type" : "string"
+          },
+          "sufijo" : {
+            "type" : "string"
+          },
+          "textoCitado" : {
+            "example" : "En un lugar de la Mancha",
+            "type" : "string"
+          },
+          "tipo" : {
+            "enum" : [
+              "RESALTADO",
+              "NOTA",
+              "MARCADOR"
+            ],
+            "example" : "RESALTADO",
+            "type" : "string"
+          },
+          "versionTexto" : {
+            "example" : 1,
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "required" : [
+          "ejemplarId",
+          "tipo"
+        ],
+        "type" : "object"
+      },
+      "AudioEstadoPeticionDTO" : {
+        "properties" : {
+          "capitulo" : {
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "ejemplarId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "vozId" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "capitulo",
+          "ejemplarId",
+          "vozId"
+        ],
+        "type" : "object"
+      },
+      "ComentarioDTO" : {
+        "properties" : {
+          "creado" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "example" : "3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "texto" : {
+            "example" : "Lo empece en el bus de vuelta a casa",
+            "maxLength" : 10000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "ejemplarId",
+          "texto"
+        ],
+        "type" : "object"
+      },
+      "DeseoDTO" : {
+        "properties" : {
+          "autor" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "isbn" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "nota" : {
+            "type" : "string"
+          },
+          "titulo" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "titulo"
+        ],
+        "type" : "object"
+      },
+      "EstanteEjemplarDTO" : {
+        "properties" : {
+          "antesDe" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "despuesDe" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "ejemplarId"
+        ],
+        "type" : "object"
+      },
+      "EstanteSaveDTO" : {
+        "properties" : {
+          "colorMadera" : {
+            "maxLength" : 30,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "nombre" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "nombre"
+        ],
+        "type" : "object"
+      },
+      "FiltroLibrosDTO" : {
+        "properties" : {
+          "anioDesde" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "anioHasta" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "autores" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "calificacionMin" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "conNotas" : {
+            "type" : "boolean"
+          },
+          "etiquetas" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "formatos" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "generos" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "orden" : {
+            "enum" : [
+              "RECIENTES",
+              "ANTIGUOS",
+              "ULTIMO_ABIERTO",
+              "TITULO",
+              "AUTOR",
+              "ANIO",
+              "PROGRESO",
+              "CALIFICACION"
+            ],
+            "type" : "string"
+          },
+          "page" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "pestana" : {
+            "enum" : [
+              "TODO",
+              "LEYENDO",
+              "POR_LEER",
+              "LEIDOS",
+              "FAVORITOS",
+              "DESEOS",
+              "DOCUMENTOS"
+            ],
+            "type" : "string"
+          },
+          "size" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "texto" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "LibroSaveDTO" : {
+        "properties" : {
+          "anio" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "autores" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "calificacion" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "editorial" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "estado" : {
+            "enum" : [
+              "POR_LEER",
+              "LEYENDO",
+              "LEIDO",
+              "ABANDONADO"
+            ],
+            "type" : "string"
+          },
+          "etiquetas" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "favorito" : {
+            "type" : "boolean"
+          },
+          "generos" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "sinopsis" : {
+            "type" : "string"
+          },
+          "tipo" : {
+            "enum" : [
+              "LIBRO",
+              "DOCUMENTO",
+              "DESEO"
+            ],
+            "type" : "string"
+          },
+          "titulo" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "id"
+        ],
+        "type" : "object"
+      },
+      "ProgresoDTO" : {
+        "description" : "Donde va el usuario en un libro",
+        "properties" : {
+          "actualizadoEn" : {
+            "example" : "2026-11-10T20:15:00Z",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "capitulo" : {
+            "example" : 3,
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "cfi" : {
+            "example" : "epubcfi(/6/8!/4/2/10)",
+            "type" : "string"
+          },
+          "dispositivo" : {
+            "example" : "iPhone de Anderson",
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "example" : "3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "fraseId" : {
+            "example" : "c003-s00123",
+            "type" : "string"
+          },
+          "modo" : {
+            "enum" : [
+              "VISTA",
+              "VOZ"
+            ],
+            "example" : "VOZ",
+            "type" : "string"
+          },
+          "porcentaje" : {
+            "example" : 37.5,
+            "format" : "double",
+            "type" : "number"
+          },
+          "posicionAudioSeg" : {
+            "example" : 512.4,
+            "format" : "double",
+            "type" : "number"
+          },
+          "velocidad" : {
+            "example" : 1.5,
+            "format" : "double",
+            "type" : "number"
+          },
+          "vozId" : {
+            "example" : "edge.es-ES-AlvaroNeural",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "ejemplarId"
+        ],
+        "type" : "object"
+      },
+      "ResultDTO" : {
+        "properties" : {
+          "correct" : {
+            "type" : "boolean"
+          },
+          "errorCode" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "object" : {
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "bearerFormat" : "JWT",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  },
+  "info" : {
+    "description" : "Libros, estantes, progreso, notas, voces y archivos. Todo POST con ResultDTO salvo los binarios (GET con Range y ?t=).",
+    "title" : "La Biblioteca AH — biblioteca-service",
+    "version" : "1.0.0"
+  },
+  "openapi" : "3.0.1",
+  "paths" : {
+    "/v1/anotaciones/all/{ejemplarId}" : {
+      "post" : {
+        "operationId" : "all_3",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Anotaciones de un libro, en orden de creacion",
+        "tags" : [
+          "Anotaciones"
+        ]
+      }
+    },
+    "/v1/anotaciones/delete/{id}" : {
+      "post" : {
+        "operationId" : "delete_3",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Borra una anotacion",
+        "tags" : [
+          "Anotaciones"
+        ]
+      }
+    },
+    "/v1/anotaciones/save" : {
+      "post" : {
+        "operationId" : "save_4",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AnotacionDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Crea (sin id) o edita (con id) una anotacion",
+        "tags" : [
+          "Anotaciones"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/audio/{vozId}/{fichero}" : {
+      "get" : {
+        "operationId" : "audio",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "vozId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "fichero",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "audio_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "vozId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "fichero",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/libro.epub" : {
+      "get" : {
+        "operationId" : "libro",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "EPUB normalizado (con ids por frase)",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "libro_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "EPUB normalizado (con ids por frase)",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/original" : {
+      "get" : {
+        "operationId" : "original",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Archivo original tal como se subio",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "original_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Archivo original tal como se subio",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/portada.jpg" : {
+      "get" : {
+        "operationId" : "portada",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Portada (JPEG)",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "portada_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Portada (JPEG)",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/audio/estado" : {
+      "post" : {
+        "operationId" : "estado",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AudioEstadoPeticionDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+        "tags" : [
+          "Voces y audio"
+        ]
+      }
+    },
+    "/v1/comentarios/all/{ejemplarId}" : {
+      "post" : {
+        "operationId" : "all_2",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Comentarios de un libro, en orden de creacion",
+        "tags" : [
+          "Comentarios"
+        ]
+      }
+    },
+    "/v1/comentarios/delete/{id}" : {
+      "post" : {
+        "operationId" : "delete_2",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Borra un comentario",
+        "tags" : [
+          "Comentarios"
+        ]
+      }
+    },
+    "/v1/comentarios/save" : {
+      "post" : {
+        "operationId" : "save_3",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ComentarioDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Crea (sin id) o edita (con id) un comentario",
+        "tags" : [
+          "Comentarios"
+        ]
+      }
+    },
+    "/v1/estantes/all" : {
+      "post" : {
+        "operationId" : "all_1",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Estantes del usuario (FAVORITOS primero; se crea solo)",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/delete/{id}" : {
+      "post" : {
+        "operationId" : "delete_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Borra un estante (los libros no se borran)",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/save" : {
+      "post" : {
+        "operationId" : "save_2",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/EstanteSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Crea (sin id) o renombra/colorea (con id) un estante",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/{id}/agregar" : {
+      "post" : {
+        "operationId" : "agregar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/EstanteEjemplarDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Pone un libro al final del estante",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/{id}/libros" : {
+      "post" : {
+        "operationId" : "libros",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Libros del estante en su orden",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/{id}/ordenar" : {
+      "post" : {
+        "operationId" : "ordenar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/EstanteEjemplarDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Mueve un libro antes o despues de otro (indice fraccional)",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/estantes/{id}/quitar" : {
+      "post" : {
+        "operationId" : "quitar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/EstanteEjemplarDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Quita un libro del estante",
+        "tags" : [
+          "Estantes"
+        ]
+      }
+    },
+    "/v1/libros/all" : {
+      "post" : {
+        "operationId" : "all",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FiltroLibrosDTO"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Lista paginada con pestanas, filtros combinables y orden",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/delete/{ejemplarId}" : {
+      "post" : {
+        "operationId" : "delete",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Borra el libro de tu biblioteca (el archivo solo si nadie mas lo usa)",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/deseo" : {
+      "post" : {
+        "operationId" : "deseo",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeseoDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Agrega un libro a la lista de deseos (sin archivo)",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/facetas" : {
+      "post" : {
+        "operationId" : "facetas",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/get/{ejemplarId}" : {
+      "post" : {
+        "operationId" : "get_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Ficha del libro con capitulos y progreso",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/save" : {
+      "post" : {
+        "operationId" : "save_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LibroSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/libros/subir" : {
+      "post" : {
+        "operationId" : "subir",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "tipo",
+            "required" : false,
+            "schema" : {
+              "default" : "LIBRO",
+              "enum" : [
+                "LIBRO",
+                "DOCUMENTO",
+                "DESEO"
+              ],
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "properties" : {
+                  "archivos" : {
+                    "items" : {
+                      "format" : "binary",
+                      "type" : "string"
+                    },
+                    "type" : "array"
+                  },
+                  "archivos[]" : {
+                    "items" : {
+                      "format" : "binary",
+                      "type" : "string"
+                    },
+                    "type" : "array"
+                  }
+                },
+                "type" : "object"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
+    "/v1/progreso/get/{ejemplarId}" : {
+      "post" : {
+        "operationId" : "get",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Progreso guardado de un libro (object nulo si nunca se abrio)",
+        "tags" : [
+          "Progreso"
+        ]
+      }
+    },
+    "/v1/progreso/save" : {
+      "post" : {
+        "operationId" : "save",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProgresoDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Guarda el progreso; gana el actualizadoEn mas reciente",
+        "tags" : [
+          "Progreso"
+        ]
+      }
+    },
+    "/v1/voces/all" : {
+      "post" : {
+        "operationId" : "voces",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Catalogo de voces (del taller, con respaldo si no responde)",
+        "tags" : [
+          "Voces y audio"
+        ]
+      }
+    },
+    "/v1/voces/{vozId}/muestra.mp3" : {
+      "get" : {
+        "operationId" : "muestra",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "vozId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Muestra de una voz (MP3)",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "muestra_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "vozId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Muestra de una voz (MP3)",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    }
+  },
+  "security" : [
+    {
+      "bearerAuth" : [ ]
+    }
+  ],
+  "tags" : [
+    {
+      "description" : "Resaltados, notas y marcadores",
+      "name" : "Anotaciones"
+    },
+    {
+      "description" : "Binarios por GET con Range y ?t=",
+      "name" : "Archivos"
+    },
+    {
+      "description" : "Diario de lectura de cada libro",
+      "name" : "Comentarios"
+    },
+    {
+      "description" : "Colecciones y el estante de favoritos, con orden por arrastre",
+      "name" : "Estantes"
+    },
+    {
+      "description" : "Mi Biblioteca: subir, listar, filtrar, editar y borrar libros",
+      "name" : "Libros"
+    },
+    {
+      "description" : "Retomar exactamente donde lo dejaste, en cualquier dispositivo",
+      "name" : "Progreso"
+    },
+    {
+      "description" : "Catalogo de voces y audio por capitulo",
+      "name" : "Voces y audio"
+    }
+  ]
+}

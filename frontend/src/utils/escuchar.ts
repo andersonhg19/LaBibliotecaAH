@@ -1,0 +1,56 @@
+import { motor } from '@contextos/VozContext'
+import { capituloDeFrase } from '@logica/tiempos'
+import { urlPortada } from '@servicios/archivos'
+import type { EjemplarDetalleDTO, ProgresoDTO } from '@tipos'
+
+const TILDES: Record<string, string> = { Alvaro: 'Álvaro', Salome: 'Salomé', Tomas: 'Tomás', Ramon: 'Ramón' }
+
+/** "edge.es-ES-AlvaroNeural" → "Álvaro" (para "Preparando la voz de Álvaro…"). */
+export function nombreDeVoz(vozId: string): string {
+  const m = /-([A-Za-z]+?)(?:Multilingual)?Neural$/.exec(vozId)
+  const n = m?.[1] ?? vozId.split(/[.-]/).pop() ?? vozId
+  return TILDES[n] ?? n
+}
+
+/**
+ * Empieza a escuchar un libro. Llamar DENTRO del toque del usuario (iOS).
+ * Retoma desde el progreso del servidor: la posición de audio si lo último fue
+ * la voz, o la frase en la que ibas leyendo.
+ */
+export function escucharLibro(
+  libro: EjemplarDetalleDTO,
+  o: { vozId: string; velocidad: number; desdeFrase?: string | null; progreso?: ProgresoDTO | null },
+) {
+  const p = o.progreso ?? libro.progreso
+  let capitulo = p?.capitulo ?? 0
+  let posicion = 0
+  let fraseId: string | null = o.desdeFrase ?? null
+  const vozId = o.vozId || p?.vozId || o.vozId
+  if (fraseId) capitulo = Math.max(0, capituloDeFrase(fraseId))
+  else if (p?.modo === 'VOZ' && p.posicionAudioSeg != null && (p.vozId ?? vozId) === vozId)
+    posicion = p.posicionAudioSeg
+  else if (p?.fraseId) {
+    fraseId = p.fraseId
+    capitulo = Math.max(0, capituloDeFrase(p.fraseId))
+  }
+  motor.abrir(
+    {
+      ejemplarId: libro.id,
+      titulo: libro.titulo,
+      autores: libro.autores,
+      portadaUrl:
+        libro.tienePortada && libro.archivoId
+          ? new URL(urlPortada(libro.archivoId), globalThis.location?.href ?? 'http://localhost/').href
+          : null,
+      capitulos: libro.capitulos,
+    },
+    {
+      capitulo,
+      posicion,
+      fraseId,
+      vozId,
+      nombreVoz: nombreDeVoz(vozId),
+      velocidad: p?.velocidad && !o.desdeFrase ? p.velocidad : o.velocidad,
+    },
+  )
+}

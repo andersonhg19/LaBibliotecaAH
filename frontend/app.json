@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "La Biblioteca AH",
+    "slug": "la-biblioteca-ah",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#22140C",
+    "primaryColor": "#D9A35B",
+    "splash": { "image": "./assets/splash-icon.png", "resizeMode": "contain", "backgroundColor": "#22140C" },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "La Biblioteca AH",
+      "shortName": "Biblioteca",
+      "lang": "es",
+      "themeColor": "#22140C",
+      "backgroundColor": "#22140C",
+      "description": "Biblioteca personal de libros y audiolibros de Anderson y Samy."
+    }
+  }
+}

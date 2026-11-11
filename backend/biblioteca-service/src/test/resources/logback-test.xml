@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuracion de logging SOLO para tests.
+  Los tests de rutas de error invocan log.error(...) a proposito (para verificar
+  el manejo de excepciones), lo que imprime stacktraces en consola. Aqui silenciamos
+  los logs de la aplicacion y bajamos el ruido de Spring para que la salida de los
+  tests quede limpia. NO afecta el comportamiento de produccion.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss} %-5level %logger{0} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Solo advertencias o superiores de frameworks (silencia el ruido INFO de Spring) -->
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <!-- Silencia los logs de la propia app durante los tests (incluye los log.error
+         de los caminos de excepcion, que de otro modo imprimen stacktraces). -->
+    <logger name="com.bibliotecaah.biblioteca" level="OFF"/>
+</configuration>

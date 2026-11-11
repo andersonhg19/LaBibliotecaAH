@@ -1,0 +1,132 @@
+# La Biblioteca AH - stack completo.
+# Desarrollo:  docker compose up -d   (con .env basado en .env.ejemplo)
+# Casa:        mismas imagenes construidas en el PC de desarrollo, cargadas con docker load (ver documentación/despliegue.md)
+name: biblioteca-ah
+
+x-java: &java
+  environment: &java-env
+    JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -Xss512k -XX:+UseSerialGC -Duser.timezone=America/Bogota"
+    TZ: America/Bogota
+    EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8860/eureka
+  restart: unless-stopped
+  networks: [biblioteca-ah]
+
+services:
+  postgres:
+    image: bah/postgres:${TAG:-latest}
+    build: ./backend/init-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-biblioteca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      TZ: America/Bogota
+      PGTZ: America/Bogota
+    ports: ["127.0.0.1:5433:5432"]
+    volumes:
+      - bah-postgres-data:/var/lib/postgresql/data
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-biblioteca}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [biblioteca-ah]
+
+  discovery-service:
+    <<: *java
+    image: bah/discovery-service:${TAG:-latest}
+    build: {context: ./backend, dockerfile: discovery-service/Dockerfile}
+    ports: ["127.0.0.1:8860:8860"]
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8860/actuator/health"]
+      interval: 15s
+      retries: 20
+
+  gateway-service:
+    <<: *java
+    image: bah/gateway-service:${TAG:-latest}
+    build: {context: ./backend, dockerfile: gateway-service/Dockerfile}
+    environment:
+      <<: *java-env
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS en .env}
+    ports: ["127.0.0.1:8920:8920"]
+    mem_limit: 384m
+    depends_on:
+      discovery-service: {condition: service_healthy}
+
+  auth-service:
+    <<: *java
+    image: bah/auth-service:${TAG:-latest}
+    build: {context: ./backend, dockerfile: auth-service/Dockerfile}
+    environment:
+      <<: *java-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-biblioteca}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET: ${SECRET:?Define SECRET en .env}
+      EXP_TIME: ${EXP_TIME:-864000000}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_ANDERSON_PASSWORD: ${SEED_ANDERSON_PASSWORD:-}
+      SEED_SAMY_PASSWORD: ${SEED_SAMY_PASSWORD:-}
+    ports: ["127.0.0.1:8921:8921"]
+    mem_limit: 448m
+    depends_on:
+      postgres: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+
+  biblioteca-service:
+    <<: *java
+    image: bah/biblioteca-service:${TAG:-latest}
+    build: {context: ./backend, dockerfile: biblioteca-service/Dockerfile}
+    environment:
+      <<: *java-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/biblioteca_db
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-biblioteca}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SECRET: ${SECRET}
+      BIBLIOTECA_DATOS: /datos
+      TALLER_URL: http://taller:8926
+      BUZON_USUARIOS: ${BUZON_USUARIOS:-}
+    volumes:
+      - ${DATOS_HOST:-./datos-dev}:/datos
+    ports: ["127.0.0.1:8925:8925"]
+    mem_limit: 640m
+    depends_on:
+      postgres: {condition: service_healthy}
+      discovery-service: {condition: service_healthy}
+
+  taller:
+    image: bah/taller:${TAG:-latest}
+    build: ./taller
+    restart: unless-stopped
+    environment:
+      TALLER_DB_URL: postgresql://${POSTGRES_USER:-biblioteca}:${POSTGRES_PASSWORD}@postgres:5432/biblioteca_db
+      TALLER_DATOS: /datos
+      TZ: America/Bogota
+    volumes:
+      - ${DATOS_HOST:-./datos-dev}:/datos
+    ports: ["127.0.0.1:8926:8926"]
+    mem_limit: 2g
+    depends_on:
+      postgres: {condition: service_healthy}
+      # Las tablas bah_lib_* las crea Flyway en biblioteca-service.
+      biblioteca-service: {condition: service_healthy}
+    networks: [biblioteca-ah]
+
+  frontend:
+    image: bah/frontend:${TAG:-latest}
+    build:
+      context: ./frontend
+      args:
+        EXPO_PUBLIC_API_URL: ${API_URL:-http://localhost:8920}
+    restart: unless-stopped
+    ports: ["127.0.0.1:3100:3100"]
+    mem_limit: 256m
+    networks: [biblioteca-ah]
+
+volumes:
+  bah-postgres-data:
+
+networks:
+  biblioteca-ah:

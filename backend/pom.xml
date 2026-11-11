@@ -1,0 +1,98 @@
+<project
+	xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.bibliotecaah</groupId>
+	<artifactId>la-biblioteca-ah</artifactId>
+	<version>1.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>La Biblioteca AH</name>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>3.2.5</version>
+		<relativePath/>
+	</parent>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<spring-cloud.version>2023.0.3</spring-cloud.version>
+		<java.version>17</java.version>
+		<!--
+			Version de la API del demonio de Docker para Testcontainers (heredado
+			de Oh Churus): Docker Engine 29 exige como minimo la 1.44 y, con la
+			1.32 por defecto de docker-java, Testcontainers concluye "aqui no hay
+			Docker" y las pruebas se SALTAN en verde. Se cambia con
+			-Ddocker.api.version=1.43 si hiciera falta.
+		-->
+		<docker.api.version>1.44</docker.api.version>
+		<!-- springdoc para Boot 3.2 (la rama 3.x pide Boot 4). -->
+		<springdoc.version>2.3.0</springdoc.version>
+		<jacoco.version>0.8.11</jacoco.version>
+		<mapstruct.version>1.5.5.Final</mapstruct.version>
+		<!--
+			Los datos de cobertura se escriben en el disco LOCAL (tmp), no en target/:
+			el repo vive en un recurso compartido SMB (Z:) y el agente de JaCoCo
+			escribe al apagar la JVM; sobre SMB tardaba mas de 30 s, surefire mataba
+			la JVM y el .exec quedaba vacio (cobertura 0 %). Ver bitacora.
+		-->
+		<jacoco.destFile>${java.io.tmpdir}/bah-jacoco/${project.artifactId}.exec</jacoco.destFile>
+		<jacoco.append>false</jacoco.append>
+		<jacoco.dataFile>${java.io.tmpdir}/bah-jacoco/${project.artifactId}.exec</jacoco.dataFile>
+		<!-- Vacio por defecto: JaCoCo lo rellena en los modulos que miden
+		     cobertura y surefire lo usa con @{argLine} (ver abajo). -->
+		<argLine></argLine>
+		<!-- -Dactualizar.spec=true regenera documentación/api/*.json (LaSpecPublicadaEstaAlDiaTest). -->
+		<actualizar.spec>false</actualizar.spec>
+		<maven.compiler.source>17</maven.compiler.source>
+		<maven.compiler.target>17</maven.compiler.target>
+	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.cloud</groupId>
+				<artifactId>spring-cloud-dependencies</artifactId>
+				<version>${spring-cloud.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<modules>
+		<module>discovery-service</module>
+		<module>gateway-service</module>
+		<module>auth-service</module>
+		<module>biblioteca-service</module>
+	</modules>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- Orden determinista: el del sistema de ficheros no coincide
+					     entre Windows y Linux (heredado de Oh Churus). -->
+					<runOrder>alphabetical</runOrder>
+					<!-- Al cerrar la JVM de pruebas se apagan contextos de Spring y
+					     conexiones a Testcontainers; con la maquina cargada eso pasaba
+					     de los 30 s por defecto, surefire la mataba y JaCoCo no llegaba
+					     a escribir sus datos (cobertura 0 %). -->
+					<forkedProcessExitTimeoutInSeconds>300</forkedProcessExitTimeoutInSeconds>
+					<!-- Zona horaria de la casa tambien en las pruebas. -->
+					<argLine>@{argLine} -Duser.timezone=America/Bogota -Dfile.encoding=UTF-8</argLine>
+					<systemPropertyVariables>
+						<api.version>${docker.api.version}</api.version>
+						<actualizar.spec>${actualizar.spec}</actualizar.spec>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

@@ -1,0 +1,23 @@
+# Secretos
+.env
+.env.*
+!.env.ejemplo
+# Java
+target/
+*.class
+.idea/
+*.iml
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Datos locales
+datos-dev/
+*.log

@@ -1,0 +1,66 @@
+{
+  "versionFormato": 1,
+  "versionTexto": 1,
+  "titulo": "El guardián de los lomos",
+  "autores": [
+    "Biblioteca AH"
+  ],
+  "idioma": "es",
+  "isbn": null,
+  "editorial": "Taller de la casa",
+  "anio": 2026,
+  "sinopsis": "Una noche, en una biblioteca de roble y cedro, un viejo guardián descubre que los libros no duermen: esperan. Un cuento breve escrito para probar el lector, la voz y el resaltado de La Biblioteca AH.",
+  "tienePortada": true,
+  "capitulos": [
+    {
+      "indice": 0,
+      "titulo": "La biblioteca de noche",
+      "href": "cap-000.xhtml",
+      "nivel": 1,
+      "frases": 9,
+      "palabras": 110,
+      "primeraFrase": "c000-s00000",
+      "ultimaFrase": "c000-s00008"
+    },
+    {
+      "indice": 1,
+      "titulo": "El libro sin título",
+      "href": "cap-001.xhtml",
+      "nivel": 1,
+      "frases": 9,
+      "palabras": 97,
+      "primeraFrase": "c001-s00000",
+      "ultimaFrase": "c001-s00008"
+    },
+    {
+      "indice": 2,
+      "titulo": "La voz del roble",
+      "href": "cap-002.xhtml",
+      "nivel": 1,
+      "frases": 8,
+      "palabras": 94,
+      "primeraFrase": "c002-s00000",
+      "ultimaFrase": "c002-s00007"
+    }
+  ],
+  "toc": [
+    {
+      "titulo": "La biblioteca de noche",
+      "href": "cap-000.xhtml",
+      "hijos": []
+    },
+    {
+      "titulo": "El libro sin título",
+      "href": "cap-001.xhtml",
+      "hijos": []
+    },
+    {
+      "titulo": "La voz del roble",
+      "href": "cap-002.xhtml",
+      "hijos": []
+    }
+  ],
+  "totalFrases": 26,
+  "totalPalabras": 301,
+  "minutosEstimados": 2
+}

@@ -1,0 +1,336 @@
+"""Normalizador de texto (plan-maestro §5.4).
+
+Dos capas:
+- **visual**: lo que se ve en el lector. Solo se corrigen defectos de extracción (ligaduras, guiones de corte de
+  línea, espacios duros, caracteres invisibles, Unicode NFC). Nunca se "reescribe" el texto.
+- **voz**: lo que se le entrega al motor TTS. Parte del texto visual de la frase y expande abreviaturas, números
+  romanos de títulos/siglos/reyes, fechas numéricas, y quita marcadores de nota al pie.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from collections.abc import Callable
+
+from .numeros import MESES, numero_a_palabras, ordinal_o_cardinal, romano_a_entero
+
+# ---------------------------------------------------------------- capa visual
+
+LIGADURAS = {
+    "ﬀ": "ff",
+    "ﬁ": "fi",
+    "ﬂ": "fl",
+    "ﬃ": "ffi",
+    "ﬄ": "ffl",
+    "ﬅ": "st",
+    "ﬆ": "st",
+    "Ĳ": "IJ",
+    "ĳ": "ij",
+}
+_INVISIBLES = dict.fromkeys(map(ord, "­​‌‍⁠﻿"), None)
+_ESPACIOS_DUROS = dict.fromkeys(map(ord, "             　"), " ")
+_TABLA_VISUAL = {**{ord(k): v for k, v in LIGADURAS.items()}, **_INVISIBLES, **_ESPACIOS_DUROS}
+
+_GUIONES_CORTE = "-‐­"
+
+
+def normalizar_visual(texto: str) -> str:
+    """Corrige defectos de extracción sin cambiar el contenido."""
+    if not texto:
+        return texto
+    return unicodedata.normalize("NFC", texto.translate(_TABLA_VISUAL))
+
+
+def unir_lineas(lineas: list[str]) -> str:
+    """Une líneas de un párrafo deshaciendo los guiones de corte de línea ("con-" + "tinuar" → "continuar")."""
+    resultado = ""
+    for linea in lineas:
+        linea = linea.strip()
+        if not linea:
+            continue
+        if not resultado:
+            resultado = linea
+            continue
+        resultado = unir_dos(resultado, linea)
+    return resultado
+
+
+def unir_dos(previo: str, siguiente: str) -> str:
+    """Une dos fragmentos de línea; quita el guion de corte si la palabra continúa en minúscula."""
+    previo = previo.rstrip()
+    siguiente = siguiente.lstrip()
+    if not previo:
+        return siguiente
+    if not siguiente:
+        return previo
+    if previo[-1] == "­":
+        return previo[:-1] + siguiente
+    if (
+        previo[-1] in _GUIONES_CORTE
+        and len(previo) >= 2
+        and previo[-2].isalpha()
+        and siguiente[0].isalpha()
+        and siguiente[0].islower()
+    ):
+        return previo[:-1] + siguiente
+    return previo + " " + siguiente
+
+
+# ---------------------------------------------------------------- abreviaturas
+
+# Abreviaturas que NUNCA terminan una frase (tratamientos y las que van seguidas de número o nombre).
+ABREVIATURAS_FUERTES = {
+    "sr.",
+    "sres.",
+    "sra.",
+    "sras.",
+    "srta.",
+    "srtas.",
+    "dr.",
+    "dres.",
+    "dra.",
+    "dras.",
+    "ud.",
+    "uds.",
+    "vd.",
+    "vds.",
+    "dña.",
+    "d.",
+    "lic.",
+    "lcdo.",
+    "lcda.",
+    "ing.",
+    "prof.",
+    "profa.",
+    "sto.",
+    "sta.",
+    "pág.",
+    "págs.",
+    "p.",
+    "pp.",
+    "núm.",
+    "nº.",
+    "n.º",
+    "cap.",
+    "caps.",
+    "vol.",
+    "vols.",
+    "art.",
+    "arts.",
+    "fig.",
+    "figs.",
+    "av.",
+    "avda.",
+    "excmo.",
+    "excma.",
+    "ilmo.",
+    "ilma.",
+    "mons.",
+    "fr.",
+    "gral.",
+    "cía.",
+    "tel.",
+    "ee.",
+    "uu.",
+    "ej.",
+    "cf.",
+    "vid.",
+    "op.",
+    "cit.",
+    "ed.",
+    "trad.",
+    "coord.",
+    "dir.",
+    "aprox.",
+    "ca.",
+    "st.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "jr.",
+    "núms.",
+    "dpto.",
+    "depto.",
+    "vs.",
+}
+# Abreviaturas que pueden cerrar una frase (si sigue mayúscula, se corta).
+ABREVIATURAS_DEBILES = {"etc.", "a. c.", "d. c.", "izq.", "dcha.", "admón.", "aprox."}
+
+_EXPANSIONES = [
+    # (patrón, reemplazo) — el patrón se busca con límites de palabra a la izquierda
+    (r"EE\.\s?UU\.", "Estados Unidos"),
+    (r"p\.\s?ej\.", "por ejemplo"),
+    (r"a\.\s?C\.", "antes de Cristo"),
+    (r"d\.\s?C\.", "después de Cristo"),
+    (r"[Nn]\.\s?º|[Nn]º", "número"),
+    (r"Sres\.", "señores"),
+    (r"Sras\.", "señoras"),
+    (r"Srta\.", "señorita"),
+    (r"Sr\.", "señor"),
+    (r"Sra\.", "señora"),
+    (r"Dres\.", "doctores"),
+    (r"Dras\.", "doctoras"),
+    (r"Dr\.", "doctor"),
+    (r"Dra\.", "doctora"),
+    (r"Uds\.", "ustedes"),
+    (r"Ud\.", "usted"),
+    (r"Vds\.", "ustedes"),
+    (r"Vd\.", "usted"),
+    (r"Dña\.", "doña"),
+    (r"Lic\.", "licenciado"),
+    (r"Lcdo\.", "licenciado"),
+    (r"Lcda\.", "licenciada"),
+    (r"Ing\.", "ingeniero"),
+    (r"Profa\.", "profesora"),
+    (r"Prof\.", "profesor"),
+    (r"Sto\.", "santo"),
+    (r"Sta\.", "santa"),
+    (r"Excmo\.", "excelentísimo"),
+    (r"Excma\.", "excelentísima"),
+    (r"Ilmo\.", "ilustrísimo"),
+    (r"Ilma\.", "ilustrísima"),
+    (r"Mons\.", "monseñor"),
+    (r"Gral\.", "general"),
+    (r"Cía\.", "compañía"),
+    (r"Avda\.", "avenida"),
+    (r"Av\.", "avenida"),
+    (r"págs\.", "páginas"),
+    (r"pág\.", "página"),
+    (r"núms\.", "números"),
+    (r"núm\.", "número"),
+    (r"caps\.", "capítulos"),
+    (r"cap\.", "capítulo"),
+    (r"vols\.", "volúmenes"),
+    (r"vol\.", "volumen"),
+    (r"etc\.", "etcétera"),
+    (r"aprox\.", "aproximadamente"),
+    (r"tel\.", "teléfono"),
+    (r"izq\.", "izquierda"),
+    (r"dcha\.", "derecha"),
+    (r"admón\.", "administración"),
+    (r"§", "sección"),
+    (r"&", "y"),
+]
+
+_PALABRAS_TITULO = (
+    r"(?:Cap[ií]tulo|CAP[IÍ]TULO|Parte|PARTE|Libro|LIBRO|Tomo|TOMO|Secci[oó]n|SECCI[OÓ]N|Canto|CANTO|Acto|ACTO"
+    r"|Escena|ESCENA|Lecci[oó]n|LECCI[OÓ]N|Volumen|VOLUMEN|Cuaderno|Jornada)"
+)
+_ROMANO = r"[IVXLCDM]+"
+_REYES = r"(?:XX|XIX|XVIII|XVII|XVI|XV|XIV|XIII|XII|XI|X|IX|VIII|VII|VI|V|IV|III|II)"
+
+
+class _Regla:
+    __slots__ = ("funcion", "grupo", "patron")
+
+    def __init__(self, patron: str, funcion: Callable[[re.Match[str]], str | None], grupo: int = 0, flags: int = 0):
+        self.patron = re.compile(patron, flags)
+        self.funcion = funcion
+        self.grupo = grupo
+
+
+def _rom_cardinal(m: re.Match, g: int) -> str | None:
+    n = romano_a_entero(m.group(g))
+    return None if n is None else numero_a_palabras(n)
+
+
+def _fecha(m: re.Match) -> str | None:
+    d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if not (1 <= d <= 31 and 1 <= mes <= 12):
+        return None
+    return f"{d} de {MESES[mes - 1]} de {a}"
+
+
+def _construir_reglas() -> list[_Regla]:
+    reglas: list[_Regla] = []
+    # 1) Marcadores de nota al pie: [12], [*], superíndices numéricos
+    reglas.append(_Regla(r"\[\d{1,3}\]|\[\*\]", lambda m: ""))
+    reglas.append(_Regla(r"[¹²³⁰⁴-⁹]+", lambda m: ""))
+    # 2) "Capítulo IV", "Parte II" (en títulos y en el texto)
+    reglas.append(_Regla(rf"(?<!\w){_PALABRAS_TITULO}\s+({_ROMANO})\b", lambda m: _rom_cardinal(m, 1), grupo=1))
+    # 3) "siglo XIX", "siglos XV y XVI" (solo el primero)
+    reglas.append(_Regla(rf"(?<!\w)(?:[Ss]iglos?|SIGLOS?)\s+({_ROMANO})\b", lambda m: _rom_cardinal(m, 1), grupo=1))
+    # 4) Reyes / papas: "Felipe II" → "Felipe segundo" (sin "I" sola por ambigüedad)
+    reglas.append(
+        _Regla(
+            rf"(?<!\w)[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{{2,}}\s+({_REYES})\b(?!\.\w)",
+            lambda m: ordinal_o_cardinal(romano_a_entero(m.group(1)) or 0),
+            grupo=1,
+        )
+    )
+    # 5) Fechas dd/mm/aaaa
+    reglas.append(_Regla(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", _fecha))
+    # 6) Abreviaturas
+    for patron, reemplazo in _EXPANSIONES:
+        izq = r"(?<![\wÁÉÍÓÚáéíóúñÑ])" if patron[0].isalpha() else ""
+        reglas.append(_Regla(izq + "(?:" + patron + ")", (lambda r: lambda m: r)(reemplazo)))
+    return reglas
+
+
+_REGLAS = _construir_reglas()
+_REGLA_TITULO_SOLO_ROMANO = re.compile(rf"^\s*({_ROMANO})\s*(?:[.:\-–—]\s*|$)")
+_PUNTUACION_CIERRE = set(".,;:!?)]}»”’…")
+
+
+def preparar_voz(texto: str, excluidos: set[int] | None = None, es_titulo: bool = False) -> str:
+    """Texto para el motor de voz a partir del texto visual de UNA frase.
+
+    `excluidos`: posiciones de caracteres que no se leen (p. ej. dentro de <sup> de nota al pie).
+    """
+    excluidos = excluidos or set()
+    spans: list[tuple[int, int, int, str]] = []
+    for prioridad, regla in enumerate(_REGLAS):
+        for m in regla.patron.finditer(texto):
+            reemplazo = regla.funcion(m)
+            if reemplazo is None:
+                continue
+            ini, fin = m.span(regla.grupo)
+            spans.append((ini, fin, prioridad, reemplazo))
+    if es_titulo:
+        mt = _REGLA_TITULO_SOLO_ROMANO.match(texto)
+        if mt:
+            n = romano_a_entero(mt.group(1))
+            if n is not None:
+                spans.append((mt.start(1), mt.end(1), -1, numero_a_palabras(n)))
+    # selección voraz sin solapes: por inicio, luego prioridad
+    spans.sort(key=lambda s: (s[0], s[2]))
+    elegidos: list[tuple[int, int, str]] = []
+    fin_ultimo = 0
+    for ini, fin, _p, rep in spans:
+        if ini < fin_ultimo or fin <= ini:
+            continue
+        elegidos.append((ini, fin, rep))
+        fin_ultimo = fin
+
+    piezas: list[str] = []
+    pos = 0
+    for ini, fin, rep in elegidos:
+        piezas.append(_sin_excluidos(texto, pos, ini, excluidos))
+        if rep and texto[fin - 1 : fin] == "." and _cierra_frase(texto, fin):
+            rep += "."
+        piezas.append(rep)
+        pos = fin
+    piezas.append(_sin_excluidos(texto, pos, len(texto), excluidos))
+    return _limpiar_espacios("".join(piezas))
+
+
+def _sin_excluidos(texto: str, a: int, b: int, excluidos: set[int]) -> str:
+    if not excluidos:
+        return texto[a:b]
+    return "".join(c for i, c in enumerate(texto[a:b], start=a) if i not in excluidos)
+
+
+def _cierra_frase(texto: str, fin: int) -> bool:
+    resto = texto[fin:].strip()
+    return resto == "" or all(c in _PUNTUACION_CIERRE for c in resto)
+
+
+def _limpiar_espacios(s: str) -> str:
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r" ([.,;:!?)\]}»”…])", r"\1", s)
+    return s
+
+
+def tiene_contenido_hablable(texto: str) -> bool:
+    return any(c.isalnum() for c in texto)

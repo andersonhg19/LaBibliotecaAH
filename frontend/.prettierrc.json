@@ -1,0 +1,10 @@
+{
+  "singleQuote": true,
+  "semi": false,
+  "printWidth": 120,
+  "trailingComma": "all",
+  "plugins": ["@trivago/prettier-plugin-sort-imports"],
+  "importOrder": ["^react$", "^react-native$", "<THIRD_PARTY_MODULES>", "^@(componentes|servicios|pantallas|tema|hooks|utils|contextos|tipos|logica|config|validaciones|navegacion)(/.*)?$", "^[./]"],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true
+}

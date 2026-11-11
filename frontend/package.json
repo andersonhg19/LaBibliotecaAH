@@ -1,0 +1,117 @@
+{
+  "name": "la-biblioteca-ah-web",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start --web",
+    "web": "expo start --web",
+    "demo": "cross-env EXPO_PUBLIC_MOCK=1 expo start --web",
+    "export": "expo export --platform web",
+    "export:demo": "cross-env EXPO_PUBLIC_MOCK=1 expo export --platform web",
+    "generar-demo": "node scripts/generar-demo.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "formato": "prettier --write \"src/**/*.{ts,tsx}\" App.tsx index.ts",
+    "formato:revisar": "prettier --check \"src/**/*.{ts,tsx}\" App.tsx index.ts",
+    "tipos": "tsc --noEmit",
+    "test": "jest",
+    "qa": "npm run lint && npm run formato:revisar && npm run tipos && npm run test"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|native-base|react-native-svg|@testing-library)"
+    ],
+    "setupFiles": [
+      "./jest.setup.js"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/public/",
+      "/dist/"
+    ],
+    "testTimeout": 60000,
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.{ts,tsx}",
+      "!src/**/__tests__/**",
+      "!src/test-utils.tsx",
+      "!src/theme/**"
+    ],
+    "coverageReporters": [
+      "text-summary",
+      "lcov",
+      "json-summary"
+    ],
+    "moduleNameMapper": {
+      "^@componentes/(.*)$": "<rootDir>/src/components/$1",
+      "^@componentes$": "<rootDir>/src/components",
+      "^@servicios/(.*)$": "<rootDir>/src/services/$1",
+      "^@servicios$": "<rootDir>/src/services",
+      "^@pantallas/(.*)$": "<rootDir>/src/screens/$1",
+      "^@pantallas$": "<rootDir>/src/screens",
+      "^@tema/(.*)$": "<rootDir>/src/theme/$1",
+      "^@tema$": "<rootDir>/src/theme",
+      "^@hooks/(.*)$": "<rootDir>/src/hooks/$1",
+      "^@hooks$": "<rootDir>/src/hooks",
+      "^@utils/(.*)$": "<rootDir>/src/utils/$1",
+      "^@utils$": "<rootDir>/src/utils",
+      "^@contextos/(.*)$": "<rootDir>/src/contexts/$1",
+      "^@contextos$": "<rootDir>/src/contexts",
+      "^@tipos/(.*)$": "<rootDir>/src/types/$1",
+      "^@tipos$": "<rootDir>/src/types",
+      "^@logica/(.*)$": "<rootDir>/src/logica/$1",
+      "^@logica$": "<rootDir>/src/logica",
+      "^@config/(.*)$": "<rootDir>/src/config/$1",
+      "^@config$": "<rootDir>/src/config",
+      "^@validaciones/(.*)$": "<rootDir>/src/validaciones/$1",
+      "^@validaciones$": "<rootDir>/src/validaciones",
+      "^@navegacion/(.*)$": "<rootDir>/src/navigation/$1",
+      "^@navegacion$": "<rootDir>/src/navigation"
+    }
+  },
+  "dependencies": {
+    "@expo-google-fonts/cormorant-garamond": "^0.4.1",
+    "@expo-google-fonts/eb-garamond": "^0.4.1",
+    "@expo-google-fonts/inter": "^0.4.1",
+    "@expo-google-fonts/literata": "^0.4.1",
+    "@expo-google-fonts/lora": "^0.4.1",
+    "@react-native-async-storage/async-storage": "^3.0.1",
+    "@react-navigation/native": "^7.1.33",
+    "@react-navigation/native-stack": "^7.14.5",
+    "axios": "^1.13.6",
+    "expo": "~55.0.7",
+    "expo-font": "~55.0.4",
+    "expo-status-bar": "~55.0.4",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.2",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "^4.24.0",
+    "react-native-svg": "^15.15.3",
+    "react-native-web": "^0.21.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "@types/jest": "^30.0.0",
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "~19.2.2",
+    "babel-plugin-module-resolver": "^5.0.3",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.5.0",
+    "jest": "^29.7.0",
+    "jest-expo": "^55.0.10",
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.72.2"
+  },
+  "private": true
+}

@@ -1,0 +1,3963 @@
+{
+  "info": {
+    "name": "La Biblioteca AH",
+    "description": "Generada desde documentación/api con backend/scripts/generar-postman.py. Pon {{token}} con el JWT de POST /v1/auth/login.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "gateway",
+      "value": "http://localhost:8920"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "auth-service",
+      "item": [
+        {
+          "name": "Quien cambio que y cuando",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/audit/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "audit",
+                "all"
+              ]
+            },
+            "description": "Quien cambio que y cuando",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actorUserId\": 0,\n  \"entityType\": \"\",\n  \"page\": 0,\n  \"size\": 0,\n  \"ultimosDias\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/audit/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "audit",
+                    "all"
+                  ]
+                },
+                "description": "Quien cambio que y cuando",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"actorUserId\": 0,\n  \"entityType\": \"\",\n  \"page\": 0,\n  \"size\": 0,\n  \"ultimosDias\": 0\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ajustes de la instalacion. Requiere rol ADMIN",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/config/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "config",
+                "all"
+              ]
+            },
+            "description": "Ajustes de la instalacion. Requiere rol ADMIN"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/config/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "config",
+                    "all"
+                  ]
+                },
+                "description": "Ajustes de la instalacion. Requiere rol ADMIN"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cambia un ajuste de la instalacion. Requiere rol ADMIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/config/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "config",
+                "save"
+              ]
+            },
+            "description": "Cambia un ajuste de la instalacion. Requiere rol ADMIN",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"configKey\": \"\",\n  \"description\": \"\",\n  \"value\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/config/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "config",
+                    "save"
+                  ]
+                },
+                "description": "Cambia un ajuste de la instalacion. Requiere rol ADMIN",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"configKey\": \"\",\n  \"description\": \"\",\n  \"value\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Modulos con sus paginas, incluidos los desactivados",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/modules/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "modules",
+                "all"
+              ]
+            },
+            "description": "Modulos con sus paginas, incluidos los desactivados"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/modules/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "modules",
+                    "all"
+                  ]
+                },
+                "description": "Modulos con sus paginas, incluidos los desactivados"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Fija lo que un rol puede hacer en una pagina",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/permissions/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "permissions",
+                "save"
+              ]
+            },
+            "description": "Fija lo que un rol puede hacer en una pagina",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"canCreate\": false,\n  \"canDelete\": false,\n  \"canRead\": false,\n  \"canUpdate\": false,\n  \"pageId\": 0,\n  \"roleName\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/permissions/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "permissions",
+                    "save"
+                  ]
+                },
+                "description": "Fija lo que un rol puede hacer en una pagina",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"canCreate\": false,\n  \"canDelete\": false,\n  \"canRead\": false,\n  \"canUpdate\": false,\n  \"pageId\": 0,\n  \"roleName\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Permisos de un rol, pagina a pagina",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/permissions/:roleName",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "permissions",
+                ":roleName"
+              ],
+              "variable": [
+                {
+                  "key": "roleName",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Permisos de un rol, pagina a pagina"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/permissions/:roleName",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "permissions",
+                    ":roleName"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roleName",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Permisos de un rol, pagina a pagina"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Roles existentes, con cuantas cuentas activas lleva cada uno",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "roles",
+                "all"
+              ]
+            },
+            "description": "Roles existentes, con cuantas cuentas activas lleva cada uno"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "roles",
+                    "all"
+                  ]
+                },
+                "description": "Roles existentes, con cuantas cuentas activas lleva cada uno"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Desactiva un rol que no use nadie",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "roles",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Desactiva un rol que no use nadie"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "roles",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Desactiva un rol que no use nadie"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crea o actualiza un rol",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "roles",
+                "save"
+              ]
+            },
+            "description": "Crea o actualiza un rol",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false,\n  \"description\": \"\",\n  \"id\": 0,\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/roles/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "roles",
+                    "save"
+                  ]
+                },
+                "description": "Crea o actualiza un rol",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"active\": false,\n  \"description\": \"\",\n  \"id\": 0,\n  \"name\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Listado de cuentas, incluidas las desactivadas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                "all"
+              ]
+            },
+            "description": "Listado de cuentas, incluidas las desactivadas",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false,\n  \"email\": \"\",\n  \"name\": \"\",\n  \"page\": 0,\n  \"size\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    "all"
+                  ]
+                },
+                "description": "Listado de cuentas, incluidas las desactivadas",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"active\": false,\n  \"email\": \"\",\n  \"name\": \"\",\n  \"page\": 0,\n  \"size\": 0\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ficha de una cuenta con sus roles",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/get/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                "get",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Ficha de una cuenta con sus roles"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/get/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    "get",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Ficha de una cuenta con sus roles"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Alta de una cuenta desde administracion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                "save"
+              ]
+            },
+            "description": "Alta de una cuenta desde administracion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    "save"
+                  ]
+                },
+                "description": "Alta de una cuenta desde administracion",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reactiva una cuenta desactivada",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/activate",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                ":id",
+                "activate"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Reactiva una cuenta desactivada"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/activate",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    ":id",
+                    "activate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Reactiva una cuenta desactivada"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Desactiva una cuenta",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/deactivate",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                ":id",
+                "deactivate"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Desactiva una cuenta"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/deactivate",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    ":id",
+                    "deactivate"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Desactiva una cuenta"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Fija los roles de una cuenta (lista completa, no incremental)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/roles",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "users",
+                ":id",
+                "roles"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Fija los roles de una cuenta (lista completa, no incremental)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    \"\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/admin/users/:id/roles",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "users",
+                    ":id",
+                    "roles"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Fija los roles de una cuenta (lista completa, no incremental)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"roles\": [\n    \"\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/auth/register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/register",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/register",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "register"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Modulos y paginas del usuario autenticado",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/menu/mine",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "menu",
+                "mine"
+              ]
+            },
+            "description": "Modulos y paginas del usuario autenticado"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/menu/mine",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "menu",
+                    "mine"
+                  ]
+                },
+                "description": "Modulos y paginas del usuario autenticado"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Nombre de la app e idioma regional de la instalacion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/preferences/mine",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "preferences",
+                "mine"
+              ]
+            },
+            "description": "Nombre de la app e idioma regional de la instalacion"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/preferences/mine",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "preferences",
+                    "mine"
+                  ]
+                },
+                "description": "Nombre de la app e idioma regional de la instalacion"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/users/all",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "users",
+                "all"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": false,\n  \"email\": \"\",\n  \"name\": \"\",\n  \"page\": 0,\n  \"size\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "users",
+                    "all"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"active\": false,\n  \"email\": \"\",\n  \"name\": \"\",\n  \"page\": 0,\n  \"size\": 0\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/users/delete/{id}",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "users",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "users",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": ""
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/users/get/{id}",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/get/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "users",
+                "get",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/get/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "users",
+                    "get",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": ""
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/users/save",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "users",
+                "save"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/users/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "users",
+                    "save"
+                  ]
+                },
+                "description": "",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "biblioteca-service",
+      "item": [
+        {
+          "name": "Anotaciones de un libro, en orden de creacion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/all/:ejemplarId",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "anotaciones",
+                "all",
+                ":ejemplarId"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Anotaciones de un libro, en orden de creacion"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/all/:ejemplarId",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "anotaciones",
+                    "all",
+                    ":ejemplarId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Anotaciones de un libro, en orden de creacion"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Borra una anotacion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "anotaciones",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Borra una anotacion"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "anotaciones",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Borra una anotacion"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crea (sin id) o edita (con id) una anotacion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "anotaciones",
+                "save"
+              ]
+            },
+            "description": "Crea (sin id) o edita (con id) una anotacion",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capitulo\": 3,\n  \"cfi\": \"epubcfi(/6/8!/4/2/10,/1:0,/1:42)\",\n  \"color\": \"amarillo\",\n  \"creado\": \"2026-11-10T20:00:00Z\",\n  \"editado\": \"2026-11-10T20:00:00Z\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"fraseFin\": \"c003-s00124\",\n  \"fraseInicio\": \"c003-s00123\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"nota\": \"Me encanta este comienzo\",\n  \"offsetFin\": 42,\n  \"offsetInicio\": 0,\n  \"prefijo\": \"\",\n  \"sufijo\": \"\",\n  \"textoCitado\": \"En un lugar de la Mancha\",\n  \"tipo\": \"RESALTADO\",\n  \"versionTexto\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/anotaciones/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "anotaciones",
+                    "save"
+                  ]
+                },
+                "description": "Crea (sin id) o edita (con id) una anotacion",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capitulo\": 3,\n  \"cfi\": \"epubcfi(/6/8!/4/2/10,/1:0,/1:42)\",\n  \"color\": \"amarillo\",\n  \"creado\": \"2026-11-10T20:00:00Z\",\n  \"editado\": \"2026-11-10T20:00:00Z\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"fraseFin\": \"c003-s00124\",\n  \"fraseInicio\": \"c003-s00123\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"nota\": \"Me encanta este comienzo\",\n  \"offsetFin\": 42,\n  \"offsetInicio\": 0,\n  \"prefijo\": \"\",\n  \"sufijo\": \"\",\n  \"textoCitado\": \"En un lugar de la Mancha\",\n  \"tipo\": \"RESALTADO\",\n  \"versionTexto\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/audio/:vozId/:fichero?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "audio",
+                ":vozId",
+                ":fichero"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                },
+                {
+                  "key": "vozId",
+                  "value": ""
+                },
+                {
+                  "key": "fichero",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/audio/:vozId/:fichero?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "audio",
+                    ":vozId",
+                    ":fichero"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    },
+                    {
+                      "key": "vozId",
+                      "value": ""
+                    },
+                    {
+                      "key": "fichero",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)"
+              },
+              "status": "Partial Content",
+              "code": 206,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        },
+        {
+          "name": "EPUB normalizado (con ids por frase)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/libro.epub?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "libro.epub"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "EPUB normalizado (con ids por frase)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/libro.epub?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "libro.epub"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "EPUB normalizado (con ids por frase)"
+              },
+              "status": "Partial Content",
+              "code": 206,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        },
+        {
+          "name": "Archivo original tal como se subio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/original?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "original"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Archivo original tal como se subio"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/original?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "original"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "Archivo original tal como se subio"
+              },
+              "status": "Partial Content",
+              "code": 206,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        },
+        {
+          "name": "Portada (JPEG)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/portada.jpg?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "portada.jpg"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Portada (JPEG)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/portada.jpg?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "portada.jpg"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "Portada (JPEG)"
+              },
+              "status": "Partial Content",
+              "code": 206,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        },
+        {
+          "name": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/audio/estado",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "audio",
+                "estado"
+              ]
+            },
+            "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/audio/estado",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "audio",
+                    "estado"
+                  ]
+                },
+                "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Comentarios de un libro, en orden de creacion",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/all/:ejemplarId",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "comentarios",
+                "all",
+                ":ejemplarId"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Comentarios de un libro, en orden de creacion"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/all/:ejemplarId",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "comentarios",
+                    "all",
+                    ":ejemplarId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Comentarios de un libro, en orden de creacion"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Borra un comentario",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "comentarios",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Borra un comentario"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "comentarios",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Borra un comentario"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crea (sin id) o edita (con id) un comentario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "comentarios",
+                "save"
+              ]
+            },
+            "description": "Crea (sin id) o edita (con id) un comentario",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"creado\": \"2026-11-10T20:00:00Z\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"texto\": \"Lo empece en el bus de vuelta a casa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/comentarios/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "comentarios",
+                    "save"
+                  ]
+                },
+                "description": "Crea (sin id) o edita (con id) un comentario",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"creado\": \"2026-11-10T20:00:00Z\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"texto\": \"Lo empece en el bus de vuelta a casa\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Estantes del usuario (FAVORITOS primero; se crea solo)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                "all"
+              ]
+            },
+            "description": "Estantes del usuario (FAVORITOS primero; se crea solo)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    "all"
+                  ]
+                },
+                "description": "Estantes del usuario (FAVORITOS primero; se crea solo)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Borra un estante (los libros no se borran)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Borra un estante (los libros no se borran)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Borra un estante (los libros no se borran)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Crea (sin id) o renombra/colorea (con id) un estante",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                "save"
+              ]
+            },
+            "description": "Crea (sin id) o renombra/colorea (con id) un estante",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"colorMadera\": \"\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"nombre\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    "save"
+                  ]
+                },
+                "description": "Crea (sin id) o renombra/colorea (con id) un estante",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"colorMadera\": \"\",\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"nombre\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Pone un libro al final del estante",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/agregar",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                ":id",
+                "agregar"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Pone un libro al final del estante",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/agregar",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    ":id",
+                    "agregar"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Pone un libro al final del estante",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Libros del estante en su orden",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/libros",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                ":id",
+                "libros"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Libros del estante en su orden"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/libros",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    ":id",
+                    "libros"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Libros del estante en su orden"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Mueve un libro antes o despues de otro (indice fraccional)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/ordenar",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                ":id",
+                "ordenar"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Mueve un libro antes o despues de otro (indice fraccional)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/ordenar",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    ":id",
+                    "ordenar"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Mueve un libro antes o despues de otro (indice fraccional)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Quita un libro del estante",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/quitar",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estantes",
+                ":id",
+                "quitar"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Quita un libro del estante",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estantes/:id/quitar",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estantes",
+                    ":id",
+                    "quitar"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Quita un libro del estante",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"antesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"despuesDe\": \"00000000-0000-0000-0000-000000000000\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Lista paginada con pestanas, filtros combinables y orden",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "all"
+              ]
+            },
+            "description": "Lista paginada con pestanas, filtros combinables y orden",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anioDesde\": 0,\n  \"anioHasta\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacionMin\": 0,\n  \"conNotas\": false,\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"formatos\": [\n    \"\"\n  ],\n  \"generos\": [\n    \"\"\n  ],\n  \"orden\": \"RECIENTES\",\n  \"page\": 0,\n  \"pestana\": \"TODO\",\n  \"size\": 0,\n  \"texto\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "all"
+                  ]
+                },
+                "description": "Lista paginada con pestanas, filtros combinables y orden",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"anioDesde\": 0,\n  \"anioHasta\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacionMin\": 0,\n  \"conNotas\": false,\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"formatos\": [\n    \"\"\n  ],\n  \"generos\": [\n    \"\"\n  ],\n  \"orden\": \"RECIENTES\",\n  \"page\": 0,\n  \"pestana\": \"TODO\",\n  \"size\": 0,\n  \"texto\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Borra el libro de tu biblioteca (el archivo solo si nadie mas lo usa)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/delete/:ejemplarId",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "delete",
+                ":ejemplarId"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Borra el libro de tu biblioteca (el archivo solo si nadie mas lo usa)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/delete/:ejemplarId",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "delete",
+                    ":ejemplarId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Borra el libro de tu biblioteca (el archivo solo si nadie mas lo usa)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Agrega un libro a la lista de deseos (sin archivo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/deseo",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "deseo"
+              ]
+            },
+            "description": "Agrega un libro a la lista de deseos (sin archivo)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"autor\": \"\",\n  \"isbn\": \"\",\n  \"nota\": \"\",\n  \"titulo\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/deseo",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "deseo"
+                  ]
+                },
+                "description": "Agrega un libro a la lista de deseos (sin archivo)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"autor\": \"\",\n  \"isbn\": \"\",\n  \"nota\": \"\",\n  \"titulo\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "facetas"
+              ]
+            },
+            "description": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "facetas"
+                  ]
+                },
+                "description": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ficha del libro con capitulos y progreso",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/get/:ejemplarId",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "get",
+                ":ejemplarId"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Ficha del libro con capitulos y progreso"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/get/:ejemplarId",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "get",
+                    ":ejemplarId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Ficha del libro con capitulos y progreso"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "save"
+              ]
+            },
+            "description": "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anio\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacion\": 0,\n  \"editorial\": \"\",\n  \"estado\": \"POR_LEER\",\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"favorito\": false,\n  \"generos\": [\n    \"\"\n  ],\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"sinopsis\": \"\",\n  \"tipo\": \"LIBRO\",\n  \"titulo\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "save"
+                  ]
+                },
+                "description": "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"anio\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacion\": 0,\n  \"editorial\": \"\",\n  \"estado\": \"POR_LEER\",\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"favorito\": false,\n  \"generos\": [\n    \"\"\n  ],\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"sinopsis\": \"\",\n  \"tipo\": \"LIBRO\",\n  \"titulo\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "subir"
+              ]
+            },
+            "description": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "archivos",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "tipo",
+                  "value": "LIBRO",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "subir"
+                  ]
+                },
+                "description": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "archivos",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "tipo",
+                      "value": "LIBRO",
+                      "type": "text"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Progreso guardado de un libro (object nulo si nunca se abrio)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/progreso/get/:ejemplarId",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "progreso",
+                "get",
+                ":ejemplarId"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Progreso guardado de un libro (object nulo si nunca se abrio)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/progreso/get/:ejemplarId",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "progreso",
+                    "get",
+                    ":ejemplarId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Progreso guardado de un libro (object nulo si nunca se abrio)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Guarda el progreso; gana el actualizadoEn mas reciente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/progreso/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "progreso",
+                "save"
+              ]
+            },
+            "description": "Guarda el progreso; gana el actualizadoEn mas reciente",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actualizadoEn\": \"2026-11-10T20:15:00Z\",\n  \"capitulo\": 3,\n  \"cfi\": \"epubcfi(/6/8!/4/2/10)\",\n  \"dispositivo\": \"iPhone de Anderson\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"fraseId\": \"c003-s00123\",\n  \"modo\": \"VOZ\",\n  \"porcentaje\": 37.5,\n  \"posicionAudioSeg\": 512.4,\n  \"velocidad\": 1.5,\n  \"vozId\": \"edge.es-ES-AlvaroNeural\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/progreso/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "progreso",
+                    "save"
+                  ]
+                },
+                "description": "Guarda el progreso; gana el actualizadoEn mas reciente",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"actualizadoEn\": \"2026-11-10T20:15:00Z\",\n  \"capitulo\": 3,\n  \"cfi\": \"epubcfi(/6/8!/4/2/10)\",\n  \"dispositivo\": \"iPhone de Anderson\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"fraseId\": \"c003-s00123\",\n  \"modo\": \"VOZ\",\n  \"porcentaje\": 37.5,\n  \"posicionAudioSeg\": 512.4,\n  \"velocidad\": 1.5,\n  \"vozId\": \"edge.es-ES-AlvaroNeural\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Catalogo de voces (del taller, con respaldo si no responde)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voces/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "voces",
+                "all"
+              ]
+            },
+            "description": "Catalogo de voces (del taller, con respaldo si no responde)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voces/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "voces",
+                    "all"
+                  ]
+                },
+                "description": "Catalogo de voces (del taller, con respaldo si no responde)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Muestra de una voz (MP3)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voces/:vozId/muestra.mp3?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "voces",
+                ":vozId",
+                "muestra.mp3"
+              ],
+              "variable": [
+                {
+                  "key": "vozId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Muestra de una voz (MP3)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voces/:vozId/muestra.mp3?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "voces",
+                    ":vozId",
+                    "muestra.mp3"
+                  ],
+                  "variable": [
+                    {
+                      "key": "vozId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "Muestra de una voz (MP3)"
+              },
+              "status": "Partial Content",
+              "code": 206,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

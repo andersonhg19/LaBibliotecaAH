@@ -1,0 +1,13 @@
+# Finales de linea LF en el repo y en la copia de trabajo: los scripts y hooks corren en Linux (contenedores, CI).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.mp3 binary
+*.m4a binary
+*.wav binary
+*.epub binary
+*.ttf binary
+*.woff2 binary
+*.jar binary

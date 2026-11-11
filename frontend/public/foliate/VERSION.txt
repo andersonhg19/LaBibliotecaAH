@@ -1,0 +1,5 @@
+foliate-js (MIT) vendorizado para La Biblioteca AH
+Origen: https://github.com/johnfactotum/foliate-js
+Commit fijado: 78914aef4466eb960965702401634c2cb348e9b1 (2026-05-01)
+Incluye solo lo necesario para EPUB (sin pdf.js ni vendor/pdfjs: los PDF llegan ya convertidos a EPUB por el taller).
+Para actualizar: clonar el repo, hacer checkout del commit nuevo y copiar los mismos ficheros.

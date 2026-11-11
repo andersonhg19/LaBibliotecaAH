@@ -1,0 +1,119 @@
+"""Motores de voz detrás de una interfaz común (plan-maestro §6.1)."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+from dataclasses import dataclass, field
+from typing import Protocol
+
+from ..dominio.mensajes import Msj
+from ..dominio.modelo import ErrorDefinitivo, ErrorReintentable
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class Sintesis:
+    audio: bytes  # MP3
+    formato: str = "mp3"
+    # (texto hablado, t0, t1) en segundos relativos al inicio del audio de la frase
+    palabras: list[tuple[str, float, float]] = field(default_factory=list)
+
+
+class MotorDeVoz(Protocol):
+    nombre: str
+    version: str  # entra en la clave de caché: cambiarla invalida el audio guardado
+
+    async def sintetizar(self, texto: str, voz: str) -> Sintesis: ...
+
+
+class EdgeTts:
+    """Microsoft Edge "Leer en voz alta" vía `edge-tts` (endpoint no oficial; puede romperse → reintentos)."""
+
+    nombre = "edge"
+    version = "edge-tts-7/48k-mono-mp3/v1"
+
+    def __init__(self, concurrencia: int = 4, reintentos: int = 5, pausa_base: float = 1.5):
+        self._semaforo: asyncio.Semaphore | None = None
+        self._bucle: asyncio.AbstractEventLoop | None = None
+        self._concurrencia = concurrencia
+        self.reintentos = reintentos
+        self.pausa_base = pausa_base
+
+    def _sem(self) -> asyncio.Semaphore:
+        # el semáforo pertenece al bucle de eventos que lo usa (cada trabajo corre su propio asyncio.run)
+        bucle = asyncio.get_running_loop()
+        if self._semaforo is None or self._bucle is not bucle:
+            self._semaforo = asyncio.Semaphore(self._concurrencia)
+            self._bucle = bucle
+        return self._semaforo
+
+    async def sintetizar(self, texto: str, voz: str) -> Sintesis:
+        import edge_tts
+
+        ultimo: Exception | None = None
+        async with self._sem():
+            for intento in range(1, self.reintentos + 1):
+                try:
+                    com = edge_tts.Communicate(texto, voz, boundary="WordBoundary")
+                    audio = bytearray()
+                    palabras: list[tuple[str, float, float]] = []
+                    async for trozo in com.stream():
+                        tipo = trozo.get("type")
+                        if tipo == "audio":
+                            audio.extend(trozo["data"])
+                        elif tipo == "WordBoundary":
+                            t0 = trozo["offset"] / 1e7
+                            palabras.append((trozo["text"], t0, t0 + trozo["duration"] / 1e7))
+                    if not audio:
+                        raise ConnectionError("edge-tts no devolvió audio")
+                    return Sintesis(bytes(audio), "mp3", palabras)
+                except Exception as e:  # 403, desconexiones, límites…
+                    ultimo = e
+                    espera = self.pausa_base * (2 ** (intento - 1)) + random.uniform(0, 0.5)
+                    log.warning(
+                        "edge-tts falló (intento %d/%d, voz %s): %s — reintento en %.1fs",
+                        intento,
+                        self.reintentos,
+                        voz,
+                        e,
+                        espera,
+                    )
+                    if intento < self.reintentos:
+                        await asyncio.sleep(espera)
+        raise ErrorReintentable(Msj.SERVICIO_VOZ_CAIDO, detalle=f"edge-tts, {self.reintentos} intentos: {ultimo}")
+
+
+class PiperLocal:
+    """Respaldo local sin internet (Piper, CPU).
+
+    TODO (Ola 3+): descargar el modelo (es_ES-davefx-medium / carlfm / sharvard) en /datos/modelos/piper,
+    invocar `piper --model ... --output_raw --json-input` y obtener tiempos por fonema → palabra.
+    No se descargan modelos grandes todavía.
+    """
+
+    nombre = "piper"
+    version = "piper/pendiente"
+
+    async def sintetizar(self, texto: str, voz: str) -> Sintesis:
+        raise ErrorDefinitivo(Msj.MOTOR_NO_DISPONIBLE, motor="Piper")
+
+
+_EDGE: EdgeTts | None = None
+
+
+def motor_para(voz_id: str, concurrencia: int = 4) -> tuple[MotorDeVoz, str]:
+    """`edge.es-ES-AlvaroNeural` → (EdgeTts, "es-ES-AlvaroNeural")."""
+    global _EDGE
+    motor, _, voz = voz_id.partition(".")
+    if not voz:
+        raise ValueError(f"vozId inválido: {voz_id}")
+    if motor == "edge":
+        if _EDGE is None:
+            _EDGE = EdgeTts(concurrencia=concurrencia)
+        return _EDGE, voz
+    if motor == "piper":
+        return PiperLocal(), voz
+    raise ValueError(f"Motor de voz desconocido: {motor}")

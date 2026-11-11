@@ -1,0 +1,26 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@componentes/*": ["src/components/*"],
+      "@servicios/*": ["src/services/*"],
+      "@pantallas/*": ["src/screens/*"],
+      "@tema/*": ["src/theme/*"],
+      "@tema": ["src/theme"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@contextos/*": ["src/contexts/*"],
+      "@tipos": ["src/types"],
+      "@logica/*": ["src/logica/*"],
+      "@config": ["src/config"],
+      "@config/*": ["src/config/*"],
+      "@validaciones/*": ["src/validaciones/*"],
+      "@navegacion/*": ["src/navigation/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist", "public", "scripts"]
+}

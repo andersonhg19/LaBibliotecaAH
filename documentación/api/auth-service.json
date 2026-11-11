@@ -1,0 +1,970 @@
+{
+  "components" : {
+    "schemas" : {
+      "AppConfigSaveDTO" : {
+        "properties" : {
+          "configKey" : {
+            "maxLength" : 80,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "description" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "value" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "configKey",
+          "value"
+        ],
+        "type" : "object"
+      },
+      "AsignarRolesDTO" : {
+        "properties" : {
+          "roles" : {
+            "items" : {
+              "type" : "string"
+            },
+            "type" : "array"
+          }
+        },
+        "required" : [
+          "roles"
+        ],
+        "type" : "object"
+      },
+      "AuditoriaFilterDTO" : {
+        "properties" : {
+          "actorUserId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "entityType" : {
+            "type" : "string"
+          },
+          "page" : {
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "size" : {
+            "format" : "int32",
+            "maximum" : 200,
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "ultimosDias" : {
+            "format" : "int32",
+            "maximum" : 3650,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "AuthenticationRequest" : {
+        "properties" : {
+          "email" : {
+            "type" : "string"
+          },
+          "password" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "email",
+          "password"
+        ],
+        "type" : "object"
+      },
+      "PermisoSaveDTO" : {
+        "properties" : {
+          "canCreate" : {
+            "type" : "boolean"
+          },
+          "canDelete" : {
+            "type" : "boolean"
+          },
+          "canRead" : {
+            "type" : "boolean"
+          },
+          "canUpdate" : {
+            "type" : "boolean"
+          },
+          "pageId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "roleName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "canCreate",
+          "canDelete",
+          "canRead",
+          "canUpdate",
+          "pageId",
+          "roleName"
+        ],
+        "type" : "object"
+      },
+      "ResultDTO" : {
+        "properties" : {
+          "correct" : {
+            "type" : "boolean"
+          },
+          "errorCode" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "object" : {
+            "type" : "object"
+          }
+        },
+        "type" : "object"
+      },
+      "RoleSaveDTO" : {
+        "properties" : {
+          "active" : {
+            "type" : "boolean"
+          },
+          "description" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "maxLength" : 50,
+            "minLength" : 0,
+            "pattern" : "^[A-Z][A-Z0-9_]*$",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "name"
+        ],
+        "type" : "object"
+      },
+      "UserFilterDTO" : {
+        "properties" : {
+          "active" : {
+            "type" : "boolean"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "page" : {
+            "format" : "int32",
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "size" : {
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1,
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "UserRegisterDTO" : {
+        "properties" : {
+          "email" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "name" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 100,
+            "minLength" : 8,
+            "pattern" : "^(?=.*\\p{L})(?=.*\\d).*$",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "email",
+          "name",
+          "password"
+        ],
+        "type" : "object"
+      },
+      "UserSaveDTO" : {
+        "properties" : {
+          "currentPassword" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "email" : {
+            "maxLength" : 150,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "name" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "password" : {
+            "maxLength" : 100,
+            "minLength" : 8,
+            "pattern" : "^(?=.*\\p{L})(?=.*\\d).*$",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "email",
+          "name"
+        ],
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "bearerFormat" : "JWT",
+        "description" : "El token que devuelve /v1/auth/login",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  },
+  "info" : {
+    "description" : "Usuarios, registro, login y emision del JWT.\n\nTodos los endpoints son POST y devuelven HTTP 200 con un\nResultDTO: { correct, message, errorCode, object }. Cuando algo\nfalla, `correct` viene en false y `errorCode` imita al codigo\nHTTP que no se envia.\n\nLa identidad sale del claim del JWT, nunca del cuerpo: el userId\nque se mande al consultar o al modificar se ignora.",
+    "title" : "La Biblioteca AH — auth-service",
+    "version" : "1.0.0"
+  },
+  "openapi" : "3.0.1",
+  "paths" : {
+    "/v1/admin/audit/all" : {
+      "post" : {
+        "operationId" : "consultar",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuditoriaFilterDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Quien cambio que y cuando",
+        "tags" : [
+          "Auditoria"
+        ]
+      }
+    },
+    "/v1/admin/config/all" : {
+      "post" : {
+        "operationId" : "configuracion",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Ajustes de la instalacion. Requiere rol ADMIN",
+        "tags" : [
+          "Preferencias"
+        ]
+      }
+    },
+    "/v1/admin/config/save" : {
+      "post" : {
+        "operationId" : "guardar",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AppConfigSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Cambia un ajuste de la instalacion. Requiere rol ADMIN",
+        "tags" : [
+          "Preferencias"
+        ]
+      }
+    },
+    "/v1/admin/modules/all" : {
+      "post" : {
+        "operationId" : "modulos",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Modulos con sus paginas, incluidos los desactivados",
+        "tags" : [
+          "Administracion de modulos y permisos"
+        ]
+      }
+    },
+    "/v1/admin/permissions/save" : {
+      "post" : {
+        "operationId" : "guardarPermiso",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PermisoSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Fija lo que un rol puede hacer en una pagina",
+        "tags" : [
+          "Administracion de modulos y permisos"
+        ]
+      }
+    },
+    "/v1/admin/permissions/{roleName}" : {
+      "post" : {
+        "operationId" : "permisosDeRol",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "roleName",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Permisos de un rol, pagina a pagina",
+        "tags" : [
+          "Administracion de modulos y permisos"
+        ]
+      }
+    },
+    "/v1/admin/roles/all" : {
+      "post" : {
+        "operationId" : "getAll_2",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Roles existentes, con cuantas cuentas activas lleva cada uno",
+        "tags" : [
+          "Administracion de roles"
+        ]
+      }
+    },
+    "/v1/admin/roles/delete/{id}" : {
+      "post" : {
+        "operationId" : "desactivar_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Desactiva un rol que no use nadie",
+        "tags" : [
+          "Administracion de roles"
+        ]
+      }
+    },
+    "/v1/admin/roles/save" : {
+      "post" : {
+        "operationId" : "save_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RoleSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Crea o actualiza un rol",
+        "tags" : [
+          "Administracion de roles"
+        ]
+      }
+    },
+    "/v1/admin/users/all" : {
+      "post" : {
+        "operationId" : "getAll_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UserFilterDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Listado de cuentas, incluidas las desactivadas",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/admin/users/get/{id}" : {
+      "post" : {
+        "operationId" : "getById_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Ficha de una cuenta con sus roles",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/admin/users/save" : {
+      "post" : {
+        "operationId" : "crear",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UserSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Alta de una cuenta desde administracion",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/admin/users/{id}/activate" : {
+      "post" : {
+        "operationId" : "activar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Reactiva una cuenta desactivada",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/admin/users/{id}/deactivate" : {
+      "post" : {
+        "operationId" : "desactivar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Desactiva una cuenta",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/admin/users/{id}/roles" : {
+      "post" : {
+        "operationId" : "asignarRoles",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AsignarRolesDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Fija los roles de una cuenta (lista completa, no incremental)",
+        "tags" : [
+          "Administracion de usuarios"
+        ]
+      }
+    },
+    "/v1/auth/login" : {
+      "post" : {
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AuthenticationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "authentication-controller"
+        ]
+      }
+    },
+    "/v1/auth/register" : {
+      "post" : {
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UserRegisterDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "authentication-controller"
+        ]
+      }
+    },
+    "/v1/menu/mine" : {
+      "post" : {
+        "operationId" : "miMenu",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Modulos y paginas del usuario autenticado",
+        "tags" : [
+          "Menu"
+        ]
+      }
+    },
+    "/v1/preferences/mine" : {
+      "post" : {
+        "operationId" : "mias",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Nombre de la app e idioma regional de la instalacion",
+        "tags" : [
+          "Preferencias"
+        ]
+      }
+    },
+    "/v1/users/all" : {
+      "post" : {
+        "operationId" : "getAll",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UserFilterDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "user-controller"
+        ]
+      }
+    },
+    "/v1/users/delete/{id}" : {
+      "post" : {
+        "operationId" : "delete",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "user-controller"
+        ]
+      }
+    },
+    "/v1/users/get/{id}" : {
+      "post" : {
+        "operationId" : "getById",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "user-controller"
+        ]
+      }
+    },
+    "/v1/users/save" : {
+      "post" : {
+        "operationId" : "save",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UserSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [
+          "user-controller"
+        ]
+      }
+    }
+  },
+  "security" : [
+    {
+      "bearerAuth" : [ ]
+    }
+  ],
+  "tags" : [
+    {
+      "description" : "Requiere rol ADMIN",
+      "name" : "Administracion de modulos y permisos"
+    },
+    {
+      "description" : "Requiere rol ADMIN",
+      "name" : "Administracion de roles"
+    },
+    {
+      "description" : "Requiere rol ADMIN",
+      "name" : "Administracion de usuarios"
+    },
+    {
+      "description" : "Requiere rol ADMIN. Solo lectura",
+      "name" : "Auditoria"
+    },
+    {
+      "description" : "Los modulos y paginas que ve quien pregunta",
+      "name" : "Menu"
+    },
+    {
+      "description" : "Ajustes de la instalacion",
+      "name" : "Preferencias"
+    }
+  ]
+}

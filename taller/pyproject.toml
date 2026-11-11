@@ -1,0 +1,63 @@
+[project]
+name = "bah-taller"
+version = "0.1.0"
+description = "Taller de La Biblioteca AH: conversión de documentos a EPUB normalizado y generación de voz"
+requires-python = ">=3.12"
+# Dependencias fijadas en requirements.txt (ejecución) y requirements-dev.txt (pruebas y calidad)
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+# ---------------------------------------------------------------- pruebas (puerta única)
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not red' --cov=app --cov-report=term-missing:skip-covered --cov-fail-under=85"
+markers = [
+    "red: pruebas que necesitan internet (edge-tts); se ejecutan con -m red",
+    "postgres: pruebas que necesitan un PostgreSQL real (TALLER_DB_URL_PRUEBA)",
+]
+filterwarnings = ["ignore::DeprecationWarning:fastapi.*", "ignore::DeprecationWarning:starlette.*"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+exclude_also = ["if __name__ == .__main__.:", "raise NotImplementedError"]
+
+# ---------------------------------------------------------------- ruff (lint + formato)
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "T20", "BLE", "LOG", "G"]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # texto en español: comillas «», rayas y tildes son intencionales
+    "BLE001",                      # captura amplia permitida: siempre se registra en log (ver trabajador)
+    "G004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T20", "B011"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+packages = ["app"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = ["pymupdf", "pymupdf.*", "edge_tts", "edge_tts.*", "mammoth", "docx", "docx.*", "charset_normalizer"]
+ignore_missing_imports = true

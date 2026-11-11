@@ -1,0 +1,7 @@
+export { darkColors, lightColors, paleta } from '@tema/colors'
+export type { ThemeColors } from '@tema/colors'
+export { spacing } from '@tema/spacing'
+export type { Spacing } from '@tema/spacing'
+export { fontSize, fontWeight } from '@tema/typography'
+export type { FontSize, FontWeight } from '@tema/typography'
+export { fuentes, FUENTES_LECTOR } from '@tema/fuentes'

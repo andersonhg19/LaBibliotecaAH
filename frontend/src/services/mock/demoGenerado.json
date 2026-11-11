@@ -1,0 +1,46 @@
+{
+  "faro": {
+    "titulo": "El guardián de los lomos",
+    "autores": [
+      "Biblioteca AH"
+    ],
+    "anio": 2026,
+    "editorial": "Taller de la casa",
+    "sinopsis": "Una noche, en una biblioteca de roble y cedro, un viejo guardián descubre que los libros no duermen: esperan. Un cuento breve escrito para probar el lector, la voz y el resaltado de La Biblioteca AH.",
+    "minutosEstimados": 2,
+    "capitulos": [
+      {
+        "indice": 0,
+        "titulo": "La biblioteca de noche",
+        "minutos": 1,
+        "duracionSeg": 35.87,
+        "primeraFrase": "c000-s00000"
+      },
+      {
+        "indice": 1,
+        "titulo": "El libro sin título",
+        "minutos": 1,
+        "duracionSeg": 33.46,
+        "primeraFrase": "c001-s00000"
+      },
+      {
+        "indice": 2,
+        "titulo": "La voz del roble",
+        "minutos": 1,
+        "duracionSeg": 32.13,
+        "primeraFrase": "c002-s00000"
+      }
+    ]
+  },
+  "notas": {
+    "capitulos": [
+      {
+        "indice": 0,
+        "titulo": "Lista de la biblioteca",
+        "minutos": 1,
+        "duracionSeg": 0,
+        "primeraFrase": "c000-s00000"
+      }
+    ]
+  }
+}

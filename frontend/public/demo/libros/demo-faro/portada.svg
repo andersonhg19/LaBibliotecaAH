@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
+<defs>
+<radialGradient id="l" cx="35%" cy="25%" r="80%"><stop offset="0" stop-color="#E7B56C"/><stop offset=".55" stop-color="#B5653A"/><stop offset="1" stop-color="#4A2E1C"/></radialGradient>
+<filter id="g"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .25 0"/><feComposite in2="SourceGraphic" operator="in"/></filter>
+</defs>
+<rect width="600" height="900" fill="url(#l)"/><rect width="600" height="900" fill="#000" filter="url(#g)"/>
+<rect x="38" y="38" width="524" height="824" fill="none" stroke="#F3D58A" stroke-width="3"/>
+<rect x="52" y="52" width="496" height="796" fill="none" stroke="#F3D58A" stroke-width="1"/>
+<circle cx="300" cy="250" r="70" fill="none" stroke="#F3D58A" stroke-width="2"/>
+<path d="M300 195 L300 305 M245 250 L355 250" stroke="#F3D58A" stroke-width="2"/>
+<path d="M262 240 q38 -40 76 0 q-38 40 -76 0z" fill="#F3D58A" opacity=".85"/>
+<text x="300" y="470" text-anchor="middle" font-family="Georgia, serif" font-size="58" fill="#FBEFD0">El guardián de</text>
+<text x="300" y="540" text-anchor="middle" font-family="Georgia, serif" font-size="58" fill="#FBEFD0">los lomos</text>
+<text x="300" y="790" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="30" fill="#F3D58A">Biblioteca AH</text>
+</svg>

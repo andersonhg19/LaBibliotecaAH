@@ -1,0 +1,102 @@
+import React, { ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react'
+
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+import { VOZ_POR_DEFECTO } from '@config'
+import { normalizarVelocidad } from '@logica/velocidad'
+import type { ClaveFuenteLector } from '@tema/fuentes'
+import { activarSonidos } from '@utils/sonidos'
+
+/*
+ * PREFERENCIAS DE ESTE DISPOSITIVO: la voz y la velocidad con que se empieza,
+ * los sonidos (página, madera) y cómo se ve el papel del lector.
+ *
+ * Viven en el dispositivo (AsyncStorage) y no en el servidor porque son de
+ * cómo se lee AQUÍ: en el iPhone con la letra grande y en el PC con dos
+ * columnas. Lo que tiene que viajar entre dispositivos —dónde vas, tus notas—
+ * sí va al servidor.
+ */
+
+export type TemaPapel = 'marfil' | 'pergamino' | 'noche'
+export type ModoLector = 'paginado' | 'continuo'
+
+export interface Preferencias {
+  vozId: string
+  velocidad: number
+  sonidos: boolean
+  temaPapel: TemaPapel
+  fuente: ClaveFuenteLector
+  /** Tamaño de letra del lector en %, 80..200. */
+  tamano: number
+  /** Margen lateral del lector en %, 0..20. */
+  margen: number
+  interlineado: number
+  modo: ModoLector
+}
+
+export const PREFERENCIAS_INICIALES: Preferencias = {
+  vozId: VOZ_POR_DEFECTO,
+  velocidad: 1,
+  sonidos: true,
+  temaPapel: 'noche',
+  fuente: 'literata',
+  tamano: 110,
+  margen: 6,
+  interlineado: 1.55,
+  modo: 'paginado',
+}
+
+const CLAVE = '@biblioteca_ah_preferencias'
+
+interface Ctx {
+  prefs: Preferencias
+  cambiar: (p: Partial<Preferencias>) => void
+  cargadas: boolean
+}
+
+const PreferenciasContext = createContext<Ctx>({ prefs: PREFERENCIAS_INICIALES, cambiar: () => {}, cargadas: false })
+
+export const usePreferencias = () => useContext(PreferenciasContext)
+
+export const leerPreferencias = (json: string | null): Preferencias => {
+  if (!json) return PREFERENCIAS_INICIALES
+  try {
+    const g = JSON.parse(json)
+    const r = { ...PREFERENCIAS_INICIALES, ...(g && typeof g === 'object' ? g : {}) }
+    r.velocidad = normalizarVelocidad(Number(r.velocidad))
+    r.tamano = Math.min(200, Math.max(80, Number(r.tamano) || 110))
+    r.margen = Math.min(20, Math.max(0, Number(r.margen) || 0))
+    if (!['marfil', 'pergamino', 'noche'].includes(r.temaPapel)) r.temaPapel = 'noche'
+    if (!['paginado', 'continuo'].includes(r.modo)) r.modo = 'paginado'
+    if (!['literata', 'garamond', 'lora'].includes(r.fuente)) r.fuente = 'literata'
+    return r
+  } catch {
+    return PREFERENCIAS_INICIALES
+  }
+}
+
+export const PreferenciasProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [prefs, setPrefs] = useState<Preferencias>(PREFERENCIAS_INICIALES)
+  const [cargadas, setCargadas] = useState(false)
+
+  useEffect(() => {
+    AsyncStorage.getItem(CLAVE)
+      .then((g) => setPrefs(leerPreferencias(g ?? null)))
+      .catch(() => {})
+      .finally(() => setCargadas(true))
+  }, [])
+
+  useEffect(() => {
+    activarSonidos(prefs.sonidos)
+  }, [prefs.sonidos])
+
+  const cambiar = useCallback((p: Partial<Preferencias>) => {
+    setPrefs((prev) => {
+      const sig = { ...prev, ...p }
+      AsyncStorage.setItem(CLAVE, JSON.stringify(sig)).catch(() => {})
+      return sig
+    })
+  }, [])
+
+  return <PreferenciasContext.Provider value={{ prefs, cambiar, cargadas }}>{children}</PreferenciasContext.Provider>
+}

@@ -1,0 +1,10 @@
+{
+  "headers": [
+    { "source": "foliate/**/*.js", "headers": [{ "key": "Content-Type", "value": "text/javascript; charset=utf-8" }, { "key": "Cache-Control", "value": "public, max-age=86400" }] },
+    { "source": "**/*.mjs", "headers": [{ "key": "Content-Type", "value": "text/javascript; charset=utf-8" }] },
+    { "source": "**/*.epub", "headers": [{ "key": "Content-Type", "value": "application/epub+zip" }] },
+    { "source": "fuentes/*.ttf", "headers": [{ "key": "Content-Type", "value": "font/ttf" }, { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }] },
+    { "source": "_expo/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
+    { "source": "**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
+  ]
+}
