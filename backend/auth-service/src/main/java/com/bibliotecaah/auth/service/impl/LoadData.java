@@ -23,6 +23,12 @@ import java.util.Set;
  * escrita en el repositorio. Aqui, si falta la variable de una cuenta, esa
  * cuenta NO se crea y queda un WARN en el log. Las demas siguen su camino.
  *
+ * Cada cuenta nace con su alias (V3): admin, anderson, samy. Si el alias ya lo
+ * tiene otra cuenta (alguien se registro con "samy" antes de que se anadiera la
+ * variable de Samy), la semilla no tumba el arranque: usa "samy-2", "samy-3"...
+ * y lo deja en el log. A las cuentas que ya existian les pone el alias la
+ * migracion V3.
+ *
  * Cada cuenta se crea solo si su correo no existe: arrancar dos veces no
  * duplica nada, y anadir la variable de Samy despues de haber arrancado una vez
  * la crea en el siguiente arranque sin tocar las otras.
@@ -34,6 +40,10 @@ public class LoadData implements CommandLineRunner {
     static final String CORREO_ADMIN = "admin@biblioteca.ah";
     static final String CORREO_ANDERSON = "anderson@biblioteca.ah";
     static final String CORREO_SAMY = "samy@biblioteca.ah";
+
+    static final String ALIAS_ADMIN = "admin";
+    static final String ALIAS_ANDERSON = "anderson";
+    static final String ALIAS_SAMY = "samy";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -73,13 +83,17 @@ public class LoadData implements CommandLineRunner {
         Set<Role> deUsuario = rolesLlamados(SecurityUtils.ROL_USER);
 
         int creadas = 0;
-        creadas += crearSiFalta("Administrador", CORREO_ADMIN, adminPassword, "SEED_ADMIN_PASSWORD", deAdmin);
-        creadas += crearSiFalta("Anderson", CORREO_ANDERSON, andersonPassword, "SEED_ANDERSON_PASSWORD", deAdmin);
-        creadas += crearSiFalta("Samy", CORREO_SAMY, samyPassword, "SEED_SAMY_PASSWORD", deUsuario);
+        creadas += crearSiFalta("Administrador", CORREO_ADMIN, ALIAS_ADMIN, adminPassword,
+                "SEED_ADMIN_PASSWORD", deAdmin);
+        creadas += crearSiFalta("Anderson", CORREO_ANDERSON, ALIAS_ANDERSON, andersonPassword,
+                "SEED_ANDERSON_PASSWORD", deAdmin);
+        creadas += crearSiFalta("Samy", CORREO_SAMY, ALIAS_SAMY, samyPassword,
+                "SEED_SAMY_PASSWORD", deUsuario);
         log.info("Semilla de usuarios: {} cuenta(s) nueva(s)", creadas);
     }
 
-    private int crearSiFalta(String nombre, String correo, String clave, String variable, Set<Role> roles) {
+    private int crearSiFalta(String nombre, String correo, String alias, String clave, String variable,
+                             Set<Role> roles) {
         if (userRepository.findByEmail(correo).isPresent()) {
             return 0;
         }
@@ -90,11 +104,24 @@ public class LoadData implements CommandLineRunner {
         userRepository.save(User.builder()
                 .name(nombre)
                 .email(correo)
+                .alias(aliasLibre(alias))
                 .password(passwordEncoder.encode(clave))
                 .active(true)
                 .roles(new HashSet<>(roles))
                 .build());
         return 1;
+    }
+
+    /** El alias pedido o, si ya es de otra cuenta, el primer "alias-N" libre. */
+    private String aliasLibre(String alias) {
+        String candidato = alias;
+        for (int n = 2; userRepository.existsByAlias(candidato); n++) {
+            candidato = alias + "-" + n;
+        }
+        if (!candidato.equals(alias)) {
+            log.warn("El alias {} ya lo tiene otra cuenta; la semilla usa {}", alias, candidato);
+        }
+        return candidato;
     }
 
     private Set<Role> rolesLlamados(String... nombres) {

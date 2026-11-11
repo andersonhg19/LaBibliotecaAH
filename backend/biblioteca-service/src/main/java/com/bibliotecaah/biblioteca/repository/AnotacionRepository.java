@@ -16,6 +16,10 @@ public interface AnotacionRepository extends JpaRepository<Anotacion, UUID> {
 
     Optional<Anotacion> findByIdAndUsuarioId(UUID id, Long usuarioId);
 
+    /** Las de ese tipo creadas hace un momento (doble envio, QA BI-10). */
+    List<Anotacion> findByUsuarioIdAndEjemplarIdAndTipoAndCreationAfter(
+            Long usuarioId, UUID ejemplarId, com.bibliotecaah.biblioteca.enums.TipoAnotacion tipo, java.time.Instant desde);
+
     @Query("SELECT a.ejemplarId, COUNT(a) FROM Anotacion a "
             + "WHERE a.usuarioId = :usuarioId AND a.ejemplarId IN :ids GROUP BY a.ejemplarId")
     List<Object[]> contarPorEjemplar(@Param("usuarioId") Long usuarioId, @Param("ids") Collection<UUID> ids);

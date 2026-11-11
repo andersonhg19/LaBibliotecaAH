@@ -29,7 +29,14 @@ class Ajustes(AjustesBasicos):
     puerto: int = Field(default=8926, ge=1, le=65535)
     intervalo_seg: float = Field(default=2.0, gt=0, le=60)
     max_intentos: int = Field(default=3, ge=1, le=10)
-    minutos_atascado: int = Field(default=30, ge=1)
+    # EN_CURSO sin latido (cada 60 s) durante más de estos minutos → PENDIENTE (barrido periódico, QA DA-01)
+    minutos_atascado: int = Field(default=5, ge=2)
+    intervalo_barrido_seg: float = Field(default=60.0, gt=0, le=3600)
+    hilos_voz: int = Field(default=2, ge=1, le=8, description="trabajos de voz simultáneos (QA DA-19)")
+    # conversión en subproceso acotado (QA SE-01)
+    aislar_conversion: bool = True
+    memoria_conversion_mb: int = Field(default=1536, ge=256)
+    tiempo_conversion_seg: int = Field(default=1200, ge=30)
     trabajadores: bool = True
     muestras: bool = True
 

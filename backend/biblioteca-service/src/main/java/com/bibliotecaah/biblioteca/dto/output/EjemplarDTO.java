@@ -46,6 +46,14 @@ public class EjemplarDTO {
     private Instant fechaFin;
     private long nNotas;
     private FuenteMetadatos fuenteMetadatos;
+    /** Nota del deseo ("regalo de cumpleanos"); null en libros y documentos (QA BI-15). */
+    private String nota;
+    /**
+     * Solo en la respuesta de /libros/subir: true si ese archivo ya estaba en tu
+     * biblioteca (no se agrego otro). Ausente en el resto de respuestas (QA BI-16).
+     */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Boolean yaLoTenias;
 
     /* Lombok generaria getNNotas(), que Jackson publica como "nnotas". */
     @JsonProperty("nNotas")

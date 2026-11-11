@@ -15,7 +15,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.bibliotecaah.biblioteca.repository.Candados;
+
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Diario de lectura de cada libro. */
@@ -26,10 +31,15 @@ public class ComentarioServiceImpl implements ComentarioService {
     private final ComentarioRepository comentarios;
     private final EjemplarRepository ejemplares;
     private final BibliotecaMapper mapper;
+    /** Dentro de esta ventana, el mismo texto se considera el mismo envio. */
+    static final Duration VENTANA_DUPLICADOS = Duration.ofSeconds(10);
+
     private final ApplicationEventPublisher eventos;
+    private final Candados candados;
 
     public ComentarioServiceImpl(ComentarioRepository comentarios, EjemplarRepository ejemplares,
-                                 BibliotecaMapper mapper, ApplicationEventPublisher eventos) {
+                                 BibliotecaMapper mapper, ApplicationEventPublisher eventos, Candados candados) {
+        this.candados = candados;
         this.comentarios = comentarios;
         this.ejemplares = ejemplares;
         this.mapper = mapper;
@@ -52,6 +62,16 @@ public class ComentarioServiceImpl implements ComentarioService {
         Comentario c;
         EntityChangeEvent.Accion accion;
         if (dto.getId() == null) {
+            /* QA BI-10: un doble clic (o un reintento de red) no duplica la
+               entrada. En fila por usuario y libro, y si el mismo texto se
+               guardo hace menos de VENTANA_DUPLICADOS, se devuelve ese. */
+            candados.tomar("comentario", yo, dto.getEjemplarId());
+            Optional<Comentario> reciente = comentarios
+                    .findFirstByUsuarioIdAndEjemplarIdAndTextoAndCreationAfterOrderByCreationDesc(
+                            yo, dto.getEjemplarId(), dto.getTexto().trim(), Instant.now().minus(VENTANA_DUPLICADOS));
+            if (reciente.isPresent()) {
+                return mapper.aComentarioDTO(reciente.get());
+            }
             c = Comentario.builder().id(UUID.randomUUID()).usuarioId(yo).ejemplarId(dto.getEjemplarId()).build();
             accion = EntityChangeEvent.Accion.CREAR;
         } else {

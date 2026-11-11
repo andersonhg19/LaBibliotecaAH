@@ -12,20 +12,53 @@ interface Props {
   libro: EjemplarDTO
   escala?: number
   colorFijo?: string | null
+  /** Tumbado en la balda (en pila): el lomo en horizontal y el título se lee de izquierda a derecha. */
+  tumbado?: boolean
 }
 
 /*
- * EL LOMO: cuero con luz de cilindro (más claro en el centro), bandas doradas
- * arriba y abajo, y el título en vertical en dorado, de arriba abajo como en
- * los libros en español. El grosor dice cuánto dura; el color es suyo siempre.
+ * EL LOMO: cuero con luz de cilindro (brillo a los lados, nunca debajo del
+ * título), bandas doradas arriba y abajo, y el título en vertical en dorado,
+ * de arriba abajo como en los libros en español. El grosor dice cuánto dura;
+ * el color es suyo siempre. Tumbado, el mismo libro acostado.
  */
-const Lomo: React.FC<Props> = ({ libro, escala = 1, colorFijo }) => {
+const Lomo: React.FC<Props> = ({ libro, escala = 1, colorFijo, tumbado }) => {
   const { alto, grosor } = dimensionesLomo(libro, escala)
   const base = colorLomo(libro, colorFijo)
   const oro = doradoLomo(libro)
   const bandas = bandasLomo(libro)
-  const tam = Math.max(14, Math.min(17, Math.round(grosor * 0.42)))
-  const autor = libro.autores?.[0]?.split(' ').slice(-1)[0] ?? ''
+  const grosorReal = grosor / escala
+  const tam = Math.round(Math.max(15, Math.min(19, grosorReal * 0.36)) * escala)
+  const apellido = libro.autores?.[0]?.split(' ').slice(-1)[0] ?? ''
+  const conAutor = !!apellido && grosorReal >= 46
+  const sombraTexto = web({ textShadow: '0 1px 0 rgba(0,0,0,0.75)' })
+
+  if (tumbado) {
+    return (
+      <View
+        accessible={false}
+        style={[
+          styles.tumbado,
+          { width: alto, height: grosor, backgroundColor: base },
+          web({ backgroundImage: texturaLomo(base, true) }),
+        ]}
+      >
+        <View style={styles.bandasV}>
+          {Array.from({ length: bandas }).map((_, i) => (
+            <View key={i} style={[styles.bandaV, { backgroundColor: oro }]} />
+          ))}
+        </View>
+        <Text
+          numberOfLines={1}
+          style={[styles.titulo, styles.tituloTumbado, { color: oro, fontSize: tam }, sombraTexto]}
+        >
+          {libro.titulo}
+        </Text>
+        <View style={[styles.bandaV, { backgroundColor: oro }]} />
+      </View>
+    )
+  }
+
   return (
     <View
       accessible={false}
@@ -46,26 +79,31 @@ const Lomo: React.FC<Props> = ({ libro, escala = 1, colorFijo }) => {
           numberOfLines={1}
           style={[
             styles.titulo,
-            { color: oro, fontSize: tam, maxHeight: alto - 64 },
+            { color: oro, fontSize: tam, maxHeight: alto - (conAutor ? 96 : 56) * escala },
             web({
               writingMode: 'vertical-rl',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              textShadow: '0 1px 0 rgba(0,0,0,0.7)',
             }),
+            sombraTexto,
           ]}
         >
           {libro.titulo}
         </Text>
       </View>
       <View style={styles.pie}>
-        {autor && grosor >= 30 ? (
+        {conAutor ? (
           <Text
             numberOfLines={1}
-            style={[styles.autor, { color: oro }, web({ writingMode: 'vertical-rl', maxHeight: 40 })]}
+            style={[
+              styles.autor,
+              { color: oro, fontSize: Math.round(14 * escala) },
+              web({ writingMode: 'vertical-rl', maxHeight: 44 * escala, overflow: 'hidden' }),
+              sombraTexto,
+            ]}
           >
-            {autor}
+            {apellido}
           </Text>
         ) : null}
         <View style={[styles.banda, { backgroundColor: oro }]} />
@@ -76,18 +114,30 @@ const Lomo: React.FC<Props> = ({ libro, escala = 1, colorFijo }) => {
 
 const styles = StyleSheet.create({
   lomo: {
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
     overflow: 'hidden',
     alignItems: 'center',
     paddingVertical: 8,
   },
+  tumbado: {
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    gap: 8,
+  },
   bandas: { gap: 3, alignSelf: 'stretch', paddingHorizontal: 3 },
+  bandasV: { flexDirection: 'row', gap: 3, alignSelf: 'stretch', paddingVertical: 3 },
   banda: { height: 1.5, alignSelf: 'stretch', opacity: 0.85 },
+  bandaV: { width: 1.5, alignSelf: 'stretch', opacity: 0.85 },
   centro: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', paddingVertical: 6 },
   titulo: { fontFamily: fuentes.tituloNegrita, letterSpacing: 0.6 },
+  tituloTumbado: { flex: 1, textAlign: 'center' },
   pie: { alignItems: 'center', gap: 4, alignSelf: 'stretch', paddingHorizontal: 3 },
-  autor: { fontFamily: fuentes.tituloCursiva, fontSize: 14, opacity: 0.85 },
+  autor: { fontFamily: fuentes.tituloCursiva, opacity: 0.9 },
 })
 
 export default Lomo

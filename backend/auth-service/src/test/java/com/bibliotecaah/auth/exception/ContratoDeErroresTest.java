@@ -33,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * jamas que el problema era el correo.
  */
 @WebMvcTest({AuthenticationController.class, UserController.class})
+@org.springframework.context.annotation.Import(com.bibliotecaah.auth.util.Mensajes.class)
 @AutoConfigureMockMvc(addFilters = false)
 @DisplayName("Contrato de errores: siempre 200 con ResultDTO")
 class ContratoDeErroresTest {
@@ -61,7 +62,7 @@ class ContratoDeErroresTest {
         @Test
         @DisplayName("cuerpo vacio")
         void cuerpoVacio() throws Exception {
-            exigeContrato("/v1/auth/login", "", "vacio");
+            exigeContrato("/v1/auth/login", "", "viene vacío");
         }
 
         @Test
@@ -88,7 +89,7 @@ class ContratoDeErroresTest {
         @Test
         @DisplayName("cuerpo vacio")
         void cuerpoVacio() throws Exception {
-            exigeContrato("/v1/users/save", "", "vacio");
+            exigeContrato("/v1/users/save", "", "viene vacío");
         }
 
         @Test

@@ -17,9 +17,16 @@ interface InputProps {
   multiline?: boolean
   /** El nombre que se OYE cuando no hay etiqueta visible (p. ej. el buscador). */
   accessibilityLabel?: string
-  autoComplete?: 'email' | 'password' | 'name' | 'off' | 'new-password'
+  autoComplete?: 'email' | 'password' | 'name' | 'off' | 'new-password' | 'username'
+  /** Si no llega, se deduce: sin mayúsculas para correo y contraseña, frases para el resto. */
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
+  /** Texto de ayuda bajo el campo (se oye como pista). Si hay error, manda el error. */
+  ayuda?: string
   testID?: string
   onSubmitEditing?: () => void
+  autoFocus?: boolean
+  /** Sin el margen de abajo (dentro de una barra de herramientas). */
+  compacto?: boolean
 }
 
 /*
@@ -37,8 +44,12 @@ const Input: React.FC<InputProps> = ({
   multiline = false,
   accessibilityLabel,
   autoComplete,
+  autoCapitalize,
+  ayuda,
   testID,
   onSubmitEditing,
+  autoFocus,
+  compacto,
 }) => {
   const { colors } = useTheme()
   const [foco, setFoco] = useState(false)
@@ -46,14 +57,14 @@ const Input: React.FC<InputProps> = ({
   const nombre = accessibilityLabel || label
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, compacto && styles.compacto]}>
       {label ? (
         <Text style={[styles.label, { color: foco ? colors.primary : colors.textSecondary }]}>{label}</Text>
       ) : null}
       <TextInput
         testID={testID}
         accessibilityLabel={error ? `${nombre}. Error: ${error}` : nombre}
-        accessibilityHint={placeholder}
+        accessibilityHint={ayuda ?? placeholder}
         style={[
           styles.input,
           { color: colors.text, backgroundColor: colors.card, borderColor: borde },
@@ -68,15 +79,18 @@ const Input: React.FC<InputProps> = ({
         keyboardType={keyboardType}
         multiline={multiline}
         autoComplete={autoComplete}
-        autoCapitalize={keyboardType === 'email-address' || secureTextEntry ? 'none' : 'sentences'}
+        autoCapitalize={autoCapitalize ?? (keyboardType === 'email-address' || secureTextEntry ? 'none' : 'sentences')}
         onFocus={() => setFoco(true)}
         onBlur={() => setFoco(false)}
         onSubmitEditing={onSubmitEditing}
+        autoFocus={autoFocus}
       />
       {error ? (
         <Text style={[styles.error, { color: colors.danger }]} accessibilityLiveRegion="polite">
           ⚠ {error}
         </Text>
+      ) : ayuda ? (
+        <Text style={[styles.ayuda, { color: colors.textSecondary }]}>{ayuda}</Text>
       ) : null}
     </View>
   )
@@ -84,6 +98,7 @@ const Input: React.FC<InputProps> = ({
 
 const styles = StyleSheet.create({
   container: { marginBottom: spacing.md },
+  compacto: { marginBottom: 0 },
   label: {
     fontSize: fontSize.xs,
     fontFamily: fuentes.uiMedia,
@@ -104,6 +119,7 @@ const styles = StyleSheet.create({
   },
   multiline: { minHeight: 110, textAlignVertical: 'top' },
   error: { fontSize: fontSize.xs, marginTop: spacing.xs, marginLeft: 2, fontFamily: fuentes.ui },
+  ayuda: { fontSize: fontSize.xs, marginTop: spacing.xs, marginLeft: 2, fontFamily: fuentes.ui },
 })
 
 export default Input

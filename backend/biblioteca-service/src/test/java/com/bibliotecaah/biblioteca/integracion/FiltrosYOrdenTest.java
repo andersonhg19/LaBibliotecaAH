@@ -63,23 +63,23 @@ class FiltrosYOrdenTest extends PostgresDeVerdad {
     class Pestanas {
 
         @Test
-        @DisplayName("TODO (por defecto) excluye deseos y lo de otros usuarios; RECIENTES primero")
+        @DisplayName("TODO (por defecto) son solo libros: sin deseos, sin documentos (BI-12) y sin lo de otros usuarios; RECIENTES primero")
         void todo() throws Exception {
-            assertThat(ids(Map.of())).containsExactly(contrato, aleph, rayuela, quijote);
+            assertThat(ids(Map.of())).containsExactly(aleph, rayuela, quijote);
             JsonNode r = pedir(ANDERSON, "/v1/libros/all");
-            assertThat(r.get("object").get("totalElements").asLong()).isEqualTo(4);
+            assertThat(r.get("object").get("totalElements").asLong()).isEqualTo(3);
         }
 
         @Test
         @DisplayName("cada pestana filtra lo suyo")
         void cadaUna() throws Exception {
             assertThat(ids(Map.of("pestana", "LEYENDO"))).containsExactly(rayuela);
-            assertThat(ids(Map.of("pestana", "POR_LEER"))).containsExactly(contrato, aleph);
+            assertThat(ids(Map.of("pestana", "POR_LEER"))).containsExactly(aleph);
             assertThat(ids(Map.of("pestana", "LEIDOS"))).containsExactly(quijote);
             assertThat(ids(Map.of("pestana", "FAVORITOS"))).containsExactly(aleph);
             assertThat(ids(Map.of("pestana", "DESEOS"))).containsExactly(deseo);
             assertThat(ids(Map.of("pestana", "DOCUMENTOS"))).containsExactly(contrato);
-            assertThat(ids(Map.of("pestana", "TODO"))).hasSize(4);
+            assertThat(ids(Map.of("pestana", "TODO"))).hasSize(3);
         }
     }
 
@@ -101,7 +101,8 @@ class FiltrosYOrdenTest extends PostgresDeVerdad {
             assertThat(ids(Map.of("autores", List.of("Jorge Luis Borges", "Julio Cortázar")))).containsExactly(aleph, rayuela);
             assertThat(ids(Map.of("generos", List.of("Novela")))).containsExactly(rayuela, quijote);
             assertThat(ids(Map.of("etiquetas", List.of("clasico")))).containsExactly(quijote);
-            assertThat(ids(Map.of("formatos", List.of("pdf")))).containsExactly(contrato, aleph);
+            assertThat(ids(Map.of("formatos", List.of("pdf")))).containsExactly(aleph);
+            assertThat(ids(Map.of("pestana", "DOCUMENTOS", "formatos", List.of("pdf")))).containsExactly(contrato);
         }
 
         @Test
@@ -110,7 +111,7 @@ class FiltrosYOrdenTest extends PostgresDeVerdad {
             assertThat(ids(Map.of("anioDesde", 1900, "anioHasta", 1960))).containsExactly(aleph);
             assertThat(ids(Map.of("calificacionMin", 4.5))).containsExactly(quijote);
             assertThat(ids(Map.of("conNotas", true))).containsExactly(rayuela);
-            assertThat(ids(Map.of("conNotas", false))).containsExactly(contrato, aleph, quijote);
+            assertThat(ids(Map.of("conNotas", false))).containsExactly(aleph, quijote);
         }
     }
 
@@ -121,22 +122,60 @@ class FiltrosYOrdenTest extends PostgresDeVerdad {
         @Test
         @DisplayName("cada criterio de orden")
         void criterios() throws Exception {
-            assertThat(ids(Map.of("orden", "ANTIGUOS"))).containsExactly(quijote, rayuela, aleph, contrato);
-            assertThat(ids(Map.of("orden", "TITULO"))).containsExactly(contrato, aleph, quijote, rayuela);
-            assertThat(ids(Map.of("orden", "AUTOR"))).containsExactly(aleph, rayuela, quijote, contrato);
-            assertThat(ids(Map.of("orden", "ANIO"))).containsExactly(rayuela, aleph, quijote, contrato);
+            assertThat(ids(Map.of("orden", "ANTIGUOS"))).containsExactly(quijote, rayuela, aleph);
+            assertThat(ids(Map.of("orden", "TITULO"))).containsExactly(aleph, quijote, rayuela);
+            assertThat(ids(Map.of("orden", "AUTOR"))).as("Borges, Cervantes, Cortazar").containsExactly(aleph, quijote, rayuela);
+            assertThat(ids(Map.of("orden", "ANIO"))).containsExactly(rayuela, aleph, quijote);
             assertThat(ids(Map.of("orden", "PROGRESO")).get(0)).isEqualTo(rayuela);
             assertThat(ids(Map.of("orden", "CALIFICACION")).subList(0, 2)).containsExactly(quijote, rayuela);
             assertThat(ids(Map.of("orden", "ULTIMO_ABIERTO")).get(0)).isEqualTo(rayuela);
-            assertThat(ids(Map.of("orden", "RECIENTES")).get(0)).isEqualTo(contrato);
+            assertThat(ids(Map.of("orden", "RECIENTES")).get(0)).isEqualTo(aleph);
+        }
+
+        @Test
+        @DisplayName("QA BI-24: AUTOR ordena por apellido, no por el nombre de pila")
+        void autorPorApellido() throws Exception {
+            String zubiria = libro("zubiria.epub", Map.of("titulo", "Z", "autores", List.of("Ana Zubiria")));
+            String abad = libro("abad.epub", Map.of("titulo", "A", "autores", List.of("Zoe Abad")));
+            String ggm = libro("cien.epub", Map.of("titulo", "Cien años", "autores", List.of("Gabriel García Márquez")));
+            String leGuin = libro("terramar.epub", Map.of("titulo", "Terramar", "autores", List.of("Ursula K. Le Guin")));
+            String tolkien = libro("hobbit.epub", Map.of("titulo", "El hobbit", "autores", List.of("Tolkien, J. R. R.")));
+
+            assertThat(ids(Map.of("orden", "AUTOR"))).containsExactly(
+                    abad, aleph, quijote, rayuela, leGuin, ggm, tolkien, zubiria);
+        }
+
+        @Test
+        @DisplayName("QA BI-24: la clave de orden del autor (bah_clave_autor, migracion V4)")
+        void claveDeAutor() {
+            Map<String, String> casos = new java.util.LinkedHashMap<>();
+            casos.put("Gabriel García Márquez", "marquez");
+            casos.put("Jorge Luis Borges", "borges");
+            casos.put("Miguel de Cervantes", "cervantes");
+            casos.put("Ursula K. Le Guin", "le guin");
+            casos.put("Tolkien, J. R. R.", "tolkien");
+            casos.put("de Cervantes Saavedra, Miguel", "cervantes saavedra");
+            casos.put("Juan de la Cruz", "cruz");
+            casos.put("Ludwig van Beethoven", "beethoven");
+            casos.put("Martin Luther King Jr.", "king");
+            casos.put("  ÉMILE   ZOLA ", "zola");
+            casos.put("Le Guin", "le guin");
+            casos.put("Homero", "homero");
+            for (Map.Entry<String, String> c : casos.entrySet()) {
+                assertThat(jdbc.queryForObject("SELECT bah_clave_autor(?)", String.class, c.getKey()))
+                        .as(c.getKey()).isEqualTo(c.getValue());
+            }
+            assertThat(jdbc.queryForObject("SELECT bah_clave_autor(NULL)", String.class)).isNull();
+            assertThat(jdbc.queryForObject("SELECT bah_clave_autor('   ')", String.class)).isNull();
+            assertThat(jdbc.queryForObject("SELECT bah_clave_autor(', Nadie')", String.class)).isEqualTo("nadie");
         }
 
         @Test
         @DisplayName("paginas: tamano, total de paginas y limites")
         void paginas() throws Exception {
-            JsonNode p = pedir(ANDERSON, "/v1/libros/all", Map.of("page", 1, "size", 3)).get("object");
+            JsonNode p = pedir(ANDERSON, "/v1/libros/all", Map.of("page", 1, "size", 2)).get("object");
             assertThat(p.get("page").asInt()).isEqualTo(1);
-            assertThat(p.get("size").asInt()).isEqualTo(3);
+            assertThat(p.get("size").asInt()).isEqualTo(2);
             assertThat(p.get("totalPage").asInt()).isEqualTo(2);
             assertThat(p.get("list")).hasSize(1);
             JsonNode limites = pedir(ANDERSON, "/v1/libros/all", Map.of("page", -4, "size", 5000)).get("object");
@@ -153,7 +192,7 @@ class FiltrosYOrdenTest extends PostgresDeVerdad {
 
         assertThat(f.get("generos").get(0).get("nombre").asText()).isEqualTo("Novela");
         assertThat(f.get("generos").get(0).get("n").asInt()).isEqualTo(2);
-        assertThat(f.get("autores")).hasSize(4);
+        assertThat(f.get("autores")).as("sin el autor del deseo (BI-13)").hasSize(3);
         assertThat(f.get("anios").get(0).get("nombre").asText()).isEqualTo("1963");
         assertThat(f.get("formatos").get(0).get("nombre").asText()).isEqualTo("EPUB");
         assertThat(f.get("formatos").get(0).get("n").asInt()).isEqualTo(2);

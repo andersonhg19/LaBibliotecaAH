@@ -9,7 +9,9 @@ import Card from '@componentes/atoms/Card'
 import Input from '@componentes/atoms/Input'
 import Spinner from '@componentes/atoms/Spinner'
 import AppText from '@componentes/atoms/Text'
+import Encabezado from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
+import Sala from '@componentes/molecules/Sala'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
 import { exigir, mensajeDeError, useCarga } from '@hooks/useCarga'
@@ -95,111 +97,121 @@ const AdminRolesScreen: React.FC = () => {
     }
   }
 
-  if (cargando) return <Spinner fullScreen />
+  if (cargando)
+    return (
+      <Sala>
+        <Encabezado titulo="Roles" subtitulo="Administración" atras />
+        <Spinner fullScreen />
+      </Sala>
+    )
 
   if (error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Sala>
+        <Encabezado titulo="Roles" subtitulo="Administración" atras />
         <EstadoError mensaje={error} onReintentar={cargar} />
-      </View>
+      </Sala>
     )
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.contenido}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={refrescar} />}
-    >
-      {roles.map((rol) => {
-        const esDelSistema = DEL_SISTEMA.includes(rol.name)
-        const enUso = rol.usuarios > 0
+    <Sala>
+      <Encabezado titulo="Roles" subtitulo="Administración" atras />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contenido}
+        refreshControl={<RefreshControl refreshing={refrescando} onRefresh={refrescar} />}
+      >
+        {roles.map((rol) => {
+          const esDelSistema = DEL_SISTEMA.includes(rol.name)
+          const enUso = rol.usuarios > 0
 
-        return (
-          <Card key={rol.id} style={styles.tarjeta}>
-            <View style={styles.cabecera}>
-              <AppText variant="body" style={styles.nombre}>
-                {rol.name}
-              </AppText>
-              <AppText variant="caption" color={rol.active ? colors.success : colors.textMuted}>
-                {rol.active ? 'Activo' : 'Retirado'}
-              </AppText>
-            </View>
+          return (
+            <Card key={rol.id} style={styles.tarjeta}>
+              <View style={styles.cabecera}>
+                <AppText variant="body" style={styles.nombre}>
+                  {rol.name}
+                </AppText>
+                <AppText variant="caption" color={rol.active ? colors.success : colors.textMuted}>
+                  {rol.active ? 'Activo' : 'Retirado'}
+                </AppText>
+              </View>
 
-            {!!rol.description && (
-              <AppText variant="caption" color={colors.textSecondary}>
-                {rol.description}
-              </AppText>
-            )}
+              {!!rol.description && (
+                <AppText variant="caption" color={colors.textSecondary}>
+                  {rol.description}
+                </AppText>
+              )}
 
-            <AppText variant="caption" color={colors.textSecondary} style={styles.cuenta}>
-              {rol.usuarios === 0
-                ? 'No lo tiene nadie'
-                : rol.usuarios === 1
-                  ? 'Lo tiene 1 persona'
-                  : `Lo tienen ${rol.usuarios} personas`}
-            </AppText>
-
-            {esDelSistema ? (
-              <AppText variant="caption" color={colors.textMuted} style={styles.motivo}>
-                Es un rol del sistema: hay reglas de seguridad escritas contra este nombre, asi que no se renombra ni se
-                retira.
+              <AppText variant="caption" color={colors.textSecondary} style={styles.cuenta}>
+                {rol.usuarios === 0
+                  ? 'No lo tiene nadie'
+                  : rol.usuarios === 1
+                    ? 'Lo tiene 1 persona'
+                    : `Lo tienen ${rol.usuarios} personas`}
               </AppText>
-            ) : enUso ? (
-              <AppText variant="caption" color={colors.textMuted} style={styles.motivo}>
-                Para retirarlo, primero quitaselo a quien lo tenga.
-              </AppText>
-            ) : rol.active ? (
-              <Button
-                title="Retirar rol"
-                variant="danger"
-                size="small"
-                loading={ocupado === rol.id}
-                onPress={() => retirar(rol)}
-                accessibilityLabel={`Retirar el rol ${rol.name}`}
-                testID={`retirar-${rol.name}`}
-              />
-            ) : null}
-          </Card>
-        )
-      })}
 
-      <Card style={styles.tarjeta}>
-        <AppText variant="subtitle" style={styles.tituloAlta}>
-          Rol nuevo
-        </AppText>
-        <Input
-          label="Nombre"
-          value={nombreNuevo}
-          onChangeText={setNombreNuevo}
-          placeholder="CONTABLE"
-          accessibilityLabel="Nombre del rol nuevo, en mayusculas"
-        />
-        <AppText variant="caption" color={colors.textSecondary} style={styles.ayuda}>
-          Se guarda en mayusculas: es el nombre exacto que se compara al autorizar.
-        </AppText>
-        <Input
-          label="Para que sirve"
-          value={descripcionNueva}
-          onChangeText={setDescripcionNueva}
-          placeholder="Puede ver las cifras pero no cambiarlas"
-          accessibilityLabel="Descripcion del rol nuevo"
-        />
-        <Button
-          title="Crear rol"
-          loading={creando}
-          onPress={crear}
-          accessibilityLabel="Crear el rol nuevo"
-          testID="crear-rol"
-        />
-      </Card>
-    </ScrollView>
+              {esDelSistema ? (
+                <AppText variant="caption" color={colors.textMuted} style={styles.motivo}>
+                  Es un rol del sistema: hay reglas de seguridad escritas con este nombre, así que no se renombra ni se
+                  retira.
+                </AppText>
+              ) : enUso ? (
+                <AppText variant="caption" color={colors.textMuted} style={styles.motivo}>
+                  Para retirarlo, primero quítaselo a quien lo tenga.
+                </AppText>
+              ) : rol.active ? (
+                <Button
+                  title="Retirar rol"
+                  variant="danger"
+                  size="small"
+                  loading={ocupado === rol.id}
+                  onPress={() => retirar(rol)}
+                  accessibilityLabel={`Retirar el rol ${rol.name}`}
+                  testID={`retirar-${rol.name}`}
+                />
+              ) : null}
+            </Card>
+          )
+        })}
+
+        <Card style={styles.tarjeta}>
+          <AppText variant="subtitle" style={styles.tituloAlta}>
+            Rol nuevo
+          </AppText>
+          <Input
+            label="Nombre"
+            value={nombreNuevo}
+            onChangeText={setNombreNuevo}
+            placeholder="CONTABLE"
+            accessibilityLabel="Nombre del rol nuevo, en mayúsculas"
+          />
+          <AppText variant="caption" color={colors.textSecondary} style={styles.ayuda}>
+            Se guarda en mayúsculas: es el nombre exacto que se compara al autorizar.
+          </AppText>
+          <Input
+            label="Para qué sirve"
+            value={descripcionNueva}
+            onChangeText={setDescripcionNueva}
+            placeholder="Puede ver las cifras pero no cambiarlas"
+            accessibilityLabel="Descripción del rol nuevo"
+          />
+          <Button
+            title="Crear rol"
+            loading={creando}
+            onPress={crear}
+            accessibilityLabel="Crear el rol nuevo"
+            testID="crear-rol"
+          />
+        </Card>
+      </ScrollView>
+    </Sala>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  contenido: { padding: spacing.md, paddingBottom: spacing.xl },
+  contenido: { padding: spacing.md, paddingBottom: spacing.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   tarjeta: { marginBottom: spacing.md },
   cabecera: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   nombre: { fontWeight: '600' },

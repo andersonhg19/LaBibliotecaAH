@@ -7,6 +7,8 @@
    700 ms tras un título). Los tiempos t0/t1 salen de las muestras reales → exactos.
 4. Codifica `cap-NNN.m4a` (AAC-LC mono 48 kbps, faststart), escribe `cap-NNN.tiempos.json` y crea
    `cap-NNN-2x.m4a` con atempo=2.0.
+Un capítulo sin nada que leer en voz (solo separadores, QA DA-11) da un audio de 1 s de silencio.
+Si el libro se retira mientras se genera (`seguir()` devuelve False), se borra lo escrito (QA DA-28).
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ from typing import Any
 
 from ..config.rutas import Rutas
 from ..dominio.mensajes import Msj
-from ..dominio.modelo import ErrorDefinitivo
+from ..dominio.modelo import ErrorDefinitivo, TrabajoCancelado
 from . import audio
 from .alineacion import alinear_palabras
 from .motor import MotorDeVoz
@@ -36,6 +38,7 @@ log = logging.getLogger(__name__)
 PAUSA_FRASE = 0.25
 PAUSA_PARRAFO = 0.50
 PAUSA_TITULO = 0.70
+SILENCIO_SIN_TEXTO = 1.0  # duración del audio de un capítulo sin texto hablable
 
 
 @dataclass
@@ -118,6 +121,10 @@ def ensamblar(
                 sil = audio.silencio(pausa_tras(f))
                 pcm.write(sil)
                 muestras += len(sil) // audio.BYTES_POR_MUESTRA
+        if muestras == 0:  # nada que leer: silencio corto en vez de un audio vacío que ffmpeg rechaza
+            sil = audio.silencio(SILENCIO_SIN_TEXTO)
+            pcm.write(sil)
+            muestras = len(sil) // audio.BYTES_POR_MUESTRA
     return {
         "capitulo": capitulo,
         "vozId": voz_id,
@@ -134,6 +141,7 @@ async def generar_capitulo(
     motor: MotorDeVoz,
     voz_motor: str,
     latido: Callable[[], None] | None = None,
+    seguir: Callable[[], bool] | None = None,
 ) -> float:
     ruta_frases = rutas.frases(archivo_id, capitulo)
     if not ruta_frases.exists():
@@ -157,6 +165,8 @@ async def generar_capitulo(
             tareas_por_texto[f["voz"]] = tarea
         r = await tarea
         hechas[0] += 1
+        if seguir is not None and not seguir():
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         if latido and time.monotonic() - ultimo_latido[0] > 60:
             ultimo_latido[0] = time.monotonic()
             try:
@@ -167,6 +177,24 @@ async def generar_capitulo(
 
     con_voz = [f for f in frases if (f.get("voz") or "").strip()]
     inicio = time.monotonic()
+    try:
+        return await _sintetizar_y_ensamblar(rutas, archivo_id, voz_id, capitulo, frases, con_voz, una, inicio, seguir)
+    except TrabajoCancelado:
+        borrar_audio_capitulo(rutas, archivo_id, voz_id, capitulo)
+        raise
+
+
+async def _sintetizar_y_ensamblar(
+    rutas: Rutas,
+    archivo_id: str,
+    voz_id: str,
+    capitulo: int,
+    frases: list[dict[str, Any]],
+    con_voz: list[dict[str, Any]],
+    una: Callable[[dict], Any],
+    inicio: float,
+    seguir: Callable[[], bool] | None,
+) -> float:
     resultados = await asyncio.gather(*(una(f) for f in con_voz))
     sintetizadas = dict(resultados)
     log.info(
@@ -184,8 +212,27 @@ async def generar_capitulo(
         m4a = dir_audio / f"{base}.m4a"
         await asyncio.to_thread(audio.codificar_m4a, ruta_pcm, m4a)
     ruta_tiempos = dir_audio / f"{base}.tiempos.json"
-    tmp_t = ruta_tiempos.with_name(ruta_tiempos.name + ".tmp")
+    tmp_t = ruta_tiempos.with_name(f"{ruta_tiempos.name}.{uuid.uuid4().hex[:8]}.tmp")
     tmp_t.write_text(json.dumps(tiempos, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp_t, ruta_tiempos)
     await asyncio.to_thread(audio.variante_2x, m4a, dir_audio / f"{base}-2x.m4a")
-    return tiempos["duracion"]
+    if seguir is not None and not seguir():
+        raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
+    return float(tiempos["duracion"])
+
+
+def borrar_audio_capitulo(rutas: Rutas, archivo_id: str, voz_id: str, capitulo: int) -> None:
+    """Borra el audio de un capítulo (1x, 2x, tiempos y temporales) y las carpetas que queden vacías."""
+    dir_audio = rutas.audio(archivo_id, voz_id)
+    if not dir_audio.is_dir():
+        return
+    for f in dir_audio.glob(f"cap-{capitulo:03d}[.-]*"):
+        try:
+            f.unlink()
+        except OSError:
+            log.warning("No se pudo borrar %s", f, exc_info=True)
+    for d in (dir_audio, dir_audio.parent):
+        try:
+            d.rmdir()  # solo si está vacía
+        except OSError:
+            break

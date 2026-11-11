@@ -105,6 +105,29 @@ describe('Nada depende solo del color', () => {
     expect(mudos).toEqual([])
   })
 
+  /*
+   * UX-04: react-native-web 0.21 ya no traduce accessibilityState a aria-*: lo
+   * que se elige pasa por estadoElegible() (utils/aria), que pone las dos cosas.
+   * PENDIENTES: pantallas del lector y del reproductor (las lleva otro frente).
+   */
+  const PENDIENTES_ARIA = ['screens/lector/', 'screens/reproductor/', 'components/lector/', 'components/reproductor/']
+  it('lo que se elige lleva su atributo ARIA (estadoElegible), no solo accessibilityState', () => {
+    const sinAria: string[] = []
+    for (const f of CARPETAS.flatMap(ficheros)) {
+      const rel = path.relative(SRC, f).replace(/\\/g, '/')
+      if (PENDIENTES_ARIA.some((p) => rel.startsWith(p))) continue
+      const fuente = fs.readFileSync(f, 'utf8')
+      for (const { texto, linea } of aperturas(fuente, /<(Pressable|TouchableOpacity|View)[\s>]/g)) {
+        if (
+          /accessibilityState=\{\{\s*(selected|checked)/.test(texto) &&
+          !/aria-(selected|checked|pressed)/.test(texto)
+        )
+          sinAria.push(`${rel}:${linea}`)
+      }
+    }
+    expect(sinAria).toEqual([])
+  })
+
   it('los botones de DOM (role="button") también tienen nombre', () => {
     const mudos: string[] = []
     for (const f of CARPETAS.flatMap(ficheros)) {

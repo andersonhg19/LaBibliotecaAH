@@ -14,12 +14,22 @@ spring:
   cloud:
     discovery:
       enabled: true
+    loadbalancer:
+      cache:
+        # La lista de instancias se refresca rapido para dejar de usar la vieja.
+        ttl: 5s
     gateway:
       httpclient:
         # Subidas grandes y audios largos: sin tope de respuesta y con margen
         # de tiempo. connect-timeout en ms.
         connect-timeout: 10000
         response-timeout: 30m
+      # SIN filtro Retry, a proposito: Spring Cloud Gateway guarda en memoria
+      # directa el cuerpo de TODA peticion que pase por Retry (aunque solo
+      # reintente GET/HEAD), y una subida de 250-300 MB agotaba la memoria del
+      # gateway (regresion RG-02, 2026-11-11). Tras un despliegue, la instancia
+      # vieja sale del registro en segundos (latido 5 s, baja a 15 s, cache del
+      # balanceador 5 s), sin necesidad de reintentar.
       globalcors:
         corsConfigurations:
           '[/**]':
@@ -50,6 +60,7 @@ eureka:
   instance:
     preferIpAddress: true
   client:
+    registry-fetch-interval-seconds: 5
     service-url:
       defaultZone: ${EUREKA_URL:http://discovery-service:8860/eureka}
 

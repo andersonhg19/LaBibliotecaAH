@@ -97,7 +97,7 @@ def test_reiniciar_atascados(con):
     )
     con.execute("UPDATE bah_lib_trabajo SET estado='EN_CURSO' WHERE id=%s", (nuevo,))
     repo = RepositorioPg(URL)
-    assert repo.reiniciar_atascados(30) == 1
+    assert repo.reiniciar_atascados(30 * 60, ["CONVERTIR", "VOZ_CAPITULO"]) == 1
     estados = dict(con.execute("SELECT id, estado FROM bah_lib_trabajo").fetchall())
     assert estados[viejo] == "PENDIENTE" and estados[nuevo] == "EN_CURSO"
     repo.cerrar()
@@ -131,4 +131,41 @@ def test_archivo_y_audio(con):
     repo.audio_estado(str(aid), "edge.es-ES-AlvaroNeural", 0, "LISTO", duracion=123.456)
     filas = con.execute("SELECT estado, duracion_seg FROM bah_lib_audio").fetchall()
     assert len(filas) == 1 and filas[0][0] == "LISTO" and float(filas[0][1]) == 123.46
+    repo.cerrar()
+
+
+def test_da01_al_arrancar_se_reabren_los_en_curso_con_su_archivo_y_su_audio(con):
+    conv = insertar(con)
+    voz = insertar(con, tipo="VOZ_CAPITULO", payload='{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 2}')
+    otro = insertar(con, tipo="OTRO")
+    filas = {r[0]: r[1] for r in con.execute("SELECT id, archivo_id FROM bah_lib_trabajo").fetchall()}
+    con.execute("UPDATE bah_lib_trabajo SET estado='EN_CURSO'")  # recién tomados: actualizado = now()
+    con.execute("INSERT INTO bah_lib_archivo (id, estado_conversion) VALUES (%s, 'PROCESANDO')", (filas[conv],))
+    con.execute(
+        "INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado) VALUES (%s, %s, 2, 'GENERANDO')",
+        (filas[voz], "edge.es-ES-AlvaroNeural"),
+    )
+    repo = RepositorioPg(URL)
+    assert repo.reiniciar_atascados(300, ["CONVERTIR", "VOZ_CAPITULO"]) == 0  # con latido reciente: vivos
+    assert repo.reiniciar_atascados(0, ["CONVERTIR", "VOZ_CAPITULO"]) == 2  # al arrancar: todos los del taller
+    estados = dict(con.execute("SELECT id, estado FROM bah_lib_trabajo").fetchall())
+    assert estados[conv] == "PENDIENTE" and estados[voz] == "PENDIENTE" and estados[otro] == "EN_CURSO"
+    assert con.execute("SELECT estado_conversion FROM bah_lib_archivo").fetchone()[0] == "PENDIENTE"
+    assert con.execute("SELECT estado FROM bah_lib_audio").fetchone()[0] == "PENDIENTE"
+    repo.cerrar()
+
+
+def test_da14_da28_sin_archivo_no_hay_filas_huerfanas(con):
+    repo = RepositorioPg(URL)
+    fantasma = str(uuid.uuid4())
+    assert repo.archivo_procesando(fantasma) is False
+    assert repo.archivo_listo(fantasma, {}, 1, 1, 1, False, 1) is False
+    assert repo.audio_estado(fantasma, "edge.es-ES-AlvaroNeural", 0, "GENERANDO") is False
+    assert con.execute("SELECT count(*) FROM bah_lib_audio").fetchone()[0] == 0
+    aid = uuid.uuid4()
+    con.execute("INSERT INTO bah_lib_archivo (id, estado_conversion) VALUES (%s, 'PENDIENTE')", (aid,))
+    assert repo.archivo_procesando(str(aid)) is True
+    assert repo.audio_estado(str(aid), "edge.es-ES-AlvaroNeural", 0, "GENERANDO") is True
+    assert repo.audio_estado(str(aid), "edge.es-ES-AlvaroNeural", 0, "ERROR", error="x") is True
+    assert con.execute("SELECT estado, error FROM bah_lib_audio").fetchone() == ("ERROR", "x")
     repo.cerrar()

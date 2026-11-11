@@ -33,6 +33,11 @@ public final class Message {
         calificacionInvalida,
         deseoConArchivo,
         libroSinArchivo,
+        deseoSoloConArchivo,
+        deseoUnSoloArchivo,
+        noEsUnDeseo,
+        rutaInvalida,
+        rutaNoEncontrada,
         capituloFueraDeRango,
         vozInvalida,
         datosInvalidos,
@@ -45,6 +50,25 @@ public final class Message {
         subidaIncompleta,
         errorInesperado,
         progresoMasReciente,
-        originalNoGuardado
+        originalNoGuardado,
+        // Ola de arreglos de QA (seguridad, biblioteca, datos).
+        demasiadosArchivos,
+        sinEspacio,
+        demasiadosEstantes,
+        yaLoTenias,
+        vozNoDisponible,
+        valorFueraDeRango,
+        conflictoConcurrente,
+        contenidoNoSoportado,
+        // Traduccion (contratos v1.3).
+        traductorNoDisponible,
+        idiomaNoSoportado,
+        mismoIdioma,
+        demasiadoTextoTraducido,
+        demasiadosCapitulosTraducidos,
+        traductorOcupado,
+        libroAunSinConvertir,
+        capituloSinTexto,
+        traduccionFallida
     }
 }

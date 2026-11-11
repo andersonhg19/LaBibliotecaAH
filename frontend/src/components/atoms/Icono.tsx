@@ -62,7 +62,12 @@ const DIBUJOS: Record<string, Dibujo> = {
   lista: P('M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01'),
   archivador: varios(rect(4, 3, 16, 18), P('M4 9.5h16M4 15h16M10 6h4M10 12h4M10 18h4')),
   bookmark: P('M6 3h12v18l-6-4-6 4z', true),
-  deseo: varios(P('M12 3l2.4 5 5.6.8-4 3.9 1 5.5L12 15.6 7 18.2l1-5.5-4-3.9L9.6 8z')),
+  /* Un lazo (UX-20): el deseo ya no usa la estrella de calificar. */
+  deseo: varios(
+    P('M12 9c-2.5-4.5-8-4.5-8-1.2S9.5 11 12 9zM12 9c2.5-4.5 8-4.5 8-1.2S14.5 11 12 9z'),
+    P('M12 9l-3.5 11M12 9l3.5 11'),
+    circulo(12, 9, 1.4, true),
+  ),
   heart: P('M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z', true),
   star: P('M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z', true),
   nota: P('M5 4h10l4 4v12H5zM15 4v4h4M8 12h8M8 16h5'),
@@ -122,7 +127,7 @@ interface Props {
 const Icono: React.FC<Props> = ({ nombre, color, tamano = 22, relleno = false }) => {
   const dibujo = DIBUJOS[nombre] ?? DIBUJOS.book
   return (
-    <Svg width={tamano} height={tamano} viewBox="0 0 24 24" accessible={false} pointerEvents="none">
+    <Svg width={tamano} height={tamano} viewBox="0 0 24 24" pointerEvents="none">
       {dibujo(color, relleno)}
     </Svg>
   )

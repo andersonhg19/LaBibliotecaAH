@@ -7,17 +7,21 @@ import logging
 import math
 import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..dominio.mensajes import Msj
-from ..dominio.modelo import ErrorDefinitivo, Libro, NodoToc
+from ..dominio.modelo import ErrorDefinitivo, Libro, NodoToc, TrabajoCancelado
 from .desde_docx import convertir_doc, convertir_docx
 from .desde_epub import convertir_epub
 from .desde_pdf import convertir_pdf
 from .desde_txt import convertir_txt
 from .epub_salida import escribir_epub, href_capitulo, href_toc, toc_efectivo
 from .frases import contar_palabras, envolver_capitulo
+from .idioma import detectar_idioma, muestra
+from .normalizador import normalizar_visual
+from .partir import partir_capitulos_largos
 from .portada import a_jpeg
 
 log = logging.getLogger(__name__)
@@ -84,12 +88,42 @@ def _toc_json(nodos: list[NodoToc]) -> list[dict]:
     return [{"titulo": n.titulo, "href": href_toc(n), "hijos": _toc_json(n.hijos)} for n in nodos]
 
 
-def convertir(origen: Path, destino: Path, archivo_id: str) -> ResultadoConversion:
-    """Convierte `origen` y deja el resultado en `destino` (se reemplaza completo, de forma atómica)."""
-    libro = extraer(origen)
+def _limpiar_textos(libro: Libro) -> None:
+    """Metadatos, títulos de capítulo e índice sin caracteres de control (no caben en XML ni en la BD, QA DA-03)."""
     md = libro.metadatos
-    md.setdefault("autores", [])
-    md["idioma"] = md.get("idioma") or "es"
+    for k in ("titulo", "editorial", "sinopsis", "isbn", "idioma"):
+        if isinstance(md.get(k), str):
+            md[k] = normalizar_visual(md[k]).strip() or None
+    md["autores"] = [a for a in (normalizar_visual(str(x)).strip() for x in md.get("autores") or []) if a]
+    for cap in libro.capitulos:
+        cap.titulo = normalizar_visual(cap.titulo)
+
+    def nodos(lista: list[NodoToc]) -> None:
+        for n in lista:
+            n.titulo = normalizar_visual(n.titulo)
+            nodos(n.hijos)
+
+    nodos(libro.toc)
+
+
+def convertir(
+    origen: Path, destino: Path, archivo_id: str, seguir: Callable[[], bool] | None = None
+) -> ResultadoConversion:
+    """Convierte `origen` y deja el resultado en `destino` (se reemplaza completo, de forma atómica).
+
+    `seguir()` se consulta antes de publicar el resultado: si devuelve False (por defecto, si el original ya no
+    existe porque el libro se retiró, QA DA-14) se borra lo escrito y se lanza `TrabajoCancelado`.
+    """
+    seguir = seguir or origen.exists
+    libro = extraer(origen)
+    _limpiar_textos(libro)
+    partir_capitulos_largos(libro)
+    md = libro.metadatos
+    # QA NU-02: el idioma de los metadatos manda si existe; si no, se detecta sobre una muestra del texto, y si
+    # no hay certeza se deja vacío (biblioteca traduce entonces con origen "auto"). Antes se inventaba "es".
+    if not md.get("idioma"):
+        textos = (" ".join(str(t) for t in c.cuerpo.itertext()) for c in libro.capitulos)
+        md["idioma"] = detectar_idioma(muestra(textos))
 
     temporal = destino.with_name(destino.name + ".tmp")
     if temporal.exists():
@@ -144,6 +178,10 @@ def convertir(origen: Path, destino: Path, archivo_id: str) -> ResultadoConversi
     with open(temporal / "estructura.json", "w", encoding="utf-8") as f:
         json.dump(estructura, f, ensure_ascii=False, indent=1)
 
+    if not seguir():
+        shutil.rmtree(temporal, ignore_errors=True)
+        raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
+
     # reemplazo atómico del directorio
     if destino.exists():
         viejo = destino.with_name(destino.name + ".viejo")
@@ -155,6 +193,9 @@ def convertir(origen: Path, destino: Path, archivo_id: str) -> ResultadoConversi
     else:
         destino.parent.mkdir(parents=True, exist_ok=True)
         os.replace(temporal, destino)
+    if not seguir():  # retirado justo mientras se publicaba: no se deja nada huérfano
+        shutil.rmtree(destino, ignore_errors=True)
+        raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
 
     return ResultadoConversion(
         metadatos, len(libro.capitulos), total_palabras, minutos, portada is not None, total_frases

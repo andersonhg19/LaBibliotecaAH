@@ -67,6 +67,25 @@ jobs:
       - run: mypy .
       - run: pytest
 
+  traductor:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: traductor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Dependencias (fijadas con hashes)
+        run: pip install --require-hashes -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      # Sin el modelo real (pesa ~160 MB y se convierte al construir la imagen): la prueba de humo con el
+      # modelo corre en la imagen `pruebas` (docker build --target pruebas).
+      - run: pytest -m "not modelo"
+
   frontend:
     runs-on: ubuntu-24.04
     defaults:

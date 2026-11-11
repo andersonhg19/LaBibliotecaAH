@@ -18,4 +18,6 @@ public class AudioEstadoDTO {
     private String url1x;
     private String url2x;
     private String urlTiempos;
+    /** Con estado ERROR: el motivo que dejo el taller (QA DA-02). null en los demas. */
+    private String error;
 }

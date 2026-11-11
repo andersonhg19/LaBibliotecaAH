@@ -2,7 +2,7 @@ import React from 'react'
 
 import { StyleSheet, Text, View } from 'react-native'
 
-import { colorLomo, doradoLomo } from '@logica/lomos'
+import { colorLomo, doradoLomo, hash } from '@logica/lomos'
 import { fuentes } from '@tema'
 import { cuero } from '@tema/madera'
 import { web } from '@tema/web'
@@ -28,6 +28,10 @@ const PortadaGenerada: React.FC<Props> = ({ libro, ancho, alto, colorFijo }) => 
   const titulo = libro.titulo || 'Sin título'
   const tamTitulo = Math.max(14, Math.round((titulo.length > 40 ? 15 : titulo.length > 22 ? 18 : 22) * escala))
   const autor = libro.autores?.[0] ?? (libro.tipo === 'DOCUMENTO' ? 'Documento' : '')
+  /* Tres encuadernaciones, estables por libro, para que la estantería no se repita:
+     doble filete con florón, banda de cuero oscuro con estrella, y pespunte con hoja. */
+  const estilo = hash(`${libro.id}|encuadernacion`) % 3
+  const adorno = ['❦', '✦', '❧'][estilo]
   return (
     <View
       accessible={false}
@@ -46,14 +50,17 @@ const PortadaGenerada: React.FC<Props> = ({ libro, ancho, alto, colorFijo }) => 
         }),
       ]}
     >
-      <View style={[styles.marco, { borderColor: oro, margin: 8 * escala }]}>
-        <View style={[styles.marcoInterior, { borderColor: oro, margin: 3 * escala }]}>
-          <Text style={[styles.floron, { color: oro, fontSize: Math.max(14, 16 * escala) }]}>❦</Text>
+      <View style={[styles.marco, { borderColor: oro, margin: 8 * escala }, estilo === 2 && styles.pespunte]}>
+        <View
+          style={[styles.marcoInterior, { borderColor: oro, margin: 3 * escala }, estilo !== 0 && styles.sinFilete]}
+        >
+          <Text style={[styles.floron, { color: oro, fontSize: Math.max(14, 16 * escala) }]}>{adorno}</Text>
           <Text
             numberOfLines={5}
             style={[
               styles.titulo,
               { color: oro, fontSize: tamTitulo, lineHeight: tamTitulo * 1.1 },
+              estilo === 1 && [styles.banda, { borderColor: oro }],
               web({ textShadow: '0 1px 0 rgba(0,0,0,0.6), 0 0 6px rgba(255,215,140,0.25)' }),
             ]}
           >
@@ -77,6 +84,15 @@ const PortadaGenerada: React.FC<Props> = ({ libro, ancho, alto, colorFijo }) => 
 const styles = StyleSheet.create({
   tapa: { overflow: 'hidden' },
   marco: { flex: 1, borderWidth: 1.5 },
+  pespunte: { borderStyle: 'dashed', borderWidth: 1.2 },
+  sinFilete: { borderWidth: 0 },
+  banda: {
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    paddingVertical: 6,
+  },
   marcoInterior: {
     flex: 1,
     borderWidth: 0.7,

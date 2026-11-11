@@ -13,7 +13,7 @@ import Sala from '@componentes/molecules/Sala'
 import { useTheme } from '@contextos/ThemeContext'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { usePreparacion } from '@hooks/usePreparacion'
-import { fechaCorta, seEstaPreparando } from '@logica/formato'
+import { fechaCorta, plural, seEstaPreparando } from '@logica/formato'
 import type { Rutas } from '@navegacion/linking'
 import SubirLibros from '@pantallas/biblioteca/SubirLibros'
 import { librosService } from '@servicios/bibliotecaService'
@@ -28,8 +28,10 @@ type Props = NativeStackScreenProps<Rutas, 'Documentos'>
 export function cajones(docs: EjemplarDTO[]): { rotulo: string; docs: EjemplarDTO[] }[] {
   const grupos = new Map<string, EjemplarDTO[]>()
   for (const d of [...docs].sort((a, b) => a.titulo.localeCompare(b.titulo, 'es'))) {
-    const letra = (d.titulo.trim()[0] ?? '#').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
-    const k = /[A-Z]/.test(letra) ? letra : '#'
+    /* La Ñ es su propio cajón (BI-26): al quitar las tildes con NFD se perdía la virgulilla. */
+    const inicial = (d.titulo.trim()[0] ?? '#').toUpperCase()
+    const letra = inicial === 'Ñ' ? 'Ñ' : inicial.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    const k = /[A-ZÑ]/.test(letra) ? letra : '#'
     grupos.set(k, [...(grupos.get(k) ?? []), d])
   }
   return [...grupos.entries()].map(([rotulo, d]) => ({ rotulo, docs: d }))
@@ -94,7 +96,8 @@ const DocumentosScreen: React.FC<Props> = ({ navigation }) => {
                   onPress={() => setAbiertos((a) => ({ ...a, [g.rotulo]: !abierto }))}
                   accessibilityRole="button"
                   accessibilityState={{ expanded: abierto }}
-                  accessibilityLabel={`Cajón ${g.rotulo}, ${g.docs.length} documentos. ${abierto ? 'Cerrar' : 'Abrir'}`}
+                  aria-expanded={abierto}
+                  accessibilityLabel={`Cajón ${g.rotulo}, ${plural(g.docs.length, 'documento')}. ${abierto ? 'Cerrar' : 'Abrir'}`}
                   style={[
                     styles.frente,
                     web({
@@ -145,7 +148,7 @@ const DocumentosScreen: React.FC<Props> = ({ navigation }) => {
             )
           })}
         </View>
-        <Text style={[styles.pie, { color: colors.textMuted }]}>{docs.length} documentos</Text>
+        <Text style={[styles.pie, { color: colors.textMuted }]}>{plural(docs.length, 'documento')}</Text>
       </ScrollView>
       <SubirLibros visible={subir} tipoInicial="DOCUMENTO" onCerrar={() => setSubir(false)} onSubidos={cargar} />
     </Sala>

@@ -30,6 +30,12 @@ public class IdDeCorrelacionFilter implements GlobalFilter, Ordered {
         String id = valido(exchange.getRequest().getHeaders().getFirst(CABECERA));
         ServerHttpRequest conId = exchange.getRequest().mutate().headers(h -> h.set(CABECERA, id)).build();
         exchange.getResponse().getHeaders().set(CABECERA, id);
+        /* QA SE-19: el servicio de destino devuelve el mismo id y llegaba
+           repetido ("id, id"). Justo antes de enviar se deja uno solo. */
+        exchange.getResponse().beforeCommit(() -> {
+            exchange.getResponse().getHeaders().set(CABECERA, id);
+            return Mono.empty();
+        });
         log.debug("{} {} [{}]", conId.getMethod(), conId.getPath(), id);
         return chain.filter(exchange.mutate().request(conId).build());
     }

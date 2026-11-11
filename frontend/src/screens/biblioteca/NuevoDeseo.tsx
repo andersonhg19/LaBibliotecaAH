@@ -12,7 +12,7 @@ import type { EjemplarDTO } from '@tipos'
 import { MENSAJES, mensajeDelServidor } from '@utils/mensajes'
 import { esquemaDeseo, validar } from '@validaciones/index'
 
-type Campos = { titulo: string; autor: string; nota: string }
+type Campos = { titulo: string; autor: string; isbn: string; nota: string }
 
 /** "Añadir a deseos": un libro que aún no tienes (sin archivo). */
 const NuevoDeseo: React.FC<{ visible: boolean; onCerrar: () => void; onCreado: (l: EjemplarDTO) => void }> = ({
@@ -22,7 +22,7 @@ const NuevoDeseo: React.FC<{ visible: boolean; onCerrar: () => void; onCreado: (
 }) => {
   const { colors } = useTheme()
   const { showToast } = useToast()
-  const [f, setF] = useState<Campos>({ titulo: '', autor: '', nota: '' })
+  const [f, setF] = useState<Campos>({ titulo: '', autor: '', isbn: '', nota: '' })
   const [errores, setErrores] = useState<Partial<Record<keyof Campos, string>>>({})
 
   const { ejecutar, ejecutando } = useAccionUnica(async () => {
@@ -33,7 +33,7 @@ const NuevoDeseo: React.FC<{ visible: boolean; onCerrar: () => void; onCreado: (
       const r = await librosService.deseo(v.datos)
       if (!r.correct) throw new Error(r.message)
       showToast('success', MENSAJES.deseoGuardado, r.object.titulo)
-      setF({ titulo: '', autor: '', nota: '' })
+      setF({ titulo: '', autor: '', isbn: '', nota: '' })
       onCreado(r.object)
       onCerrar()
     } catch (e) {
@@ -58,6 +58,14 @@ const NuevoDeseo: React.FC<{ visible: boolean; onCerrar: () => void; onCreado: (
         value={f.autor}
         onChangeText={(t) => setF((x) => ({ ...x, autor: t }))}
         error={errores.autor}
+      />
+      <Input
+        label="ISBN (opcional)"
+        value={f.isbn}
+        onChangeText={(t) => setF((x) => ({ ...x, isbn: t }))}
+        ayuda="Ayuda a encontrar la edición exacta."
+        error={errores.isbn}
+        testID="deseo-isbn"
       />
       <Input
         label="Nota (opcional)"

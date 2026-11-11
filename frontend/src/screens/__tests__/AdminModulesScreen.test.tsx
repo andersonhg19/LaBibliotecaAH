@@ -8,6 +8,7 @@ import { adminService } from '@servicios/adminService'
 
 jest.mock('@servicios/adminService')
 jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn(), canGoBack: () => true }),
   useFocusEffect: (cb: () => unknown) => {
     const { useEffect } = require('react')
     useEffect(() => {
@@ -87,7 +88,7 @@ describe('AdminModulesScreen', () => {
   it('distingue lo que sale en el menu de lo que solo se alcanza desde dentro', async () => {
     const { getByText } = render(<AdminModulesScreen />, { wrapper: Wrapper })
 
-    await waitFor(() => expect(getByText('En el menu')).toBeTruthy())
+    await waitFor(() => expect(getByText('En el menú')).toBeTruthy())
     expect(getByText('Solo desde dentro')).toBeTruthy()
   })
 

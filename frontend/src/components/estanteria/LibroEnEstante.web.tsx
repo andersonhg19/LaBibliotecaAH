@@ -10,24 +10,34 @@ import Lomo from '@componentes/estanteria/Lomo'
 import Portada from '@componentes/estanteria/Portada'
 import { PropsLibroEnEstante, etiquetaLibro } from '@componentes/estanteria/tiposLibro'
 import { useTheme } from '@contextos/ThemeContext'
-import { dimensionesLomo } from '@logica/lomos'
+import { AIRE_LOMO, dimensionesLomo } from '@logica/lomos'
 import { fuentes } from '@tema'
 import { paleta } from '@tema/colors'
-import { fibraPapel } from '@tema/madera'
+import { fibraPapel, guardaMarmolada } from '@tema/madera'
 import { reducirMovimiento } from '@tema/web'
 import { abrirTapa, golpeMadera, roceMadera } from '@utils/sonidos'
 
 /*
- * SACAR UN LIBRO DEL ESTANTE (plan §10.3, R7). Solo web: es DOM y CSS 3D.
+ * SACAR UN LIBRO DEL ESTANTE (plan §10.3, R7, plan de diseño D). Solo web: es
+ * DOM y CSS 3D.
  *
  *   1. Mantener pulsado el lomo (320 ms) → el libro sale hacia ti: se adelanta,
- *      crece un poco y su sombra se alarga; suena el roce de la madera. Su
- *      hueco queda vacío en el estante.
+ *      crece un poco, se inclina enseñando el CANTO de las páginas por arriba y
+ *      su sombra se alarga; suena el roce de la madera. Su hueco queda vacío.
  *   2. Arrastrarlo hacia arriba → gira sobre su eje (rotateY) y va enseñando
  *      la portada. A mitad de recorrido ya se ve de frente.
  *   3. Soltar arriba → viaja al centro, crece, y la tapa se abre como una
- *      bisagra (rotateY 0 → -160°) mostrando el ex libris; entra la ficha.
+ *      bisagra mostrando las GUARDAS MARMOLADAS y el ex libris; entra la ficha.
  *      Soltar abajo → vuelve a su hueco con un golpe sordo de madera.
+ *
+ * NITIDEZ (UX-26): antes se escalaba HACIA ARRIBA una capa pequeña y la portada
+ * salía borrosa. Ahora el libro 3D se construye ya a su TAMAÑO FINAL y empieza
+ * reducido (scale K < 1) encima de su hueco: el navegador rasteriza a tamaño
+ * grande y solo escala a la baja, así que al llegar al centro está nítido.
+ *
+ * LA TAPA DENTRO DE LA PANTALLA: al abrirse, el libro se desplaza medio ancho a
+ * la derecha (el lomo queda en el centro) y se reduce lo justo para que las dos
+ * páginas quepan en el teléfono; antes la tapa se salía por la izquierda.
  *
  * Funciona con el dedo en Safari de iPhone (pointer events + un touchmove no
  * pasivo que impide que la página se desplace mientras sostienes el libro) y
@@ -51,6 +61,8 @@ const PULSACION_MS = 320
 const UMBRAL_MOV = 10
 const RECORRIDO = 150
 const UMBRAL_ABRIR = 0.55
+/** Dos movimientos con las flechas en menos de esto son el mismo toque repetido (BI-28). */
+const REBOTE_FLECHA_MS = 350
 
 const limitar = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
@@ -65,18 +77,36 @@ interface Gesto {
 }
 
 const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
-  const { libro, modo, onAbrir, ordenando, indice = 0, total = 1, onMover, onSoltarEn, estanteId, colorFijo } = props
+  const {
+    libro,
+    modo,
+    onAbrir,
+    ordenando,
+    indice = 0,
+    total = 1,
+    onMover,
+    onSoltarEn,
+    estanteId,
+    colorFijo,
+    postura = 'derecho',
+    escala = 1,
+  } = props
   const { colors } = useTheme()
   const ref = useRef<HTMLDivElement>(null)
+  const cuerpo = useRef<HTMLDivElement>(null)
   const gesto = useRef<Gesto | null>(null)
+  const ultimaFlecha = useRef(0)
   const [escena, setEscena] = useState<Escena | null>(null)
   const escenaRef = useRef<Escena | null>(null)
   const [dxOrden, setDxOrden] = useState(0)
+  /* Con el ratón encima (o el dedo apoyado), el libro asoma un poco: está vivo. */
+  const [asoma, setAsoma] = useState(false)
   const anchoPortada = props.anchoPortada ?? 104
-  const dim = dimensionesLomo(libro)
+  const dim = dimensionesLomo(libro, escala)
   const alto = modo === 'lomo' ? dim.alto : Math.round(anchoPortada * 1.5)
   const ancho = modo === 'lomo' ? dim.grosor : anchoPortada
   const fondo = Math.round(alto / 1.5)
+  const tumbado = modo === 'lomo' && postura === 'tumbado'
 
   const poner = useCallback((e: Escena | null | ((x: Escena | null) => Escena | null)) => {
     setEscena((prev) => {
@@ -115,7 +145,7 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
     } catch {
       /* el puntero ya se soltó */
     }
-    const r = el.getBoundingClientRect()
+    const r = (cuerpo.current ?? el).getBoundingClientRect()
     roceMadera()
     try {
       navigator.vibrate?.(12)
@@ -152,9 +182,9 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
     setTimeout(() => {
       abrirTapa()
       poner((x) => (x ? { ...x, abierta: true } : x))
-    }, 340)
-    setTimeout(() => onAbrir(libro), 1050)
-    setTimeout(() => poner(null), 1500)
+    }, 360)
+    setTimeout(() => onAbrir(libro), 1100)
+    setTimeout(() => poner(null), 1550)
   }
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -222,6 +252,15 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
     if (!g.movido && !cancelado) onAbrir(libro)
   }
 
+  /* Las flechas ‹ › al ordenar (BI-06/BI-28): un solo movimiento por toque, y
+     con el ratón también (ver el contenedor de las flechas, más abajo). */
+  const mover = (hasta: number) => {
+    const ahora = Date.now()
+    if (ahora - ultimaFlecha.current < REBOTE_FLECHA_MS) return
+    ultimaFlecha.current = ahora
+    onMover?.(indice, hasta)
+  }
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -239,6 +278,9 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'flex-end',
+    /* El aire a los lados es zona táctil (44 px con el lomo más fino, UX-06). */
+    padding: modo === 'lomo' ? (tumbado ? `${AIRE_LOMO}px 0` : `0 ${AIRE_LOMO}px`) : undefined,
+    marginLeft: postura === 'inclinado' ? Math.round(alto * 0.12) : undefined,
     touchAction: ordenando ? 'pan-y' : 'manipulation',
     userSelect: 'none',
     WebkitUserSelect: 'none',
@@ -249,6 +291,22 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
     transition: dxOrden ? 'none' : 'transform 200ms ease',
     zIndex: dxOrden ? 5 : undefined,
     filter: dxOrden ? 'drop-shadow(0 14px 12px rgba(0,0,0,0.5))' : undefined,
+  }
+
+  const cuerpoEstilo: CSSProperties = {
+    visibility: escena ? 'hidden' : 'visible',
+    filter: modo === 'lomo' ? 'drop-shadow(2px 0 2px rgba(0,0,0,0.35))' : undefined,
+    transform:
+      (postura === 'inclinado' ? 'rotate(-7deg) ' : '') +
+        (asoma && !ordenando
+          ? modo === 'lomo'
+            ? 'translateY(-8px) rotate(-1.2deg)'
+            : 'translateY(-6px) scale(1.02)'
+          : '') || undefined,
+    transformOrigin: 'bottom left',
+    transition: 'transform 220ms cubic-bezier(.2,.8,.2,1)',
+    /* Entrada escalonada: los libros llegan uno tras otro (solo opacidad y transform). */
+    animation: `bah-aparece 460ms ease ${Math.min(indice, 12) * 35}ms backwards`,
   }
 
   return (
@@ -269,10 +327,12 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
       onPointerCancel={(e) => terminar(e, true)}
       onKeyDown={onKeyDown}
       onContextMenu={(e) => e.preventDefault()}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && setAsoma(true)}
+      onPointerLeave={() => setAsoma(false)}
     >
-      <div style={{ visibility: escena ? 'hidden' : 'visible' }} className="bah-libro-cuerpo">
+      <div ref={cuerpo} style={cuerpoEstilo} className="bah-libro-cuerpo">
         {modo === 'lomo' ? (
-          <Lomo libro={libro} colorFijo={colorFijo} />
+          <Lomo libro={libro} colorFijo={colorFijo} escala={escala} tumbado={tumbado} />
         ) : (
           <Portada libro={libro} ancho={anchoPortada} />
         )}
@@ -283,26 +343,31 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
         </View>
       ) : null}
       {ordenando ? (
-        <View style={styles.flechas}>
-          <Pressable
-            style={styles.flecha}
-            disabled={indice === 0}
-            onPress={() => onMover?.(indice, indice - 1)}
-            accessibilityRole="button"
-            accessibilityLabel={`Mover ${libro.titulo} a la izquierda`}
-          >
-            <Icono nombre="left" color={indice === 0 ? colors.textMuted : colors.text} />
-          </Pressable>
-          <Pressable
-            style={styles.flecha}
-            disabled={indice >= total - 1}
-            onPress={() => onMover?.(indice, indice + 1)}
-            accessibilityRole="button"
-            accessibilityLabel={`Mover ${libro.titulo} a la derecha`}
-          >
-            <Icono nombre="right" color={indice >= total - 1 ? colors.textMuted : colors.text} />
-          </Pressable>
-        </View>
+        /* El clic de las flechas no puede empezar el arrastre del libro: si el
+           pointerdown llega al libro, este captura el puntero y el clic ya no
+           vuelve a la flecha (BI-06, con ratón no hacía nada). */
+        <div onPointerDown={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
+          <View style={styles.flechas}>
+            <Pressable
+              style={styles.flecha}
+              disabled={indice === 0}
+              onPress={() => mover(indice - 1)}
+              accessibilityRole="button"
+              accessibilityLabel={`Mover ${libro.titulo} a la izquierda`}
+            >
+              <Icono nombre="left" color={indice === 0 ? colors.textMuted : colors.text} />
+            </Pressable>
+            <Pressable
+              style={styles.flecha}
+              disabled={indice >= total - 1}
+              onPress={() => mover(indice + 1)}
+              accessibilityRole="button"
+              accessibilityLabel={`Mover ${libro.titulo} a la derecha`}
+            >
+              <Icono nombre="right" color={indice >= total - 1 ? colors.textMuted : colors.text} />
+            </Pressable>
+          </View>
+        </div>
       ) : null}
       {escena && typeof document !== 'undefined'
         ? createPortal(
@@ -322,6 +387,15 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
   )
 }
 
+/** El tamaño final de la tapa en el centro de la pantalla. */
+export const tamanoFinal = (vw: number) => {
+  const W = Math.min(280, vw * 0.62)
+  return { W, H: W * 1.5 }
+}
+
+/** Cuánto hay que reducir el libro abierto para que las dos páginas quepan en la pantalla. */
+export const escalaAbierto = (vw: number, W: number) => Math.min(1, (vw - 24) / (2 * W))
+
 /** El libro en 3D por encima de todo (portal al body). */
 const EscenaLibro: React.FC<{
   escena: Escena
@@ -331,44 +405,39 @@ const EscenaLibro: React.FC<{
   fondo: number
   anchoPortada: number
   props: PropsLibroEnEstante
-}> = ({ escena, modo, ancho, alto, fondo, anchoPortada, props }) => {
+}> = ({ escena, modo, ancho, alto, fondo, props }) => {
   const { rect, fase, p, dx, dy, abierta, listo } = escena
   const vw = typeof window !== 'undefined' ? window.innerWidth : 390
   const vh = typeof window !== 'undefined' ? window.innerHeight : 844
-  const W = Math.min(280, vw * 0.62)
-  const H = W * 1.5
-  const escalaFinal = H / alto
-  const cx = vw / 2 - (rect.left + rect.width / 2)
-  const cy = vh / 2 - (rect.top + rect.height - alto / 2)
+  const { W, H } = tamanoFinal(vw)
+  /* Todo el libro se construye a su tamaño final (bw × H × bd) y empieza
+     reducido con K: nítido al llegar (se rasteriza grande, se escala a la baja). */
+  const K = alto / H
+  const bw = ancho / K
+  const bd = fondo / K
+  const cxLibro = rect.left + rect.width / 2
+  const cyLibro = rect.top + rect.height / 2
+  const cx = vw / 2 - cxLibro
+  const cy = vh / 2 - cyLibro
 
   let transform: string
   let transicion = 'transform 90ms linear'
   if (fase === 'abriendo') {
-    transform = `translate3d(${cx}px, ${cy}px, 0) rotateY(${modo === 'lomo' ? -90 : 0}deg) scale(${escalaFinal})`
-    transicion = 'transform 340ms cubic-bezier(.2,.8,.2,1)'
+    transform = `translate3d(${cx}px, ${cy}px, 0) rotateX(0deg) rotateY(${modo === 'lomo' ? -90 : 0}deg) scale(1)`
+    transicion = 'transform 360ms cubic-bezier(.2,.8,.2,1)'
   } else if (fase === 'volviendo' || !listo) {
-    transform = 'translate3d(0,0,0) rotateY(0deg) scale(1)'
+    transform = `translate3d(0,0,0) rotateX(0deg) rotateY(0deg) scale(${K})`
     transicion = 'transform 280ms cubic-bezier(.3,.7,.3,1)'
   } else if (modo === 'lomo') {
-    transform = `translate3d(${dx}px, ${dy - 10}px, 40px) rotateY(${-90 * p}deg) scale(${1.06 + 0.14 * p})`
+    transform = `translate3d(${dx}px, ${dy - 10}px, 40px) rotateX(${-10 * (1 - p) - 4 * p}deg) rotateY(${-90 * p}deg) scale(${K * (1.06 + 0.14 * p)})`
     if (p === 0) transicion = 'transform 220ms cubic-bezier(.2,.8,.2,1)'
   } else {
-    transform = `translate3d(${dx}px, ${dy - 10}px, 40px) rotateX(${6 * p}deg) scale(${1.06 + 0.2 * p})`
+    transform = `translate3d(${dx}px, ${dy - 10}px, 40px) rotateX(${6 * p}deg) scale(${K * (1.06 + 0.2 * p)})`
     if (p === 0) transicion = 'transform 220ms cubic-bezier(.2,.8,.2,1)'
   }
 
   const sombraOpacidad = fase === 'volviendo' ? 0 : 0.35 + 0.3 * p
-  const veloOpacidad = fase === 'abriendo' ? 0.75 : 0.25 * p
-
-  const base: CSSProperties = {
-    position: 'fixed',
-    left: rect.left,
-    top: rect.top + rect.height - alto,
-    width: ancho,
-    height: alto,
-    zIndex: 1001,
-    pointerEvents: 'none',
-  }
+  const veloOpacidad = fase === 'abriendo' ? 0.78 : 0.25 * p
 
   return (
     <>
@@ -377,76 +446,112 @@ const EscenaLibro: React.FC<{
           position: 'fixed',
           inset: 0,
           zIndex: 1000,
-          background: colorsVelo,
+          background: VELO,
           opacity: veloOpacidad,
           transition: 'opacity 300ms ease',
           pointerEvents: 'none',
         }}
       />
       {!abierta ? (
-        <div style={{ ...base, perspective: 1100 }} aria-hidden>
+        <>
           {/* La sombra en el suelo del estante: se alarga cuanto más sale el libro. */}
           <div
+            aria-hidden
             style={{
-              position: 'absolute',
-              left: -ancho * 0.3,
-              right: -ancho * 0.3,
-              bottom: -14 - 18 * p,
+              position: 'fixed',
+              left: cxLibro - ancho * 0.8,
+              width: ancho * 1.6,
+              top: rect.top + rect.height - 4 + 14 * p,
               height: 18,
+              zIndex: 1001,
               borderRadius: '50%',
               background: 'rgba(0,0,0,0.9)',
               filter: `blur(${8 + 10 * p}px)`,
-              opacity: sombraOpacidad,
+              opacity: fase === 'abriendo' ? 0 : sombraOpacidad,
               transform: `translateX(${dx}px)`,
               transition: 'opacity 250ms ease',
+              pointerEvents: 'none',
             }}
           />
           <div
+            aria-hidden
             style={{
-              position: 'absolute',
-              inset: 0,
-              transformStyle: 'preserve-3d',
-              transformOrigin: '50% 50%',
-              transform,
-              transition: transicion,
+              position: 'fixed',
+              left: cxLibro - bw / 2,
+              top: cyLibro - H / 2,
+              width: bw,
+              height: H,
+              zIndex: 1001,
+              perspective: 1400,
+              pointerEvents: 'none',
             }}
           >
-            {modo === 'lomo' ? (
-              <>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: ancho,
-                    height: alto,
-                    transform: `translateZ(${fondo / 2}px)`,
-                    backfaceVisibility: 'hidden',
-                  }}
-                >
-                  <Lomo libro={props.libro} colorFijo={props.colorFijo} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                transformStyle: 'preserve-3d',
+                transformOrigin: '50% 50%',
+                transform,
+                transition: transicion,
+                willChange: 'transform',
+              }}
+            >
+              {modo === 'lomo' ? (
+                <>
+                  {/* El lomo. */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      width: bw,
+                      height: H,
+                      transform: `translateZ(${bd / 2}px)`,
+                      backfaceVisibility: 'hidden',
+                    }}
+                  >
+                    <Lomo libro={props.libro} colorFijo={props.colorFijo} escala={(props.escala ?? 1) / K} />
+                  </div>
+                  {/* La portada (a la derecha del lomo; se ve al girar). */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: (bw - bd) / 2,
+                      top: 0,
+                      width: bd,
+                      height: H,
+                      transform: `rotateY(90deg) translateZ(${bw / 2}px)`,
+                      backfaceVisibility: 'hidden',
+                    }}
+                  >
+                    <Portada libro={props.libro} ancho={bd} alto={H} sombra={false} />
+                  </div>
+                  {/* El canto de arriba: las hojas apretadas entre las dos tapas. */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: (H - bd) / 2,
+                      width: bw,
+                      height: bd,
+                      transform: `rotateX(90deg) translateZ(${H / 2}px)`,
+                      backfaceVisibility: 'hidden',
+                      backgroundColor: paleta.pergamino,
+                      backgroundImage: `repeating-linear-gradient(90deg, rgba(120,85,45,0.28) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0) 30%, rgba(0,0,0,0) 80%, rgba(0,0,0,0.2))`,
+                      borderLeft: `${Math.max(3, bw * 0.06)}px solid ${paleta.nogal}`,
+                      borderRight: `${Math.max(3, bw * 0.06)}px solid ${paleta.nogal}`,
+                    }}
+                  />
+                </>
+              ) : (
+                <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden' }}>
+                  <Portada libro={props.libro} ancho={bw} alto={H} />
                 </div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: (ancho - fondo) / 2,
-                    top: 0,
-                    width: fondo,
-                    height: alto,
-                    transform: `rotateY(90deg) translateZ(${ancho / 2}px)`,
-                    backfaceVisibility: 'hidden',
-                  }}
-                >
-                  <Portada libro={props.libro} ancho={fondo} alto={alto} sombra={false} />
-                </div>
-              </>
-            ) : (
-              <div style={{ position: 'absolute', inset: 0, backfaceVisibility: 'hidden' }}>
-                <Portada libro={props.libro} ancho={anchoPortada} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        </>
       ) : (
         <LibroAbierto W={W} H={H} vw={vw} vh={vh} props={props} />
       )}
@@ -454,9 +559,9 @@ const EscenaLibro: React.FC<{
   )
 }
 
-const colorsVelo = 'radial-gradient(ellipse at 50% 40%, rgba(40,22,10,0.55), rgba(10,5,2,0.92))'
+const VELO = 'radial-gradient(ellipse at 50% 40%, rgba(40,22,10,0.55), rgba(10,5,2,0.92))'
 
-/** La tapa se abre como una bisagra y aparece el ex libris de la casa. */
+/** La tapa se abre como una bisagra: guardas marmoladas y el ex libris de la casa. */
 const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; props: PropsLibroEnEstante }> = ({
   W,
   H,
@@ -469,6 +574,7 @@ const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; pro
     const id = requestAnimationFrame(() => requestAnimationFrame(() => setAbrir(true)))
     return () => cancelAnimationFrame(id)
   }, [])
+  const s = escalaAbierto(vw, W)
   return (
     <div
       style={{
@@ -480,6 +586,10 @@ const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; pro
         zIndex: 1002,
         perspective: 1600,
         pointerEvents: 'none',
+        transformOrigin: '0% 50%',
+        /* El lomo va al centro y el libro se reduce para que la tapa abierta quepa. */
+        transform: abrir ? `translateX(${W / 2}px) scale(${s})` : 'none',
+        transition: 'transform 680ms cubic-bezier(.45,.05,.2,1)',
       }}
       aria-hidden
     >
@@ -489,9 +599,9 @@ const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; pro
           position: 'absolute',
           inset: 0,
           backgroundColor: paleta.pergamino,
-          backgroundImage: `${fibraPapel}, linear-gradient(90deg, rgba(0,0,0,0.18), rgba(0,0,0,0) 12%)`,
+          backgroundImage: `${fibraPapel}, linear-gradient(90deg, rgba(0,0,0,0.22), rgba(0,0,0,0) 14%)`,
           borderRadius: '2px 4px 4px 2px',
-          boxShadow: '0 30px 60px rgba(0,0,0,0.6)',
+          boxShadow: '0 30px 60px rgba(0,0,0,0.6), 2px 0 0 #E6D6B0, 4px 0 0 #D9C69C',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -526,7 +636,7 @@ const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; pro
           inset: 0,
           transformOrigin: '0% 50%',
           transformStyle: 'preserve-3d',
-          transform: abrir ? 'rotateY(-162deg)' : 'rotateY(0deg)',
+          transform: abrir ? 'rotateY(-164deg)' : 'rotateY(0deg)',
           transition: 'transform 680ms cubic-bezier(.45,.05,.2,1)',
         }}
       >
@@ -542,15 +652,18 @@ const LibroAbierto: React.FC<{ W: number; H: number; vw: number; vh: number; pro
             }}
           />
         </div>
-        {/* El reverso de la tapa: guarda marmolada. */}
+        {/* El reverso de la tapa: guarda marmolada con su filete de cuero. */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
             transform: 'rotateY(180deg)',
             backfaceVisibility: 'hidden',
-            background: `radial-gradient(circle at 30% 30%, ${paleta.cedro} 0 8%, transparent 9%), radial-gradient(circle at 70% 60%, ${paleta.burdeos} 0 10%, transparent 11%), radial-gradient(circle at 40% 80%, ${paleta.miel} 0 6%, transparent 7%), ${paleta.nogal}`,
-            backgroundSize: '60px 60px, 80px 80px, 50px 50px, auto',
+            backgroundColor: paleta.nogal,
+            backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0) 85%, rgba(0,0,0,0.3)), ${guardaMarmolada}`,
+            backgroundSize: 'cover',
+            borderRadius: '4px 2px 2px 4px',
+            boxShadow: `inset 0 0 0 ${Math.round(W * 0.035)}px ${paleta.nogal}, inset 0 0 0 ${Math.round(W * 0.035) + 1}px ${paleta.laton}`,
           }}
         />
       </div>

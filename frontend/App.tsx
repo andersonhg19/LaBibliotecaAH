@@ -12,6 +12,7 @@ import { StatusBar } from 'expo-status-bar'
 
 import Spinner from '@componentes/atoms/Spinner'
 import ErrorBoundary from '@componentes/organisms/ErrorBoundary'
+import HojaConfirmacion from '@componentes/organisms/HojaConfirmacion'
 import { ToastContainer } from '@componentes/organisms/ToastContainer'
 import { AuthProvider } from '@contextos/AuthContext'
 import { PreferenciasProvider } from '@contextos/PreferenciasContext'
@@ -49,6 +50,7 @@ export default function App() {
               <Barra />
               {cargadas || error ? <AppNavigator /> : <Spinner fullScreen />}
               <ToastContainer />
+              <HojaConfirmacion />
             </ToastProvider>
           </AuthProvider>
         </PreferenciasProvider>

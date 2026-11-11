@@ -45,7 +45,7 @@ class UnTokenRobadoNoBastaTest {
         mvc = MockMvcBuilders.webAppContextSetup(contexto).apply(springSecurity()).build();
         usuarios.deleteAll();
         idDeBruno = usuarios.save(User.builder()
-                .name("Bruno").email("bruno@biblioteca.ah")
+                .name("Bruno").email("bruno@biblioteca.ah").alias("bruno")
                 .password(cifrador.encode("ClaveDeBruno1")).active(true).build())
                 .getId();
     }
@@ -112,7 +112,7 @@ class UnTokenRobadoNoBastaTest {
         long antes = usuarios.count();
 
         String r = comoBruno("/v1/users/save",
-                "{\"name\":\"Colado\",\"email\":\"colado@biblioteca.ah\",\"password\":\"Clave1234\"}");
+                "{\"name\":\"Colado\",\"email\":\"colado@biblioteca.ah\",\"password\":\"Clave12345x\"}");
 
         assertThat(r).contains("\"correct\":false");
         assertThat(usuarios.count()).as("Bruno dio de alta una cuenta").isEqualTo(antes);
@@ -123,14 +123,14 @@ class UnTokenRobadoNoBastaTest {
     void bloqueoDeLogin() throws Exception {
         /* Un correo propio: el limite es un bean compartido por el contexto
            de pruebas y no debe dejar bloqueado a nadie que usen otras clases. */
-        usuarios.save(User.builder().name("Candado").email("candado@biblioteca.ah")
+        usuarios.save(User.builder().name("Candado").email("candado@biblioteca.ah").alias("candado")
                 .password(cifrador.encode("ClaveCandado1")).active(true).build());
         assertThat(login("candado@biblioteca.ah", "ClaveCandado1")).contains("token");
 
         for (int i = 0; i < 5; i++) {
             assertThat(login("candado@biblioteca.ah", "mala" + i))
                     .contains("\"errorCode\":101")
-                    .contains("Correo o contraseña incorrectos");
+                    .contains("Correo/usuario o contraseña incorrectos");
         }
 
         assertThat(login("candado@biblioteca.ah", "ClaveCandado1"))

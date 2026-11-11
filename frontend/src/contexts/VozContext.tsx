@@ -26,7 +26,7 @@ const crearAudio = (): HTMLAudioElement | null => {
 
 export const motor = new MotorAudio({
   crearAudio,
-  pedirEstado: (d) => audioService.estado(d),
+  pedirEstado: (d, o) => audioService.estado(d, o),
   cargarTiempos: async (url) => {
     const r = await fetch(url)
     if (!r.ok) return null
@@ -37,6 +37,11 @@ export const motor = new MotorAudio({
   resolverUrl: (ruta) => urlBinaria(ruta),
   dispositivo: esteDispositivo,
   ahora: () => Date.now(),
+  alVolverLaRed: (fn) => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return () => {}
+    window.addEventListener('online', fn)
+    return () => window.removeEventListener('online', fn)
+  },
 })
 
 /* Al cerrar la pestaña, lo último que se oyó se sube al servidor. */

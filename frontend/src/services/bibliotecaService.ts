@@ -1,4 +1,4 @@
-import { BIBLIOTECA_PREFIJO } from '@config'
+import { BIBLIOTECA_PREFIJO, MODO_DEMO } from '@config'
 import api from '@servicios/api'
 import type {
   AnotacionDTO,
@@ -11,9 +11,12 @@ import type {
   FiltroLibrosDTO,
   GuardarEjemplarDTO,
   PageDTO,
+  Pestana,
   ProgresoDTO,
   ResultDTO,
   TipoEjemplar,
+  TraduccionCapituloDTO,
+  TraduccionDTO,
   VozDTO,
 } from '@tipos'
 
@@ -40,10 +43,14 @@ export const librosService = {
     archivo: ArchivoParaSubir,
     tipo: 'LIBRO' | 'DOCUMENTO',
     alProgresar?: (fraccion: number) => void,
+    opciones?: { deseoId?: string },
   ): Promise<ResultDTO<EjemplarDTO[]>> => {
     const datos = new FormData()
     datos.append('archivos', archivo, archivo.name || 'archivo')
     datos.append('tipo', tipo)
+    /* "Ya lo tengo" (BI-15, contrato v1.3.2): con deseoId y UN archivo, el servidor convierte el
+       deseo en el ejemplar que llega y borra el deseo; la web no tiene que borrar nada. */
+    if (opciones?.deseoId) datos.append('deseoId', opciones.deseoId)
     const r = await api.post<ResultDTO<EjemplarDTO[]>>(`${B}/libros/subir`, datos, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 0,
@@ -58,7 +65,8 @@ export const librosService = {
   detalle: (id: string) => post<EjemplarDetalleDTO>(`/libros/get/${encodeURIComponent(id)}`),
   guardar: (d: GuardarEjemplarDTO) => post<EjemplarDTO>('/libros/save', d),
   borrar: (id: string) => post<boolean>(`/libros/delete/${encodeURIComponent(id)}`),
-  facetas: () => post<FacetasDTO>('/libros/facetas'),
+  /** v1.2: las facetas de UNA pestaña (por defecto TODO = solo libros): cada número es lo que da el filtro. */
+  facetas: (pestana?: Pestana) => post<FacetasDTO>('/libros/facetas', pestana ? { pestana } : undefined),
 }
 
 export const progresoService = {
@@ -95,8 +103,70 @@ export const vocesService = {
   todas: () => post<VozDTO[]>('/voces/all'),
 }
 
+/**
+ * El cuerpo de /audio/estado. ÚNICO sitio que conoce el nombre del campo con el
+ * que se pide reintentar un capítulo en ERROR (contrato v1.2): si el backend lo
+ * llama de otra forma, se cambia solo aquí.
+ */
+export function cuerpoEstadoAudio(
+  d: { ejemplarId: string; vozId: string; capitulo: number },
+  reintentar = false,
+): Record<string, unknown> {
+  return reintentar ? { ...d, reintentar: true } : { ...d }
+}
+
 export const audioService = {
-  estado: (d: { ejemplarId: string; vozId: string; capitulo: number }) => post<EstadoAudioDTO>('/audio/estado', d),
+  estado: (d: { ejemplarId: string; vozId: string; capitulo: number }, o?: { reintentar?: boolean }) =>
+    post<EstadoAudioDTO>('/audio/estado', cuerpoEstadoAudio(d, o?.reintentar)),
 }
 
 export type { TipoEjemplar }
+
+/*
+ * TRADUCCIÓN (contrato del coordinador, backend en curso):
+ *   POST /v1/traducir           {texto, origen?: 'en'|'auto', destino: 'es'} → {traduccion, origenDetectado}
+ *   POST /v1/traducir/capitulo  {ejemplarId, capitulo, destino: 'es'} → {estado, frases: [{id, texto}], error?}
+ * ADAPTADOR mientras el servidor no lo tenga: si la ruta no existe (404) se
+ * contesta con un error claro; en el modo demostración se simula marcando el
+ * texto como «(simulada)», para poder probar la pantalla sin backend.
+ */
+export const TOPE_TRADUCCION = 5000
+const NO_DISPONIBLE = 'La traducción todavía no está disponible en la biblioteca.'
+const sinRuta = (e: unknown) => {
+  const st = (e as { response?: { status?: number } } | null)?.response?.status
+  return st === 404 || st === 405
+}
+const simulada = (t: string) => `(simulada) ${t}`
+
+export const traduccionService = {
+  traducir: async (d: { texto: string; origen?: 'en' | 'auto'; destino?: 'es' }): Promise<ResultDTO<TraduccionDTO>> => {
+    const cuerpo = { texto: d.texto.slice(0, TOPE_TRADUCCION), origen: d.origen ?? 'auto', destino: d.destino ?? 'es' }
+    if (MODO_DEMO)
+      return {
+        correct: true,
+        message: 'OK',
+        errorCode: 0,
+        object: { traduccion: simulada(cuerpo.texto), origenDetectado: 'en' },
+      }
+    try {
+      return await post<TraduccionDTO>('/traducir', cuerpo)
+    } catch (e) {
+      if (sinRuta(e)) return { correct: false, message: NO_DISPONIBLE, errorCode: 404, object: null as never }
+      throw e
+    }
+  },
+  capitulo: async (d: {
+    ejemplarId: string
+    capitulo: number
+    destino?: 'es'
+  }): Promise<ResultDTO<TraduccionCapituloDTO>> => {
+    const cuerpo = { ...d, destino: d.destino ?? 'es' }
+    if (MODO_DEMO) return { correct: true, message: 'OK', errorCode: 0, object: { estado: 'LISTO', frases: [] } }
+    try {
+      return await post<TraduccionCapituloDTO>('/traducir/capitulo', cuerpo)
+    } catch (e) {
+      if (sinRuta(e)) return { correct: false, message: NO_DISPONIBLE, errorCode: 404, object: null as never }
+      throw e
+    }
+  },
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 
 import { PropsDeslizador } from '@componentes/atoms/Deslizador'
 import { useTheme } from '@contextos/ThemeContext'
+import { teclaMueveDeslizador } from '@utils/teclas'
 
 let estilosPuestos = false
 /** Las reglas del pulgar del range no se pueden poner en línea: se inyectan una vez. */
@@ -71,7 +72,10 @@ const Deslizador: React.FC<PropsDeslizador> = ({
         if (!arrastrando) onSoltar(v)
       }}
       onPointerUp={soltar}
-      onKeyUp={() => onSoltar(local)}
+      onKeyUp={(e) => {
+        /* Solo las teclas que lo mueven fijan el valor (QA LV-P6): llegar con Tab no salta a ninguna parte. */
+        if (teclaMueveDeslizador(e.key)) onSoltar(local)
+      }}
     />
   )
 }

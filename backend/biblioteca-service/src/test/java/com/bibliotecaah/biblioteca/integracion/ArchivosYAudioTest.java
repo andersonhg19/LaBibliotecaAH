@@ -80,6 +80,35 @@ class ArchivosYAudioTest extends PostgresDeVerdad {
                     .andExpect(content().bytes(esperado));
         }
 
+        @org.junit.jupiter.params.ParameterizedTest(name = "Range: {0}")
+        @org.junit.jupiter.params.provider.ValueSource(strings = {"bytes=10-5", "abc", "bytes=-0", "bytes=999999-",
+                "bytes=50-1", "bytes=1000-"})
+        @DisplayName("QA SE-16 c: Range invalido o fuera del archivo: 416 SIN cuerpo y Content-Range bytes */tamano")
+        void rangoInvalido(String rango) throws Exception {
+            mvc.perform(bajar(rutaAudio("cap-003.m4a")).header("Range", rango).param("t", token(ANDERSON)))
+                    .andExpect(status().isRequestedRangeNotSatisfiable())
+                    .andExpect(header().string("Content-Range", "bytes */1000"))
+                    .andExpect(header().string("Accept-Ranges", "bytes"))
+                    .andExpect(content().bytes(new byte[0]));
+            mvc.perform(bajar("/v1/archivos/" + archivo + "/original").header("Range", rango)
+                            .param("t", token(ANDERSON)))
+                    .andExpect(status().isRequestedRangeNotSatisfiable())
+                    .andExpect(header().string("Content-Range", "bytes */" + epub("libro.epub").length))
+                    .andExpect(content().bytes(new byte[0]));
+        }
+
+        @Test
+        @DisplayName("QA SE-16 c: un Range valido en el borde (ultimo byte, sufijo) sigue dando 206")
+        void rangoEnElBorde() throws Exception {
+            mvc.perform(bajar(rutaAudio("cap-003.m4a")).header("Range", "bytes=999-").param("t", token(ANDERSON)))
+                    .andExpect(status().isPartialContent())
+                    .andExpect(header().string("Content-Range", "bytes 999-999/1000"))
+                    .andExpect(content().bytes(new byte[]{audio[999]}));
+            mvc.perform(bajar(rutaAudio("cap-003.m4a")).header("Range", "bytes=-2").param("t", token(ANDERSON)))
+                    .andExpect(status().isPartialContent())
+                    .andExpect(content().bytes(new byte[]{audio[998], audio[999]}));
+        }
+
         @Test
         @DisplayName("cada binario con su tipo: EPUB, JPEG, JSON, MP3 y el original con su nombre")
         void tipos() throws Exception {
@@ -193,7 +222,7 @@ class ArchivosYAudioTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("LISTO devuelve duracion y URLs relativas al gateway; ERROR se vuelve a encolar")
+        @DisplayName("LISTO devuelve duracion y URLs relativas al gateway; ERROR se informa con su motivo y no se reencola (DA-02)")
         void listo() throws Exception {
             marcarListo(archivo, 10, "{}");
             jdbc.update("INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado, duracion_seg) "
@@ -209,7 +238,13 @@ class ArchivosYAudioTest extends PostgresDeVerdad {
 
             jdbc.update("INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado, error) "
                     + "VALUES (?, ?, 6, 'ERROR', 'fallo')", archivo, VOZ);
-            assertThat(estado(6).get("object").get("estado").asText()).isEqualTo("PENDIENTE");
+            int antes = trabajosDeVoz();
+            JsonNode error = estado(6).get("object");
+            assertThat(error.get("estado").asText()).isEqualTo("ERROR");
+            assertThat(error.get("error").asText()).isEqualTo("fallo");
+            assertThat(trabajosDeVoz()).as("consultar un ERROR no lo vuelve a encolar").isEqualTo(antes + 2);
+            assertThat(estado(6).get("object").get("estado").asText()).isEqualTo("ERROR");
+            assertThat(trabajosDeVoz()).isEqualTo(antes + 2);
             jdbc.update("INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado) VALUES (?, ?, 9, 'GENERANDO')",
                     archivo, VOZ);
             assertThat(estado(9).get("object").get("estado").asText()).isEqualTo("GENERANDO");

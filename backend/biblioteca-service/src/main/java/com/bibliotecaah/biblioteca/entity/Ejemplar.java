@@ -77,6 +77,18 @@ public class Ejemplar extends EntidadAuditable {
     @Column(columnDefinition = "text")
     private String nota;
 
+    /**
+     * Cuando se retiro de la biblioteca (QA BI-01); null = esta en la biblioteca.
+     * Un retirado no se ve en ninguna parte, no tiene archivo y conserva su
+     * progreso, notas, diario, estantes y calificacion para cuando vuelva.
+     */
+    @Column(name = "retirado_en")
+    private Instant retiradoEn;
+
+    /** sha256 del archivo: con el se reconoce al volver a subirlo. */
+    @Column(name = "archivo_sha256", length = 64)
+    private String archivoSha256;
+
     @Override
     protected void antesDeGuardar() {
         if (fechaLlegada == null) fechaLlegada = Instant.now();

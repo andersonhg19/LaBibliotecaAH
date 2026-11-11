@@ -17,6 +17,8 @@ public class AuthenticationResponse {
     private String token;
     private String email;
     private String name;
+    /** El alias con el que tambien se puede entrar (V3). No va en el token. */
+    private String alias;
     private Long userId;
 
     /**

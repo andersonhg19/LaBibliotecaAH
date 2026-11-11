@@ -21,6 +21,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByIdAndActiveTrue(Long id);
 
+    /** El alias se guarda ya en minusculas: quien llama lo pasa normalizado. */
+    Optional<User> findByAliasAndActiveTrue(String alias);
+
+    /**
+     * Las cuentas activas cuyo correo coincide sin distinguir mayusculas.
+     * Devuelve lista y no Optional porque la unicidad del correo en la base SI
+     * distingue mayusculas: "Ana@x" y "ana@x" pueden convivir, y entonces el
+     * login no debe elegir una al azar (ver IdentidadDeLogin).
+     */
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = :correo AND u.active = true")
+    List<User> buscarActivosPorCorreoSinMayusculas(@Param("correo") String correo);
+
+    /** Activa o no: la restriccion unica de la base tampoco distingue. */
+    boolean existsByAlias(String alias);
+
+    boolean existsByAliasAndIdNot(String alias, Long id);
+
     /**
      * El usuario con sus roles ya cargados. La relacion es perezosa a
      * proposito, asi que quien necesita los roles fuera de la transaccion
@@ -34,6 +51,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByIdWithRoles(@Param("id") Long id);
 
     boolean existsByEmailAndActiveTrue(String email);
+
+    /**
+     * ¿Hay ya una cuenta (ACTIVA O NO) con ese correo, sin distinguir
+     * mayusculas? Quien llama lo pasa normalizado. Activa o no porque la
+     * restriccion unica de la base tampoco distingue (QA SE-10: registrar el
+     * correo de una cuenta desactivada daba un 500).
+     */
+    @Query("SELECT COUNT(u) > 0 FROM User u WHERE LOWER(u.email) = :correo")
+    boolean existeCorreo(@Param("correo") String correo);
+
+    @Query("SELECT COUNT(u) > 0 FROM User u WHERE LOWER(u.email) = :correo AND u.id <> :id")
+    boolean existeCorreoEnOtraCuenta(@Param("correo") String correo, @Param("id") Long id);
+
+    @Query("SELECT new com.bibliotecaah.auth.repository.EstadoDeSesion(u.active, u.versionSesion) "
+            + "FROM User u WHERE u.id = :id")
+    Optional<EstadoDeSesion> estadoDeSesion(@Param("id") Long id);
 
     boolean existsByEmailAndActiveTrueAndIdNot(String email, Long id);
 

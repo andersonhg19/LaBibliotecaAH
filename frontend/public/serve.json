@@ -1,10 +1,95 @@
 {
   "headers": [
-    { "source": "foliate/**/*.js", "headers": [{ "key": "Content-Type", "value": "text/javascript; charset=utf-8" }, { "key": "Cache-Control", "value": "public, max-age=86400" }] },
-    { "source": "**/*.mjs", "headers": [{ "key": "Content-Type", "value": "text/javascript; charset=utf-8" }] },
-    { "source": "**/*.epub", "headers": [{ "key": "Content-Type", "value": "application/epub+zip" }] },
-    { "source": "fuentes/*.ttf", "headers": [{ "key": "Content-Type", "value": "font/ttf" }, { "key": "Cache-Control", "value": "public, max-age=2592000, immutable" }] },
-    { "source": "_expo/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] },
-    { "source": "**", "headers": [{ "key": "X-Content-Type-Options", "value": "nosniff" }, { "key": "Referrer-Policy", "value": "same-origin" }] }
+    {
+      "source": "manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        }
+      ]
+    },
+    {
+      "source": "foliate/**/*.js",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/javascript; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
+      "source": "**/*.mjs",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/javascript; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "source": "**/*.epub",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/epub+zip"
+        }
+      ]
+    },
+    {
+      "source": "fuentes/*.ttf",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "font/ttf"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "_expo/**",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "**",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob: https: http://localhost:* http://127.0.0.1:*; font-src 'self' data: blob:; media-src 'self' data: blob: https: http://localhost:* http://127.0.0.1:*; connect-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*; frame-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        }
+      ]
+    }
   ]
 }

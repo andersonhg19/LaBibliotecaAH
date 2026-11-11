@@ -146,10 +146,12 @@ const FORMATOS: Record<string, EjemplarDTO['formatoOriginal']> = {
 function subir(datos: unknown, config: InternalAxiosRequestConfig) {
   let archivo: { name?: string } | null = null
   let tipo: 'LIBRO' | 'DOCUMENTO' = 'LIBRO'
+  let deseoId: string | null = null
   if (datos instanceof FormData || (datos && typeof (datos as FormData).get === 'function')) {
     const f = datos as FormData
     archivo = f.get('archivos') as { name?: string } | null
     tipo = f.get('tipo') === 'DOCUMENTO' ? 'DOCUMENTO' : 'LIBRO'
+    deseoId = (f.get('deseoId') as string | null) || null
   }
   const nombre: string = archivo?.name || 'libro sin nombre.epub'
   const ext = (nombre.split('.').pop() || '').toLowerCase()
@@ -185,6 +187,15 @@ function subir(datos: unknown, config: InternalAxiosRequestConfig) {
     fechaFin: null,
     nNotas: 0,
     fuenteMetadatos: 'NOMBRE_ARCHIVO',
+  }
+  /* Contrato v1.3.2 (BI-15): con deseoId el ejemplar hereda del deseo y el deseo se borra. */
+  const deseo = deseoId ? db.libros.find((x) => x.id === deseoId && x.tipo === 'DESEO') : undefined
+  if (deseo) {
+    l.nota = deseo.nota ?? null
+    l.etiquetas = [...deseo.etiquetas]
+    l.favorito = deseo.favorito
+    l.isbn = deseo.isbn
+    db.libros = db.libros.filter((x) => x.id !== deseo.id)
   }
   db.libros.unshift(l)
   db.preparacion[l.id] = 0
@@ -254,8 +265,8 @@ function btoaSeguro(s: string) {
 }
 
 const ADMIN_USUARIOS = [
-  { id: 1, name: 'Anderson', email: 'anderson@casa', active: true, roles: ['ADMIN', 'USER'] },
-  { id: 2, name: 'Samy', email: 'samy@casa', active: true, roles: ['USER'] },
+  { id: 1, name: 'Anderson', email: 'anderson@casa', alias: 'anderson', active: true, roles: ['ADMIN', 'USER'] },
+  { id: 2, name: 'Samy', email: 'samy@casa', alias: 'samy', active: true, roles: ['USER'] },
 ]
 const ROLES = [
   { id: 1, name: 'ADMIN', description: 'Administra usuarios y permisos', active: true, usuarios: 1 },
@@ -295,14 +306,27 @@ const RUTAS: [RegExp, Manejador][] = [
   [
     /\/auth\/login$/,
     (_m, c) =>
-      c?.email && c?.password
-        ? ok(usuarioDe(String(c.email).trim().toLowerCase()))
+      (c?.usuario || c?.email) && c?.password
+        ? ok(
+            usuarioDe(
+              String(c.usuario || c.email)
+                .trim()
+                .toLowerCase(),
+            ),
+          )
         : fallo('Invalid email or password'),
   ],
   [
     /\/auth\/register$/,
-    (_m, c) => ok({ ...usuarioDe(String(c?.email || 'nuevo@casa')), name: c?.name || 'Nuevo lector' }),
+    (_m, c) =>
+      ok({
+        ...usuarioDe(String(c?.email || 'nuevo@casa')),
+        name: c?.name || 'Nuevo lector',
+        alias: c?.alias || 'nuevo',
+      }),
   ],
+  /* v1.2: renovar el token (en la demo, el mismo usuario de la sesión). */
+  [/\/auth\/renovar$/, () => ok(usuarioDe('anderson@casa'))],
   [
     /\/users\/get\/(.+)$/,
     (m) =>

@@ -13,6 +13,9 @@ public interface AdminUserService {
 
     ResultDTO crear(UserSaveDTO dto);
 
+    /** Edita nombre, correo y alias de otra cuenta (el alias, si no llega, se conserva). */
+    ResultDTO actualizar(UserSaveDTO dto);
+
     ResultDTO asignarRoles(Long userId, AsignarRolesDTO dto);
 
     ResultDTO cambiarActivacion(Long userId, boolean activar);

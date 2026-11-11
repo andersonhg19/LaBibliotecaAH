@@ -14,6 +14,39 @@ SALIDA = RAIZ / "collection" / "La Biblioteca AH.postman_collection.json"
 SERVICIOS = [("auth-service", "AUTH-SERVICE"), ("biblioteca-service", "BIBLIOTECA-SERVICE")]
 CONTEXTO = "/biblioteca"
 
+# Peticiones de ejemplo ademas de la generada desde la spec: (ruta, nombre, cuerpo).
+# La clave va en la variable {{clave}} (vacia): nunca una clave real en el repo.
+VARIANTES = {
+    "/v1/auth/login": [
+        ("Login por alias", {"usuario": "anderson", "password": "{{clave}}"}),
+        ("Login por correo", {"usuario": "anderson@biblioteca.ah", "password": "{{clave}}"}),
+    ],
+    # v1.2: null explicito vacia el campo (QA BI-07, BI-08).
+    "/v1/libros/save": [
+        ("Quitar calificacion y vaciar anio",
+         {"id": "00000000-0000-0000-0000-000000000000", "calificacion": None, "anio": None}),
+    ],
+    # v1.2: facetas de una pestana (QA BI-13).
+    "/v1/libros/facetas": [
+        ("Facetas de documentos", {"pestana": "DOCUMENTOS"}),
+    ],
+    # v1.2: un capitulo en ERROR solo se reintenta si se pide (QA DA-02).
+    "/v1/audio/estado": [
+        ("Reintentar un capitulo en ERROR",
+         {"ejemplarId": "00000000-0000-0000-0000-000000000000", "vozId": "edge.es-ES-AlvaroNeural",
+          "capitulo": 0, "reintentar": True}),
+    ],
+    # v1.3: traduccion autoalojada.
+    "/v1/traducir": [
+        ("Traducir desde ingles (origen fijo)",
+         {"texto": "She folded the letter twice and walked out into the street.", "origen": "en", "destino": "es"}),
+    ],
+    "/v1/traducir/capitulo": [
+        ("Reintentar un capitulo traducido en ERROR",
+         {"ejemplarId": "00000000-0000-0000-0000-000000000000", "capitulo": 0, "destino": "es", "reintentar": True}),
+    ],
+}
+
 
 def resolver(spec, esquema):
     if "$ref" in esquema:
@@ -101,6 +134,11 @@ def main():
                     if metodo == "head":
                         continue
                     items.append(peticion(spec, "/" + prefijo, ruta, metodo, op))
+                    for nombre, cuerpo in VARIANTES.get(ruta, []):
+                        variante = peticion(spec, "/" + prefijo, ruta, metodo, op)
+                        variante["name"] = nombre
+                        variante["request"]["body"]["raw"] = json.dumps(cuerpo, ensure_ascii=False, indent=2)
+                        items.append(variante)
         carpetas.append({"name": archivo, "item": items})
     coleccion = {
         "info": {"name": "La Biblioteca AH",
@@ -108,7 +146,8 @@ def main():
                                 "Pon {{token}} con el JWT de POST /v1/auth/login.",
                  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
         "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]},
-        "variable": [{"key": "gateway", "value": "http://localhost:8920"}, {"key": "token", "value": ""}],
+        "variable": [{"key": "gateway", "value": "http://localhost:8920"}, {"key": "token", "value": ""},
+                     {"key": "clave", "value": ""}],
         "item": carpetas,
     }
     SALIDA.parent.mkdir(parents=True, exist_ok=True)

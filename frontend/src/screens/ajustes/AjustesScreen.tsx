@@ -19,6 +19,8 @@ import { PASOS_VELOCIDAD, textoVelocidad } from '@logica/velocidad'
 import type { Rutas } from '@navegacion/linking'
 import { vocesService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes } from '@tema'
+import { panel } from '@tema/materiales'
+import { web } from '@tema/web'
 import type { VozDTO } from '@tipos'
 import { confirmarAccion } from '@utils/confirmar'
 
@@ -26,7 +28,7 @@ type Props = NativeStackScreenProps<Rutas, 'Ajustes'>
 
 /** Ajustes: el ambiente, la voz y la velocidad con que se empieza, los sonidos, la cuenta. */
 const AjustesScreen: React.FC<Props> = ({ navigation }) => {
-  const { colors, isDark, setOscuro } = useTheme()
+  const { colors, isDark, modo, setModo } = useTheme()
   const { user, logout, esAdmin } = useAuth()
   const { prefs, cambiar } = usePreferencias()
   const [voces, setVoces] = useState<VozDTO[]>([])
@@ -50,7 +52,13 @@ const AjustesScreen: React.FC<Props> = ({ navigation }) => {
     })
 
   const Seccion: React.FC<{ titulo: string; children: React.ReactNode }> = ({ titulo, children }) => (
-    <View style={[styles.tarjeta, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View
+      style={[
+        styles.tarjeta,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+        web(panel(isDark, colors)),
+      ]}
+    >
       <AppText variant="subtitle">{titulo}</AppText>
       {children}
     </View>
@@ -78,10 +86,38 @@ const AjustesScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         <Seccion titulo="Ambiente">
-          <View style={styles.chips}>
-            <Chip etiqueta="Biblioteca de noche" icono="luna" activo={isDark} onPress={() => setOscuro(true)} />
-            <Chip etiqueta="Sala de lectura de día" icono="sol" activo={!isDark} onPress={() => setOscuro(false)} />
+          {/* Noche, día o lo que diga el dispositivo (prefers-color-scheme). */}
+          <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Ambiente">
+            <Chip
+              rol="radio"
+              etiqueta="Biblioteca de noche"
+              icono="luna"
+              activo={modo === 'noche'}
+              onPress={() => setModo('noche')}
+              testID="ambiente-noche"
+            />
+            <Chip
+              rol="radio"
+              etiqueta="Sala de lectura de día"
+              icono="sol"
+              activo={modo === 'dia'}
+              onPress={() => setModo('dia')}
+              testID="ambiente-dia"
+            />
+            <Chip
+              rol="radio"
+              etiqueta="Como el dispositivo"
+              icono="lampara"
+              activo={modo === 'sistema'}
+              onPress={() => setModo('sistema')}
+              testID="ambiente-sistema"
+            />
           </View>
+          <AppText variant="caption">
+            {modo === 'sistema'
+              ? `Ahora mismo: ${isDark ? 'de noche' : 'de día'}, como tu dispositivo.`
+              : 'La misma librería, con luz de lámpara o de ventana.'}
+          </AppText>
           <View style={styles.chips}>
             <Chip
               etiqueta={prefs.sonidos ? 'Sonidos: sí' : 'Sonidos: no'}
@@ -100,6 +136,7 @@ const AjustesScreen: React.FC<Props> = ({ navigation }) => {
             {voces.map((v) => (
               <Chip
                 key={v.id}
+                rol="radio"
                 etiqueta={`${v.nombre} · ${v.pais}`}
                 activo={prefs.vozId === v.id}
                 onPress={() => cambiar({ vozId: v.id })}
@@ -111,6 +148,7 @@ const AjustesScreen: React.FC<Props> = ({ navigation }) => {
             {PASOS_VELOCIDAD.map((p) => (
               <Chip
                 key={p}
+                rol="radio"
                 etiqueta={textoVelocidad(p)}
                 activo={prefs.velocidad === p}
                 onPress={() => cambiar({ velocidad: p })}

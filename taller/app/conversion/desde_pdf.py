@@ -4,7 +4,9 @@
 - Orden de lectura por columnas: los bloques que cruzan el centro de la página separan "bandas"; dentro de
   cada banda se lee la columna izquierda completa y luego la derecha.
 - Se quitan cabeceras y pies repetidos (texto que se repite en la franja superior/inferior de muchas páginas,
-  ignorando dígitos) y números de página.
+  ignorando dígitos; también la cabecera con el nombre de cada capítulo, QA DA-07) y números de página.
+- Notas al pie (letra pequeña al pie de la página que empieza por su número) salen del texto y van al final del
+  capítulo de su página, marcadas para no leerse en voz (QA DA-08).
 - Párrafos: un bloque de PyMuPDF ≈ un párrafo; se separa también por saltos verticales grandes y se une con el
   siguiente bloque/página si el párrafo no terminó (no acaba en puntuación y sigue minúscula).
 - Guiones de corte de línea se deshacen; cursivas y negritas se conservan como <em>/<strong>.
@@ -26,6 +28,8 @@ from lxml import etree
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import Capitulo, ErrorDefinitivo, Libro, NodoToc
 from .html_util import Elemento
+from .limites import revisar_paginas
+from .metadatos import normalizar_autores, titulo_util
 from .normalizador import normalizar_visual, unir_dos
 
 log = logging.getLogger(__name__)
@@ -38,6 +42,9 @@ _NUM_PAGINA = re.compile(
     re.IGNORECASE,
 )
 _FIN_PARRAFO = re.compile(r"[.!?…:»”\")\]]\s*$")
+_INICIO_NOTA = re.compile(r"^\s*(?:\d{1,3}|[*†‡]+|[¹²³⁴⁵⁶⁷⁸⁹⁰]+)[.)]?\s*\S")
+NOTA_TAMANO = 0.85  # una nota al pie usa letra ≤ 85 % de la del cuerpo
+NOTA_ZONA = 0.6  # y solo en la parte baja de la página
 
 
 @dataclass
@@ -95,6 +102,7 @@ def convertir_pdf(ruta: Path) -> Libro:
             raise ErrorDefinitivo(Msj.PDF_CON_CLAVE)
         if doc.page_count == 0:
             raise ErrorDefinitivo(Msj.PDF_SIN_PAGINAS)
+        revisar_paginas(doc.page_count)
         paginas = [_lineas_pagina(doc[i]) for i in range(doc.page_count)]
         chars = sum(len(ln.texto.strip()) for p in paginas for b in p[0] for ln in b.lineas)
         if chars < 40 * min(doc.page_count, 3):
@@ -104,15 +112,19 @@ def convertir_pdf(ruta: Path) -> Libro:
         _metadatos(doc, libro)
         libro.portada = _render_portada(doc)
 
-        _quitar_cabeceras_y_pies(paginas)
+        toc = [(n, t, p) for n, t, p, *_ in doc.get_toc(simple=True) if 1 <= p <= doc.page_count and t.strip()]
+        _quitar_cabeceras_y_pies(paginas, {_clave_repeticion(t) for _n, t, _p in toc})
         tamano_cuerpo = _tamano_cuerpo(paginas)
+        notas_por_pagina = [_separar_notas(bloques, alto, tamano_cuerpo) for bloques, alto in paginas]
+        for bloques, _alto in paginas:
+            bloques[:] = [b for b in bloques if b.lineas]
         parrafos_por_pagina = [_parrafos(bloques, tamano_cuerpo) for bloques, _alto in paginas]
 
-        toc = [(n, t, p) for n, t, p, *_ in doc.get_toc(simple=True) if 1 <= p <= doc.page_count and t.strip()]
         tramos = _tramos(toc, doc.page_count, parrafos_por_pagina)
         for titulo, nivel, desde, hasta in tramos:
             parrafos = _unir_entre_paginas(parrafos_por_pagina[desde : hasta + 1])
-            cuerpo = _cuerpo(parrafos)
+            notas = [n for pag in notas_por_pagina[desde : hasta + 1] for n in pag]
+            cuerpo = _cuerpo(parrafos, notas)
             libro.capitulos.append(Capitulo(titulo=titulo, cuerpo=cuerpo, nivel=nivel))
         if not libro.capitulos or not any(len(c.cuerpo) for c in libro.capitulos):
             raise ErrorDefinitivo(Msj.PDF_ESCANEADO)
@@ -186,10 +198,17 @@ def _ordenar_columnas(bloques: list[_Bloque], ancho: float) -> list[_Bloque]:
     return salida
 
 
-def _quitar_cabeceras_y_pies(paginas: list[tuple[list[_Bloque], float]]) -> None:
+def _quitar_cabeceras_y_pies(paginas: list[tuple[list[_Bloque], float]], titulos: set[str] | None = None) -> None:
+    """Quita de las franjas superior/inferior lo que se repite:
+    - en muchas páginas del libro (≥ 35 %), como el título del libro;
+    - con el nombre de un capítulo del índice en ≥ 2 páginas (cabecera corriente por capítulo, QA DA-07);
+    - en ≥ 3 páginas cercanas entre sí (≥ 35 % de las páginas entre su primera y su última aparición).
+    """
     n = len(paginas)
+    titulos = titulos or set()
     conteo: Counter = Counter()
-    for bloques, alto in paginas:
+    donde: dict[tuple[str, str], list[int]] = {}
+    for k, (bloques, alto) in enumerate(paginas):
         vistas = set()
         for b in bloques:
             for ln in b.lineas:
@@ -197,8 +216,16 @@ def _quitar_cabeceras_y_pies(paginas: list[tuple[list[_Bloque], float]]) -> None
                     zona = "sup" if ln.y1 <= alto * FRANJA else "inf"
                     vistas.add((zona, _clave_repeticion(ln.texto)))
         conteo.update(vistas)
+        for clave in vistas:
+            donde.setdefault(clave, []).append(k)
     minimo = max(2, int(n * 0.35 + 0.5))
-    repetidas = {k for k, c in conteo.items() if c >= minimo} if n >= 2 else set()
+    repetidas: set[tuple[str, str]] = set()
+    if n >= 2:
+        for clave, c in conteo.items():
+            paginas_clave = donde[clave]
+            tramo = paginas_clave[-1] - paginas_clave[0] + 1
+            if c >= minimo or (c >= 2 and clave[1] in titulos) or (c >= 3 and c >= 0.35 * tramo):
+                repetidas.add(clave)
     for bloques, alto in paginas:
         for b in bloques:
             conservar = []
@@ -214,6 +241,38 @@ def _quitar_cabeceras_y_pies(paginas: list[tuple[list[_Bloque], float]]) -> None
                 conservar.append(ln)
             b.lineas = conservar
         bloques[:] = [b for b in bloques if b.lineas]
+
+
+def _separar_notas(bloques: list[_Bloque], alto: float, tamano_cuerpo: float) -> list[str]:
+    """Saca de la página sus notas al pie y devuelve su texto (una cadena por nota).
+
+    Nota = línea de letra pequeña en la parte baja de la página, por debajo de todo el texto de tamaño normal,
+    que empieza por un número, asterisco o superíndice; las líneas pequeñas que la siguen son su continuación.
+    """
+    if not tamano_cuerpo:
+        return []
+    limite_letra = tamano_cuerpo * NOTA_TAMANO
+    lineas = [ln for b in bloques for ln in b.lineas]
+    fondo_cuerpo = max((ln.y1 for ln in lineas if ln.tamano > limite_letra), default=0.0)
+    candidatas = sorted(
+        (ln for ln in lineas if ln.tamano <= limite_letra and ln.y0 >= alto * NOTA_ZONA and ln.y0 >= fondo_cuerpo - 1),
+        key=lambda ln: (ln.y0, ln.x0),
+    )
+    notas: list[str] = []
+    quitar: set[int] = set()
+    for ln in candidatas:
+        texto = ln.texto.strip()
+        if _INICIO_NOTA.match(texto):
+            notas.append(texto)
+        elif notas:
+            notas[-1] = unir_dos(notas[-1], texto)
+        else:
+            continue
+        quitar.add(id(ln))
+    if quitar:
+        for b in bloques:
+            b.lineas = [ln for ln in b.lineas if id(ln) not in quitar]
+    return notas
 
 
 def _tamano_cuerpo(paginas: list[tuple[list[_Bloque], float]]) -> float:
@@ -330,8 +389,17 @@ def _unir_entre_paginas(paginas: list[list[_Parrafo]]) -> list[_Parrafo]:
     return salida
 
 
-def _cuerpo(parrafos: list[_Parrafo]) -> Elemento:
+def _cuerpo(parrafos: list[_Parrafo], notas: list[str] | None = None) -> Elemento:
     body = etree.Element("body")
+    _parrafos_a_html(body, parrafos)
+    if notas:
+        aside = etree.SubElement(body, "aside", {"class": "bah-nota-pie"})
+        for nota in notas:
+            etree.SubElement(aside, "p").text = nota
+    return body
+
+
+def _parrafos_a_html(body: Elemento, parrafos: list[_Parrafo]) -> None:
     for p in parrafos:
         if not p.texto.strip():
             continue
@@ -349,7 +417,6 @@ def _cuerpo(parrafos: list[_Parrafo]) -> Elemento:
             if cursiva:
                 destino = etree.SubElement(destino, "em")
             destino.text = texto
-    return body
 
 
 # ------------------------------------------------------------------ capítulos, índice, metadatos
@@ -412,12 +479,12 @@ def _toc(toc: list[tuple[int, str, int]], tramos: list[tuple[str, int, int, int]
 
 def _metadatos(doc: Any, libro: Libro) -> None:
     md = doc.metadata or {}
-    titulo = (md.get("title") or "").strip()
-    if titulo and not re.search(r"\.(pdf|docx?|odt|txt)$|^microsoft word|^untitled|^sin t[ií]tulo", titulo, re.I):
-        libro.metadatos["titulo"] = titulo[:300]
-    autor = (md.get("author") or "").strip()
-    if autor:
-        libro.metadatos["autores"] = [a.strip() for a in re.split(r";|,| y | & ", autor) if a.strip()][:10]
+    titulo = titulo_util(md.get("title"))
+    if titulo:
+        libro.metadatos["titulo"] = titulo
+    autores = normalizar_autores(md.get("author"))
+    if autores:
+        libro.metadatos["autores"] = autores
 
 
 def _render_portada(doc: Any) -> bytes | None:

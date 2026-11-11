@@ -1,0 +1,7 @@
+# Solo la etapa "modelos" del Dockerfile: convertir Opus-MT (PyTorch) a CTranslate2. No llega a la imagen final.
+# ctranslate2 4.6.0 + transformers 4.46.3 + torch 2.5.1 CPU: la combinacion que ya convirtio estos modelos en casa
+# (bitacora 2026-11-11). El conversor de ctranslate2 4.9 exige transformers >= 4.56 (pasa dtype=) y torch >= 2.6.
+ctranslate2==4.6.0
+transformers==4.46.3
+torch==2.5.1+cpu
+sentencepiece==0.2.3

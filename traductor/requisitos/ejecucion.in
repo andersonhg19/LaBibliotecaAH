@@ -1,0 +1,5 @@
+# Dependencias de ejecución de la imagen final (fijadas con hashes en requirements.txt por pip-compile).
+fastapi==0.162.4
+uvicorn==0.54.0
+ctranslate2==4.6.0
+sentencepiece==0.2.3

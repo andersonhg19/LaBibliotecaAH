@@ -292,7 +292,13 @@ describe('Retomar donde lo dejé', () => {
     expect(nombreDispositivo('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('PC')
     expect(
       describirPosicion(prog({ capitulo: 6, porcentaje: 41.6 }), [{ indice: 6, titulo: 'La tormenta', minutos: 30 }]),
-    ).toBe('el capítulo 7 «La tormenta» (42 %)')
+    ).toBe('el capítulo 7 «La tormenta» (42 % del libro)')
+    // QA LV-13: el título que ya dice «Capítulo 4» no se repite y el % es del libro.
+    expect(
+      describirPosicion(prog({ capitulo: 3, porcentaje: 68 }), [
+        { indice: 3, titulo: 'Capítulo 4: El invierno largo', minutos: 30 },
+      ]),
+    ).toBe('«Capítulo 4: El invierno largo» (68 % del libro)')
   })
 })
 

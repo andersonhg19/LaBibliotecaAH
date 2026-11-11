@@ -15,6 +15,8 @@ class ErrorDeTaller(Exception):
 
     def __init__(self, msj: Msj | str, **datos: object):
         self.msj = msj
+        # `detalle` (técnico) solo va al log; el mensaje para el usuario nunca lo incluye
+        self.detalle: str | None = str(datos["detalle"]) if datos.get("detalle") is not None else None
         super().__init__(texto(msj, **datos) if isinstance(msj, Msj) else msj)
 
 
@@ -24,6 +26,10 @@ class ErrorDefinitivo(ErrorDeTaller):
 
 class ErrorReintentable(ErrorDeTaller):
     """Error transitorio con mensaje claro para el usuario (servicio de voz caído, ffmpeg…)."""
+
+
+class TrabajoCancelado(ErrorDeTaller):
+    """El archivo se retiró mientras se procesaba: se limpia lo escrito y no se reintenta ni se marca nada más."""
 
 
 @dataclass
@@ -47,7 +53,7 @@ class Libro:
         default_factory=lambda: {
             "titulo": None,
             "autores": [],
-            "idioma": "es",
+            "idioma": None,  # solo si el archivo lo dice; si no, lo detecta convertir (QA NU-02)
             "isbn": None,
             "editorial": None,
             "anio": None,

@@ -4,6 +4,7 @@ import { Animated, DimensionValue, StyleSheet, TouchableOpacity, View } from 're
 
 import AppText from '@componentes/atoms/Text'
 import { useTheme } from '@contextos/ThemeContext'
+import { estadoElegible } from '@utils/aria'
 
 interface Option {
   label: string
@@ -64,9 +65,8 @@ const CapsuleToggle: React.FC<CapsuleToggleProps> = ({ options, selected, onChan
            * el lector anuncia CUAL esta puesta. Sin eso solo se sabe por el
            * color de fondo, que para mucha gente no es una senal.
            */
-          accessibilityRole="radio"
+          {...estadoElegible('radio', option.value === selected)}
           accessibilityLabel={option.label}
-          accessibilityState={{ selected: option.value === selected }}
           activeOpacity={0.7}
         >
           <AppText

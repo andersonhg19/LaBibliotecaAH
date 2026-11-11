@@ -7,6 +7,7 @@ import com.bibliotecaah.biblioteca.dto.output.ResultDTO;
 import com.bibliotecaah.biblioteca.enums.TipoEjemplar;
 import com.bibliotecaah.biblioteca.service.LibroService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -40,11 +41,14 @@ public class LibroController {
     public ResponseEntity<ResultDTO> subir(
             @RequestParam(name = "archivos", required = false) List<MultipartFile> archivos,
             @RequestParam(name = "archivos[]", required = false) List<MultipartFile> archivosCorchetes,
-            @RequestParam(name = "tipo", required = false, defaultValue = "LIBRO") TipoEjemplar tipo) {
+            @RequestParam(name = "tipo", required = false, defaultValue = "LIBRO") TipoEjemplar tipo,
+            @Parameter(description = "\"Ya lo tengo\" (v1.3.2): id de un deseo propio que este archivo cumple. "
+                    + "Un solo archivo; el ejemplar que llega hereda nota, etiquetas y estantes, y el deseo se borra.")
+            @RequestParam(name = "deseoId", required = false) UUID deseoId) {
         List<MultipartFile> todos = new ArrayList<>();
         if (archivos != null) todos.addAll(archivos);
         if (archivosCorchetes != null) todos.addAll(archivosCorchetes);
-        return ResponseEntity.ok(libros.subir(todos, tipo));
+        return ResponseEntity.ok(libros.subir(todos, tipo, deseoId));
     }
 
     @Operation(summary = "Agrega un libro a la lista de deseos (sin archivo)")
@@ -77,9 +81,11 @@ public class LibroController {
         return ResponseEntity.ok(new ResultDTO(libros.delete(ejemplarId)));
     }
 
-    @Operation(summary = "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta")
+    @Operation(summary = "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta",
+            description = "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo "
+                    + "libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.")
     @PostMapping(value = "/facetas", produces = "application/json")
-    public ResponseEntity<ResultDTO> facetas() {
-        return ResponseEntity.ok(new ResultDTO(libros.facetas()));
+    public ResponseEntity<ResultDTO> facetas(@RequestBody(required = false) FiltroLibrosDTO filtro) {
+        return ResponseEntity.ok(new ResultDTO(libros.facetas(filtro == null ? null : filtro.getPestana())));
     }
 }

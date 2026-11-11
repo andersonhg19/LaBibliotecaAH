@@ -57,6 +57,51 @@ Flyway solo avanza: si la versión nueva trajo migraciones, restaurar antes el r
 4. Tailscale: `tailscale serve --bg --https=7050 http://127.0.0.1:3100` y `tailscale serve --bg --https=7051 http://127.0.0.1:8920`.
 5. Tarea programada `BibliotecaAH-Respaldo` (diaria 03:30) que ejecuta `C:\srv\biblioteca-ah\respaldo.ps1`.
 
+## Traductor (contratos v1.3.1)
+
+Servicio `traductor` del compose: imagen propia **`bah/traductor`** construida desde `traductor/` (Opus-MT de
+Helsinki-NLP en↔es convertido a CTranslate2 int8, CPU, FastAPI, API de LibreTranslate). Los modelos van **dentro de
+la imagen** (se descargan con sha256 verificado y se convierten en la etapa `modelos` del Dockerfile): el contenedor
+arranca sin internet y **sin volumen**. **Sin puerto en el host** (solo lo ve biblioteca-service por la red del
+compose; QA y producción no chocan). Usuario no root `traductor` (uid 10002). `HEALTHCHECK` real: `/health` solo
+responde 200 con los dos modelos cargados y probados con una frase.
+
+| Dato | Medido en casa (2026-11-11, Intel Core 5 210H, sin GPU) | LibreTranslate v1.9.6 (antes) |
+|---|---|---|
+| Imagen | 244 MB comprimida (`docker save`) / 821 MB en disco, modelos incluidos (158 MB) | 201 MB / 847 MB **+ 394 MB de modelos** en volumen |
+| Arranque | ~1 s hasta `/health` 200, sin red | ~28 s el primero (descarga), < 10 s después |
+| RAM | ~240 MB en reposo; ~400–520 MB tras traducir; pico 527 MB (`TRADUCTOR_HILOS=4`, `LOTES_PARALELOS=1`); `mem_limit` 768 MB | ~200–260 MB en reposo; ~460 MB con 2 procesos; `mem_limit` 1536 MB |
+| Velocidad | ~0,11 s una frase suelta; capítulo de 3 125 palabras (150 frases, lotes de 40) **4,8 s**; 2 lotes de 40 a la vez 2,5 s | ~0,19 s; 12,6 s; 14,4 s |
+| Calidad (15 frases de novela) | 1 error grave (*apples tasted of summer and regret*) | 7 errores graves |
+
+Ajustes (`.env`, todos con valor por defecto): `TRADUCTOR_HILOS` (4: hilos de CTranslate2 por lote; con 6 u 8 se
+pisa con el resto de la casa y va 3 veces más lento), `TRADUCTOR_LOTES_PARALELOS` (1; con 2 cada par de idiomas
+carga dos réplicas: subir `mem_limit` a 1 GB), `TRADUCTOR_BEAM` (4; con 2 el capítulo tarda 3,0 s pero aparecen
+errores de concordancia). Límites: 100 textos y 20 000 caracteres por petición (413).
+
+Construir en casa por la sesión de Windows (el `pull` de la base y las descargas no funcionan por SSH). Desde el PC
+de desarrollo, en Git Bash:
+
+```bash
+cat > /tmp/traductor.ps1 <<'PS'
+Set-Location C:\Users\ander\Documents\Anderson\Personales\LaBibliotecaAH\traductor
+docker build --target pruebas -t bah/traductor:pruebas . ; docker run --rm bah/traductor:pruebas  # ruff, mypy, pytest + humo con el modelo
+docker build -t bah/traductor:0.1.1 .
+PS
+bash ops/casa-sesion.sh /tmp/traductor.ps1
+```
+
+La primera construcción baja ~800 MB (torch CPU para convertir + los dos modelos) y tarda unos minutos; las
+siguientes reutilizan la caché (`RUN --mount=type=cache` para las descargas). Después, en casa, con el `TAG` de la
+instancia: `docker compose up -d traductor` (con el `--env-file`/`-p` de la instancia). El volumen de LibreTranslate,
+si llegó a crearse, sobra: `docker volume rm <proyecto>_bah-traductor-modelos`.
+
+biblioteca-service **no depende** del traductor ni cambia (mismo `TRADUCTOR_URL=http://traductor:5000`): si está
+caído o arrancando, solo `/v1/traducir*` responde 503. Diagnóstico: `docker compose logs --tail 50 traductor` (una
+línea por petición con número de textos, caracteres, idiomas y ms; nunca el texto) y `docker compose ps traductor`
+(estado del `HEALTHCHECK`). Actualizar dependencias: editar `traductor/requisitos/*.in` y regenerar los
+`requirements` con hashes con `traductor/requisitos/compilar.sh` (instrucciones dentro).
+
 ## Respaldos
 
 - Manual: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\srv\biblioteca-ah\respaldo.ps1`

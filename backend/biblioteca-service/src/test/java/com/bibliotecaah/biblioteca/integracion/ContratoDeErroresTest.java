@@ -20,6 +20,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("Contrato de errores: todo vuelve como ResultDTO con mensaje en espanol")
 class ContratoDeErroresTest extends PostgresDeVerdad {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.bibliotecaah.biblioteca.exception.GlobalExceptionHandler manejador;
+
     @Nested
     @DisplayName("Peticiones mal formadas (HTTP 200, correct=false)")
     class MalFormadas {
@@ -43,13 +46,20 @@ class ContratoDeErroresTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("un error no previsto responde 103 sin detalles internos")
+        @DisplayName("un error no previsto responde 103 sin detalles internos; un tipo de contenido equivocado, 120 (SE-16)")
         void noPrevisto() throws Exception {
             JsonNode r = json.readTree(mvc.perform(post("/biblioteca/v1/libros/subir").contextPath("/biblioteca")
                     .header("Authorization", bearer(ANDERSON)).contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-            assertThat(r.get("errorCode").asInt()).isEqualTo(103);
-            assertThat(r.get("message").asText()).isEqualTo("Ocurrió un error inesperado procesando la petición. Inténtalo de nuevo.");
+            assertThat(r.get("errorCode").asInt()).isEqualTo(120);
+            assertThat(r.get("message").asText()).isEqualTo("La petición debe enviarse como JSON (Content-Type: application/json).");
+
+            var inesperado = manejador.errorNoPrevisto(new IllegalStateException("detalle interno")).getBody();
+            assertThat(inesperado.getErrorCode()).isEqualTo(103);
+            assertThat(inesperado.getMessage()).isEqualTo("Ocurrió un error inesperado procesando la petición. Inténtalo de nuevo.");
+            var conflicto = manejador.conflicto(new org.springframework.dao.DataIntegrityViolationException("x")).getBody();
+            assertThat(conflicto.getErrorCode()).isEqualTo(101);
+            assertThat(conflicto.getMessage()).isEqualTo("Otra petición igual llegó al mismo tiempo. Recarga y comprueba el resultado.");
         }
 
         @Test
@@ -86,12 +96,12 @@ class ContratoDeErroresTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("un token sin claim userId entra pero no identifica a nadie: 401 de negocio")
+        @DisplayName("un token sin claim userId ni exp no entra: 401 (SE-18)")
         void sinUserId() throws Exception {
             String sinId = JWT.create().withSubject("x").withArrayClaim("roles", new String[]{"USER"})
                     .sign(Algorithm.HMAC256(SECRETO));
             mvc.perform(post("/biblioteca/v1/libros/all").contextPath("/biblioteca").header("Authorization", "Bearer " + sinId))
-                    .andExpect(status().isOk())
+                    .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.errorCode").value(401));
         }
     }

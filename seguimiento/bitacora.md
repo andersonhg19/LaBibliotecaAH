@@ -98,3 +98,145 @@ Pendiente del backend: Karate; archivo huerfano en `originales/` si falla la tra
 - Respaldo: `ops/respaldo.ps1` + tarea `BibliotecaAH-Respaldo` diaria 03:30; prueba manual OK (`D:\respaldos\biblioteca\2026-11-11_0004`).
 - Oh Churus sin cambios (contenedores siguen arriba).
 - Pendiente: probar en el iPhone y en el Android de Samy; retirar la prueba P1 (`bah-p1`, puerto 7052) cuando ya no haga falta.
+
+### 2026-11-11 - Todo pasa al PC de casa; ronda de QA especializada
+**Pedido de Anderson:** el Lenovo queda solo como consola; construir, probar y desplegar se hace en casa. Claves de admin/anderson/samy = `<clave>` e inicio de sesion con correo **o alias** (`anderson`). QA a fondo con QA especializados (como en Oh Churus) porque "falta muchisimo en diseño" y hay muchos bugs.
+
+| Decision | Eleccion | Motivo |
+|---|---|---|
+| Docker build/pull en casa | tarea `BibliotecaAH-Sesion` (Interactive) + `ops/en-sesion.ps1` y `ops/casa-sesion.sh` | por SSH falla el gestor de credenciales de Docker Desktop ("A specified logon session does not exist") |
+| Instancia de QA | proyecto `biblioteca-ah-qa` en casa, `.env` en `C:\srv\biblioteca-ah-qa`, datos `E:\LaBibliotecaAH-qa`, puertos web 4100 / gateway 9920 | probar sin tocar produccion ni Oh Churus |
+| Puertos del compose | `PUERTO_*` en `.env` (por defecto los de siempre) | dos instancias en la misma maquina |
+| Maven en casa | 3.9.9 portable en `C:\tools` (sha512 verificado) | no habia; pruebas del backend en casa |
+| Claves <clave> | produccion: UPDATE directo con hash bcrypt (no en migraciones: repo publico); QA: `SEED_*=<clave>` | pedido explicito de Anderson |
+
+- Stack local del Lenovo bajado y sus imagenes borradas.
+- QA lanzados sobre la instancia de casa: UX/diseño, lector y voz, biblioteca, seguridad, conversion y datos; en paralelo, desarrollo del login por alias.
+
+### 2026-11-11 - Backend: arreglos de la ronda de QA (seguridad, biblioteca, datos) — contrato v1.2
+Sin commit. Detalle de cambios de API en `documentación/contratos.md` (Cambios v1.2) y `codigos-de-error.md`.
+
+| Decision | Eleccion | Motivo |
+|---|---|---|
+| Revocar sesiones (SE-02) | claim `ver` + columna `version_sesion` (V4 auth); auth la comprueba en BD por peticion; biblioteca pregunta a `POST /v1/auth/sesion` con cache 30 s por (usuario, version), revocada 10 min, auth caido = pasa con la firma (5 s) | auth_db es de auth; leerla desde biblioteca ataria esquemas; 30 s de retraso maximo es aceptable para 2 usuarios y no tumba la lectura si auth cae |
+| Vida del token | `EXP_TIME` 24 h + `POST /v1/auth/renovar` | token robado acotado aunque la revocacion fallara; la web renueva sin pedir clave |
+| Registro publico (SE-03) | `REGISTRO_PUBLICO=false` por defecto | app privada; el admin crea cuentas |
+| Correos (SE-04) | normalizar en codigo + migracion Java V5; gemelas NO se fusionan (WARN con ids); indice unico `lower(email)` solo en PostgreSQL y solo sin gemelas | fusionar mezclaria bibliotecas; un indice que falla tumbaria el arranque |
+| Freno de login (SE-08) | por cuenta+origen (5/5 min), por origen (20/10 min), global (60/min); origen = X-Forwarded-For contando `LOGIN_PROXIES_CONFIABLES` saltos | backoff solo no evita que otro te bloquee; con el origen fiable, los fallos ajenos no te bloquean |
+| Retirar (BI-01) | borrado logico del ejemplar (V2 biblioteca: `retirado_en`, `archivo_sha256`); reaparece al volver a subir el mismo fichero; deseos se borran | conserva todo sin tocar el modelo de anotaciones; el archivo fisico se libera igual |
+| null en `/libros/save` (BI-07/08) | setters que anotan los campos presentes | distingue ausente de null sin dependencias nuevas |
+| Doble peticion (BI-09/10) | `ON CONFLICT DO NOTHING` en estantes/favoritos; candado `pg_advisory_xact_lock` + ventana 10 s para comentarios y anotaciones; `DataIntegrityViolation` → 101 | sin columnas nuevas ni claves de idempotencia que la web aun no manda |
+| Subida simultanea (DA-13) | `saveAndFlush` + reintento unico; si la transaccion se deshace el fichero vuelve a su temporal | ni 103 ni carpetas huerfanas |
+| Restos del taller (DA-14/28) | borrar trabajos/audio al retirar el ultimo; `TareaLimpieza` horaria (filas sin archivo y carpetas UUID sin fila con > 6 h) | el taller puede escribir tarde; el contrato le pide comprobar que el archivo existe |
+| Audio en ERROR (DA-02) | se informa con `error`; solo `reintentar: true` reencola; sin latido 10 min = muerto en biblioteca (`TrabajoRepository.MINUTOS_SIN_LATIDO`), el taller ya reabre a los 5 (`TALLER_MINUTOS_ATASCADO`) (DA-01; corregido en v1.3.2: aqui decia 30) | evita la cola infinita |
+| Progreso (SE-13/BI-05) | fecha > ahora+2 min → hora del servidor (tambien la guardada); NaN/rango → 120 | descongela progresos y no confia en relojes adelantados |
+| Topes (SE-07) | env para subida/espacio/estantes; @Size fijos en DTO para textos | los de despliegue cambian por maquina; los de texto son contrato |
+
+Pendiente para frontend: renovar token, reemplazar token tras cambiar la clave, 401 = volver a login, texto del dialogo de retirar, `reintentar` en el reproductor, `yaLoTenias`, facetas por pestaña, `null` para vaciar, Recién llegados con `pestana TODO`, CSP en `serve.json`, clave minima 10.
+Taller: ya comprueba que el archivo existe antes de escribir y late cada 60 s (cambios anotados en contratos v1.2).
+- Compilacion 2026-11-11: `mvn -B clean verify` en casa OK en los 5 modulos (auth 355 pruebas, biblioteca 128, gateway 8, discovery 1); JaCoCo auth lineas 0.966 / ramas 0.871, biblioteca 0.96 / 0.87. Specs regeneradas y coleccion Postman (59 peticiones).
+
+### 2026-11-11 - Traducción autoalojada inglés → español (contrato v1.3)
+**Pedido de Anderson:** "la opción de traducción desde inglés que tiene la app de referencia sería genial". Sin commit.
+
+| Decision | Eleccion | Motivo |
+|---|---|---|
+| Motor | LibreTranslate `v1.9.6` (imagen oficial, modelos Argos en↔es) | funciona tal cual, mantenido, sin codigo propio; medido en casa: ~0,2 s por frase, capitulo de 1 100 palabras en ~6 s, 3 100 en ~13 s, ~460 MB con 2 procesos |
+| Alternativa medida | Opus-MT `opus-mt-en-es` con CTranslate2 int8 en CPU: ~0,09 s por frase, 3 100 palabras en 4,7 s, modelo 78 MB, y claramente mejor en las 15 frases de prueba (LibreTranslate: ~7 errores graves, p. ej. "lighthouse keeper" → "guardaespaldas"; Opus-MT: 1). `tc-big` mas fluido pero 2x mas lento | no se adopta aun: exige imagen y servicio propios (API compatible con LibreTranslate, deteccion de idioma, pruebas y puerta de calidad). Queda como opcion B para Anderson: el cliente ya habla el protocolo de LibreTranslate, el cambio seria solo de imagen |
+| GPU | no | la CPU ya traduce un capitulo en segundos; CUDA en la RTX 5050 (sm_120) complica la imagen sin necesidad |
+| Capitulos en segundo plano | ejecutor acotado en biblioteca-service (1 hilo, cola 20, 429 si se llena), NO la cola `bah_lib_trabajo` del taller | el traductor es HTTP y el cliente con timeouts ya esta en Java; el taller esta ocupado con la voz y tocarlo exige Python + puerta de calidad; si se reinicia, el estado sale de los ficheros y la siguiente consulta relanza |
+| Corto vs largo | <= 1500 caracteres en la misma peticion (LISTO); mas, PENDIENTE con `progreso` | lo corto no obliga a la web a sondear |
+| Cache | textos sueltos en `bah_lib_traduccion` (V3, sha256 de origen\|destino\|texto, sin usuario, purga a 180 dias); capitulos en `normalizados/{archivoId}/traducciones/{destino}/cap-NNN.json` con el sha256 de las frases | compartido por archivo; si el taller reconvierte, se rehace solo; se borra con el archivo |
+| Freno | 20 000 caracteres/min por usuario en textos sueltos (la cache no cuenta) y 30 capitulos nuevos/hora → 429 | nadie satura el traductor; leer lo ya traducido es libre |
+| Traductor caido | 503 `traductorNoDisponible` solo en traduccion; biblioteca-service sin `depends_on` al traductor | la lectura no depende del traductor |
+| Puerto | sin publicar (solo red interna) | QA y produccion usan el mismo compose: un puerto fijo en 127.0.0.1 chocaria |
+
+- Prueba real en casa (jar nuevo + postgres:14 + LibreTranslate propios, contenedores borrados al terminar): capitulo de 78 frases / 1 092 palabras (texto original escrito para la prueba) → PENDIENTE en 0,4 s, LISTO en 6,6 s; segunda lectura 27 ms; otro usuario 102; texto suelto 194 ms frio / 15 ms de cache; traductor parado → 503 con mensaje y el resto de la API OK.
+- Pendiente para frontend: boton traducir seleccion (`/v1/traducir`) y modo "capitulo traducido" (`/v1/traducir/capitulo`, sondear cada 2-3 s mientras PENDIENTE, mostrar `progreso`, `error` y `reintentar`).
+- Pendiente de despliegue: la imagen `libretranslate/libretranslate:v1.9.6` ya esta descargada en casa; primer arranque descarga ~394 MB de modelos al volumen.
+- Compilacion 2026-11-11: `mvn -B -pl biblioteca-service clean verify` en casa OK, 161 pruebas (antes 128), JaCoCo lineas 0.966 / ramas 0.887. Spec regenerada; coleccion Postman 63 peticiones.
+
+### 2026-11-11 - Traductor propio: Opus-MT + CTranslate2 en lugar de LibreTranslate (contrato v1.3.1)
+**Pedido de Anderson:** adoptar la opcion B medida en la entrada anterior (Opus-MT con CTranslate2), con servicio
+propio y la misma API, sin tocar biblioteca-service. Sin commit.
+
+| Decision | Eleccion | Motivo |
+|---|---|---|
+| Motor | Opus-MT `Helsinki-NLP/opus-mt-en-es` y `opus-mt-es-en` (revisiones `5bc4493` y `c96e2c5`, sha256 de cada archivo fijado) en CTranslate2 int8, CPU | 1 error grave frente a 7 de LibreTranslate en las 15 frases de novela; 2,6x mas rapido en un capitulo; 79 MB por modelo |
+| Servicio | `traductor/` (FastAPI) con la API de LibreTranslate que usa `TraductorClient` (`POST /translate` con `q` texto o lista, `source` incl. `auto`, `translatedText`, `detectedLanguage`), mas `/detect`, `/languages`, `/health` | biblioteca-service no cambia (mismo puerto 5000 y `TRADUCTOR_URL`); verificado con su jar real |
+| Modelos | convertidos EN LA CONSTRUCCION (etapa `modelos`: torch CPU 2.5.1 + transformers 4.46.3 + ctranslate2 4.6.0, solo ahi); la imagen final lleva ctranslate2 + sentencepiece + fastapi/uvicorn | arranca en ~1 s sin internet y sin volumen; nada de torch en ejecucion |
+| ctranslate2 | 4.6.0 en conversion y en ejecucion | el conversor de 4.9.0 pasa `dtype=` y exige transformers >= 4.56 (+ torch >= 2.6 para leer `pytorch_model.bin`); 4.6.0 es la combinacion ya probada en casa y misma version a ambos lados = mismo formato |
+| Tokenizacion | SentencePiece directo (`source.spm` + `</s>`, `target.spm` al decodificar) | reproduce exactamente al tokenizador de transformers: 15/15 frases identicas a `opus.json` con beam 4 |
+| Dependencias | `requisitos/*.in` → `requirements*.txt` y `requisitos/convertir.txt` con hashes (pip-tools 7.6.2, `--require-hashes`); base `python:3.12.16-slim-bookworm` | versiones exactas y verificables |
+| beam | 4 (`TRADUCTOR_BEAM`) | medido: beam 1 = 10 de 15 frases distintas y peores ("el viento se desgarró en las persianas"); beam 2 = 4 distintas, una con error de concordancia ("silencio... pesadas y pacientes... la rompiera") y 3,0 s por capitulo frente a 4,8 s; beam 5 no mejora y es mas lento |
+| Hilos | `TRADUCTOR_HILOS=4`, `TRADUCTOR_LOTES_PARALELOS=1` | capitulo: 4x1 = 4,8 s; 2x1 = 7,1 s; 6x1 = 14,7 s; 8x1 = 17,8 s (se pisa con la casa); 4x2 = 8,5 s; 2x2 = 6,6 s y pico al limite de 768 MB |
+| Segmentacion | frases sin cortar en abreviaturas (Mr., Dr., St., Sra., e.g., U.S.), iniciales ni citas abiertas; corta antes del inciso del narrador ("—¿Quien anda ahi? —pregunto.") ; frases > 400 caracteres por ; : o , | conserva espacios, sangrias y saltos tal cual |
+| Tipografia | comillas “” y «» se enderezan para el modelo y se reponen (Opus-MT BORRA las “”); raya inicial y cursiva que envuelve la frase se apartan; cursivas interiores con segunda pasada marcada con «» (el modelo borra los `*`); coma fuera de las comillas en espanol | medido con casos en casa |
+| Nombres propios | heuristica de mayusculas (no al inicio de frase salvo rachas de 2+ palabras, o nombres ya vistos en el lote); si la 1a traduccion no conserva el nombre, 2a pasada con marcador ("Xantor") y se repone; si el marcador no sobrevive, queda la 1a; titulos en mayusculas se excluyen | "Thomas" ya no sale "Tomas", "Tobias"/"Elias" consistentes en todo el capitulo (LibreTranslate mezclaba Elias/Elías); nunca empeora la frase |
+| Limites | 100 textos, 20 000 caracteres, 1 MB por peticion → 413; errores `{"error"}` 400/404/405/500/503 sin trazas | como `LT_BATCH_LIMIT`/`LT_CHAR_LIMIT` anteriores |
+| Compose | `bah/traductor:${TAG}`, `build: ./traductor`, sin puerto, sin volumen, `mem_limit` 768 MB; se elimina `bah-traductor-modelos` | pico medido 527 MB |
+
+Medidas en casa (contenedores propios `bah-traductor-prueba`, `-exp`, `-pg`, borrados al terminar), mismos scripts del
+agente anterior (`C:\srv\biblioteca-ah-qa\qa\traductor-ct2\`):
+
+| | LibreTranslate v1.9.6 | Traductor propio |
+|---|---|---|
+| Frase suelta (media de 15) | 186 ms | 109 ms |
+| Capitulo 3 125 palabras (150 frases, 4 lotes de 40) | 12,6 s | 4,8 s |
+| 2 lotes de 40 en paralelo | 14,4 s | 2,5 s |
+| Punta a punta con biblioteca-service (capitulo 78 frases / 1 092 palabras) | LISTO en 6,6 s | LISTO en 3,5 s (2,3 s en el servidor) |
+| Texto suelto por biblioteca-service, frio / cache | 194 / 15 ms | 133 / 18 ms |
+| RAM reposo / tras traducir / pico | 200-260 / ~460 MB | 240 / 400-520 / 527 MB |
+| Imagen | 201 MB comprimida + 394 MB de modelos al primer arranque | 244 MB comprimida con modelos |
+| Arranque | ~28 s el primero (descarga), < 10 s despues | ~1 s, sin red |
+| Errores graves en 15 frases | 7 | 1 |
+
+- Punta a punta con el jar real de biblioteca-service: PENDIENTE en 0,35 s → LISTO 3,5 s; segunda lectura 40 ms; otro
+  usuario 102; texto suelto con `origenDetectado: en`; traductor parado → 503 con mensaje y el resto de la API OK.
+- Puerta: ruff + ruff format + mypy limpios; pytest 127 pruebas (126 unitarias con traductor falso + 1 de humo con el
+  modelo real en la imagen `pruebas`), cobertura 99,5 %. CI: job `traductor` (sin el modelo).
+- Pendiente (no hace falta para funcionar): `TraductorDeCapitulos` escribe `"motor": "libretranslate"` en el fichero
+  del capitulo traducido (solo informativo); cambiarlo a `opus-mt` cuando se toque biblioteca-service.
+- Pendiente de despliegue: construir `bah/traductor` en casa (ver `documentación/despliegue.md`) y `docker compose up -d traductor`.
+- Compilacion 2026-11-11: `docker build --target pruebas` + `docker run` en casa OK (127 pruebas, 99,46 %); imagen final `bah/traductor:prueba-ct2` 821 MB.
+
+### 2026-11-11 - Arreglos de la QA de regresion (contrato v1.3.2)
+Informe: `documentación/pruebas/qa-regresion-api.md` (NU-01, NU-02, BI-15, BI-24, SE-16) + RG-02 (parte de
+biblioteca-service) y UX-14 (textos de auth) pedidos por el integrador. El gateway lo arreglo el integrador (no se toco).
+
+| Decision | Eleccion | Motivo |
+|---|---|---|
+| NU-01 frases largas | segmentador: `; : ,` → espacio mas cercano al centro → corte a 400 caracteres; motor: `trocear_tokens` a 480 piezas (prefiere `, ; :`, luego inicio de palabra) y `max_input_length=512` de red | nunca 503 por longitud, sin perder texto; la red de tokens cubre textos raros (simbolos, palabras enormes) |
+| NU-02 idioma en el taller | heuristica de palabras vacias exclusivas (es/en/pt/fr/it/de) sobre inicio/centro/final, minimo 20 aciertos y 2x sobre el segundo; si no, `null` | `langdetect` no es determinista y esta sin mantener; `lingua` pesa cientos de MB; misma tecnica que el traductor; sin dependencia nueva |
+| NU-02 en biblioteca | idioma del libro desconocido o igual al destino → `/detect` del capitulo (2000 caracteres, confianza ≥ 60) y 120 solo si es el destino; si no, `origen=auto` | arregla tambien los libros ya guardados con el "es" inventado, sin migrar datos; un fallo de `/detect` no impide traducir |
+| BI-15 «Ya lo tengo» | `deseoId` en `/subir`: el ejemplar que llega (nuevo, ya tenido o retirado) hereda nota/etiquetas/estantes/ISBN y el deseo se borra en una transaccion; `save` no saca un DESEO de su tipo | un mismo camino para los tres casos de la ingesta; nunca un libro sin archivo |
+| BI-24 orden por autor | funcion SQL `bah_clave_autor` (V4 biblioteca, IMMUTABLE) en el ORDER BY | sin columna ni relleno ni desincronizacion; vale para obras viejas y nuevas |
+| SE-16 a | `ErrorJsonValve` (ErrorReportValve del host) en auth y biblioteca | lo que Tomcat rechaza antes de Spring sale como ResultDTO JSON, sin HTML ni version |
+| SE-16 c | `ArchivoController` valida el Range con `HttpRange` antes de servir | 416 sin cuerpo con `Content-Range: bytes */N` |
+| RG-02 | `swallowAbortedUploads=true` + `max-swallow-size` = tope por peticion | Tomcat descarta el resto del cuerpo en streaming y responde el 413 sin cortar la conexion |
+| UX-14 | tildes en textos de auth; V6 auth actualiza nombres visibles solo si conservan el texto de la semilla | V2 no se puede editar (checksum); codigos y rutas intactos |
+| Latido (DA-01) | documentado 10 min en biblioteca y 5 min en el taller (la tabla de la ola v1.2 decia 30) | coincide con `MINUTOS_SIN_LATIDO` y `TALLER_MINUTOS_ATASCADO` |
+
+- Compilacion 2026-11-11 (en casa): `mvn -B clean verify` auth-service OK, 361 pruebas, JaCoCo lineas 0.966 / ramas
+  0.871; biblioteca-service OK, 183 pruebas, lineas 0.967 / ramas 0.885 (spec regenerada con `-Dactualizar.spec=true`).
+  Taller: ruff + format + mypy + pytest OK, 164 pruebas, 90,9 % (imagen `bah/taller:pruebas` reconstruida).
+  Traductor: puerta OK con la de humo del modelo real, 137 pruebas, 99,4 %.
+- Coleccion Postman: 66 peticiones (script `postman_v132.py` ejecutado en `bah/taller:qa`).
+- Pendiente para la web (contratos v1.3.2): «Ya lo tengo» ya no debe borrar el deseo tras subir con `deseoId`; mostrar
+  el 120 `deseoSoloConArchivo` si se intenta cambiar el tipo de un deseo.
+- Pendiente de despliegue: reconstruir taller, traductor, auth y biblioteca; RG-02 punta a punta por el gateway de QA.
+
+### 2026-11-11 - Integracion de la ronda de QA (version 0.2.0 candidata)
+- Cinco QA especializados (UX/diseño, lector y voz, biblioteca, seguridad, conversion y datos) + dos QA de regresion; informes en `documentación/pruebas/`.
+- Arreglos de taller, backend (contrato v1.2 → v1.3.2), web (rediseño de lujo, lector tipo papel, modo «Hojas», Mis notas como cuaderno, colecciones, tema de dia), login por correo o alias, traduccion inglés↔español con servicio propio `traductor/` (Opus-MT + CTranslate2).
+- Puertas en casa: backend `mvn clean verify` verde (auth 361, biblioteca 183, gateway 10), web 412 pruebas, taller 164, traductor 137.
+- Humo de punta a punta en la instancia QA: alias, voz, traduccion de frase y capitulo, progreso a 5x, null explicito, subida 250 MB OK y 301 MB → 413.
+
+| Incidente en la integracion | Causa | Arreglo |
+|---|---|---|
+| CORS roto (preflight 403) | bloque `loadbalancer` mal sangrado dejo `globalcors` fuera de `spring.cloud.gateway` | YAML corregido + `LaConfiguracionDelGatewayEsLaEsperadaTest` |
+| Subidas grandes → OOM en el gateway | el filtro Retry de Spring Cloud Gateway guarda en memoria el cuerpo de TODA peticion | Retry eliminado; Tomcat de biblioteca descarta el cuerpo sobrante y responde 413 |
+| ~90 s de 500 tras redesplegar | Eureka y el balanceador guardaban la IP vieja | latido 5 s, baja a 15 s, desalojo 5 s, cache del balanceador 5 s; queda el arranque (~15 s) |
+| Claves en un repo publico | informes y pruebas citaban la clave real | tachadas en documentos; pruebas con «clave-de-prueba» |
+
+Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del EPUB), DA-22/23/26, desplazamiento tactil del modo Hojas sin verificar en un telefono real, prueba de pantalla bloqueada en iPhone y Android.

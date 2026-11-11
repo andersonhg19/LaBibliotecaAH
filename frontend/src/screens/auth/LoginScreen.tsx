@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 
 import Button from '@componentes/atoms/Button'
@@ -19,6 +20,9 @@ import { MENSAJES, mensajeDelServidor } from '@utils/mensajes'
 import { esquemaEntrar, validar } from '@validaciones/index'
 
 type Props = NativeStackScreenProps<Rutas, 'Entrar'>
+
+/** Se recuerda en el dispositivo que el registro está cerrado: la entrada deja de ofrecer "Crea tu cuenta". */
+export const CLAVE_REGISTRO_CERRADO = '@biblioteca_ah_registro_cerrado'
 
 /** El escudo de la casa: monograma AH en latón dentro de un doble círculo. */
 export const Escudo: React.FC<{ tamano?: number }> = ({ tamano = 108 }) => {
@@ -61,18 +65,25 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const { colors } = useTheme()
   const { showToast } = useToast()
   const { login, avisoDeSesion, limpiarAvisoDeSesion } = useAuth()
-  const [email, setEmail] = useState('')
+  const [usuario, setUsuario] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
-  const [errores, setErrores] = useState<{ email?: string; password?: string }>({})
+  const [errores, setErrores] = useState<{ usuario?: string; password?: string }>({})
+  /* Si el servidor ya dijo que el registro está cerrado, no se ofrece "Crea tu cuenta" (contrato v1.2). */
+  const [registroCerrado, setRegistroCerrado] = useState(false)
+  useEffect(() => {
+    AsyncStorage.getItem(CLAVE_REGISTRO_CERRADO)
+      .then((v) => setRegistroCerrado(v === '1'))
+      .catch(() => {})
+  }, [])
 
   const entrar = async () => {
-    const v = validar(esquemaEntrar, { email, password })
+    const v = validar(esquemaEntrar, { usuario, password })
     setErrores(v.errores)
     if (!v.ok) return
     setCargando(true)
     try {
-      await login(v.datos.email, v.datos.password)
+      await login(v.datos.usuario, v.datos.password)
     } catch (err) {
       showToast('error', MENSAJES.entrarFallo, mensajeDelServidor(err, MENSAJES.entrarRespaldo))
     } finally {
@@ -125,13 +136,13 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
             ]}
           >
             <Input
-              label="Correo"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="tu@correo.com"
-              keyboardType="email-address"
-              autoComplete="email"
-              error={errores.email}
+              label="Correo o usuario"
+              value={usuario}
+              onChangeText={setUsuario}
+              placeholder="tu@correo.com o tu usuario"
+              autoComplete="username"
+              autoCapitalize="none"
+              error={errores.usuario}
               testID="entrar-correo"
             />
             <Input
@@ -154,24 +165,30 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
             />
             {MODO_DEMO ? (
               <AppText variant="caption" align="center" style={styles.demo}>
-                Modo demostración: entra con cualquier correo y una contraseña de 6 o más caracteres.
+                Modo demostración: entra con cualquier correo o usuario y una contraseña de 6 o más caracteres.
               </AppText>
             ) : null}
           </View>
 
-          <Pressable
-            onPress={() => navigation.navigate('Registro')}
-            style={styles.enlace}
-            accessibilityRole="link"
-            accessibilityLabel="¿Primera vez? Crea tu cuenta"
-          >
-            <AppText variant="body" color={colors.textSecondary}>
-              ¿Primera vez?{' '}
+          {registroCerrado ? (
+            <AppText variant="caption" align="center" style={styles.demo}>
+              ¿Primera vez? Pide a quien administra la biblioteca que te cree la cuenta.
             </AppText>
-            <AppText variant="body" color={colors.primary} style={styles.enlaceTexto}>
-              Crea tu cuenta
-            </AppText>
-          </Pressable>
+          ) : (
+            <Pressable
+              onPress={() => navigation.navigate('Registro')}
+              style={styles.enlace}
+              accessibilityRole="link"
+              accessibilityLabel="¿Primera vez? Crea tu cuenta"
+            >
+              <AppText variant="body" color={colors.textSecondary}>
+                ¿Primera vez?{' '}
+              </AppText>
+              <AppText variant="body" color={colors.primary} style={styles.enlaceTexto}>
+                Crea tu cuenta
+              </AppText>
+            </Pressable>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </Sala>

@@ -43,28 +43,32 @@ class DTOTest {
     @Test
     @DisplayName("AuthenticationRequest getters/setters")
     void testAuthRequest() {
-        AuthenticationRequest req = new AuthenticationRequest("a@b.com", "pass");
+        AuthenticationRequest req = new AuthenticationRequest("anderson", "a@b.com", "pass");
+        assertEquals("anderson", req.getUsuario());
         assertEquals("a@b.com", req.getEmail());
         assertEquals("pass", req.getPassword());
+        assertEquals("anderson", req.getIdentificador());
     }
 
     @Test
     @DisplayName("AuthenticationResponse getters/setters")
     void testAuthResponse() {
-        AuthenticationResponse res = new AuthenticationResponse("tok", "a@b.com", "Name", 1L, java.util.List.of("USER"));
+        AuthenticationResponse res = new AuthenticationResponse("tok", "a@b.com", "Name", "name", 1L, java.util.List.of("USER"));
         assertEquals("tok", res.getToken());
         assertEquals("a@b.com", res.getEmail());
         assertEquals("Name", res.getName());
+        assertEquals("name", res.getAlias());
         assertEquals(1L, res.getUserId());
     }
 
     @Test
     @DisplayName("UserSaveDTO getters/setters")
     void testUserSaveDTO() {
-        UserSaveDTO dto = new UserSaveDTO(1L, "Name", "e@e.com", "pass", null);
+        UserSaveDTO dto = new UserSaveDTO(1L, "Name", "e@e.com", "name", "pass", null);
         assertEquals(1L, dto.getId());
         assertEquals("Name", dto.getName());
         assertEquals("e@e.com", dto.getEmail());
+        assertEquals("name", dto.getAlias());
         assertEquals("pass", dto.getPassword());
     }
 
@@ -106,9 +110,10 @@ class DTOTest {
         assertNotNull(noArgs.getUpdatedAt());
 
         // AllArgs constructor
-        User allArgs = new User(3L, "All", "a@a.com", "p", true, new java.util.HashSet<>(), null, null);
+        User allArgs = new User(3L, "All", "a@a.com", "all", "p", true, 0, new java.util.HashSet<>(), null, null);
         assertEquals(3L, allArgs.getId());
         assertEquals("All", allArgs.getName());
+        assertEquals("all", allArgs.getAlias());
     }
 
     @Test

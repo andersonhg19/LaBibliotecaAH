@@ -6,7 +6,8 @@ import Icono from '@componentes/atoms/Icono'
 import { useTheme } from '@contextos/ThemeContext'
 import { fontSize, fontWeight, fuentes, spacing } from '@tema'
 import { textoLegibleSobre } from '@tema/contraste'
-import { web } from '@tema/web'
+import { cuero } from '@tema/madera'
+import { esWeb, web } from '@tema/web'
 
 /*
  * Botón de la biblioteca. El principal es una placa de latón pulido (en la
@@ -70,21 +71,47 @@ const Button: React.FC<ButtonProps> = ({
   const pad = size === 'small' ? spacing.sm : size === 'large' ? spacing.md + 2 : spacing.sm + 4
   const tam = size === 'small' ? fontSize.xs : size === 'large' ? fontSize.md : fontSize.sm
 
-  const placa =
+  /*
+   * Materiales: el principal es LATÓN-MIEL pulido (degradado con bisel y un
+   * BRILLO que recorre la placa al pasar el ratón); el secundario, CUERO con
+   * filete de latón; el de peligro, burdeos lacado. Al pulsar, el botón se
+   * hunde (escala 0,97) y en Android vibra un instante. Solo transform,
+   * opacity y background-position: 60 fps en el iPhone.
+   */
+  const brillo = 'linear-gradient(110deg, rgba(255,255,255,0) 35%, rgba(255,250,230,0.45) 48%, rgba(255,255,255,0) 60%)'
+  const material = (base: string) =>
     variant === 'primary' && !disabled
-      ? web({
-          backgroundImage: isDark
-            ? 'linear-gradient(180deg, #F0C985 0%, #D9A35B 45%, #B88437 100%)'
-            : 'linear-gradient(180deg, #A9603A 0%, #8E4A22 50%, #6F3717 100%)',
+      ? {
+          backgroundImage: `${brillo}, ${base}`,
+          backgroundSize: '260% 100%, 100% 100%',
           boxShadow: isDark
-            ? 'inset 0 1px 0 rgba(255,245,215,0.65), inset 0 -2px 0 rgba(90,55,20,0.35), 0 6px 16px rgba(0,0,0,0.45)'
+            ? 'inset 0 1px 0 rgba(255,245,215,0.7), inset 0 -2px 0 rgba(90,55,20,0.35), 0 6px 16px rgba(20,10,4,0.45)'
             : 'inset 0 1px 0 rgba(255,220,190,0.45), 0 4px 12px rgba(74,46,28,0.35)',
-        })
-      : variant === 'danger' && !disabled
-        ? web({ boxShadow: '0 4px 12px rgba(0,0,0,0.3)' })
-        : variant === 'secondary'
-          ? web({ boxShadow: `inset 0 0 0 1px ${colors.border}` })
+        }
+      : variant === 'secondary' && !disabled
+        ? {
+            backgroundImage: `${brillo}, ${cuero(colors.surfaceLight)}`,
+            backgroundSize: '260% 100%, auto',
+            boxShadow: `inset 0 0 0 1px ${colors.primaryLight}, inset 0 1px 0 rgba(255,235,200,0.12), 0 3px 8px rgba(20,10,4,0.3)`,
+          }
+        : variant === 'danger' && !disabled
+          ? {
+              backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.18), rgba(0,0,0,0.12))',
+              boxShadow: '0 4px 12px rgba(20,10,4,0.3)',
+            }
           : {}
+  const basePrimaria = isDark
+    ? 'linear-gradient(180deg, #F3D08F 0%, #D9A35B 42%, #C9A227 78%, #A9822A 100%)'
+    : 'linear-gradient(180deg, #A9603A 0%, #8E4A22 50%, #6F3717 100%)'
+  const placa = web(material(basePrimaria))
+  const tocar = () => {
+    try {
+      if (esWeb && typeof navigator !== 'undefined') navigator.vibrate?.(8)
+    } catch {
+      /* sin vibración (iPhone) */
+    }
+    onPress()
+  }
 
   const contenedor: ViewStyle = {
     backgroundColor: fondo(),
@@ -111,15 +138,25 @@ const Button: React.FC<ButtonProps> = ({
   return (
     <Pressable
       testID={testID}
-      style={({ pressed }) => [
-        styles.base,
-        contenedor,
-        placa,
-        pressed && { opacity: 0.85, transform: [{ translateY: 1 }] },
-        web({ cursor: disabled ? 'default' : 'pointer', transition: 'transform 120ms ease, opacity 120ms ease' }),
-        style,
-      ]}
-      onPress={onPress}
+      style={(estado) => {
+        /* react-native-web añade hovered y focused al estado del Pressable. */
+        const { pressed, hovered } = estado as { pressed: boolean; hovered?: boolean }
+        return [
+          styles.base,
+          contenedor,
+          placa,
+          hovered && !disabled && web({ backgroundPosition: '0% 0, 0 0', transform: 'translateY(-1px)' }),
+          pressed && { opacity: 0.92, transform: [{ scale: 0.97 }] },
+          web({
+            cursor: disabled ? 'default' : 'pointer',
+            backgroundPosition: hovered ? '0% 0, 0 0' : '100% 0, 0 0',
+            transition:
+              'transform 140ms ease, opacity 140ms ease, background-position 700ms ease, box-shadow 200ms ease',
+          }),
+          style,
+        ]
+      }}
+      onPress={tocar}
       disabled={disabled || loading}
       accessible
       accessibilityRole="button"

@@ -68,6 +68,9 @@ public abstract class PostgresDeVerdad {
 
     protected static final Path DATOS;
 
+    /** LibreTranslate de mentira (contratos v1.3): uno por JVM, como el PostgreSQL. */
+    protected static final TraductorFalso TRADUCTOR = TraductorFalso.arrancar();
+
     static {
         if (DockerClientFactory.instance().isDockerAvailable()) {
             POSTGRES.start();
@@ -82,6 +85,7 @@ public abstract class PostgresDeVerdad {
     @DynamicPropertySource
     static void propiedades(DynamicPropertyRegistry r) {
         r.add("biblioteca.datos", DATOS::toString);
+        r.add("biblioteca.traductor.url", TRADUCTOR::url);
     }
 
     @Autowired protected MockMvc mvc;
@@ -92,7 +96,8 @@ public abstract class PostgresDeVerdad {
     protected void limpiarTodo() throws IOException {
         jdbc.execute("TRUNCATE bah_lib_estante_item, bah_lib_estante, bah_lib_progreso, bah_lib_anotacion, "
                 + "bah_lib_comentario, bah_lib_ejemplar, bah_lib_obra, bah_lib_archivo, bah_lib_trabajo, "
-                + "bah_lib_audio, bah_lib_cambio CASCADE");
+                + "bah_lib_audio, bah_lib_cambio, bah_lib_traduccion CASCADE");
+        TRADUCTOR.reiniciar();
         borrar(DATOS);
         Files.createDirectories(DATOS);
     }

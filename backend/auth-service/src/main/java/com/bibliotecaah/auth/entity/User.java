@@ -28,12 +28,35 @@ public class User {
     @Column(nullable = false, unique = true, length = 150)
     private String email;
 
+    /**
+     * Nombre corto con el que tambien se puede entrar (V3). Siempre en
+     * minusculas y recortado, 3 a 30 caracteres [a-z0-9._-], sin @: lo
+     * normaliza ValidationUtils.normalizarAlias antes de guardarlo y la base lo
+     * exige con ck_usuario_alias_formato. Unico.
+     */
+    @Column(nullable = false, unique = true, length = 30)
+    private String alias;
+
     @Column(nullable = false)
     private String password;
 
     @Column(nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    /**
+     * Version de sesion (V4, QA SE-02). Va en el token como claim "ver". Se
+     * sube al desactivar/reactivar la cuenta, cambiarle los roles o cambiar la
+     * contrasena: los tokens con una version anterior dejan de valer.
+     */
+    @Column(name = "version_sesion", nullable = false)
+    @Builder.Default
+    private Integer versionSesion = 0;
+
+    /** Invalida todos los tokens emitidos hasta ahora para esta cuenta. */
+    public void revocarSesiones() {
+        versionSesion = (versionSesion == null ? 0 : versionSesion) + 1;
+    }
 
     /**
      * Los roles de esta persona.

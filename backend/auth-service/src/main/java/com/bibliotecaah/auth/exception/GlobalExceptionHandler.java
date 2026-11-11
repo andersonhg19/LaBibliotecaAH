@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
                 .map(this::describir)
                 .collect(Collectors.joining("; "));
         if (detalle.isEmpty()) {
-            detalle = "la peticion no cumple las validaciones";
+            detalle = "la petición no cumple las validaciones";
         }
         return respuesta("Revisa los datos enviados: " + detalle + ".", PETICION_INVALIDA);
     }
@@ -68,24 +68,24 @@ public class GlobalExceptionHandler {
                     + recorta(formato.getValue()) + ").", PETICION_INVALIDA);
         }
         if (causa instanceof MismatchedInputException tipo) {
-            return respuesta("El campo '" + campo(tipo) + "' llego con un tipo que no corresponde.",
+            return respuesta("El campo '" + campo(tipo) + "' llegó con un tipo que no corresponde.",
                     PETICION_INVALIDA);
         }
-        return respuesta("El cuerpo de la peticion viene vacio o no es un JSON valido.",
+        return respuesta("El cuerpo de la petición viene vacío o no es un JSON válido.",
                 PETICION_INVALIDA);
     }
 
     /** Falta un parametro de la URL. */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ResultDTO> faltaParametro(MissingServletRequestParameterException ex) {
-        return respuesta("Falta el parametro obligatorio '" + ex.getParameterName() + "'.",
+        return respuesta("Falta el parámetro obligatorio '" + ex.getParameterName() + "'.",
                 PETICION_INVALIDA);
     }
 
     /** Un id de la ruta que no es un numero, por ejemplo /delete/abc. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ResultDTO> parametroConTipoIncorrecto(MethodArgumentTypeMismatchException ex) {
-        return respuesta("El parametro '" + ex.getName() + "' no admite el valor enviado ("
+        return respuesta("El parámetro '" + ex.getName() + "' no admite el valor enviado ("
                 + recorta(ex.getValue()) + ").", PETICION_INVALIDA);
     }
 
@@ -99,7 +99,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ResultDTO> errorNoPrevisto(Exception ex) {
         log.error("Error no previsto atendiendo la peticion: {}", ex.getMessage(), ex);
-        return respuesta("Ocurrio un error inesperado procesando la peticion. Intentalo de nuevo.",
+        return respuesta("Ocurrió un error inesperado procesando la petición. Inténtalo de nuevo.",
                 ERROR_INTERNO);
     }
 

@@ -37,7 +37,7 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
     @Override
     public Pagina buscar(Long usuarioId, FiltroLibrosDTO f, int page, int size) {
         MapSqlParameterSource p = new MapSqlParameterSource("u", usuarioId);
-        StringBuilder where = new StringBuilder(" WHERE e.usuario_id = :u");
+        StringBuilder where = new StringBuilder(" WHERE e.usuario_id = :u AND e.retirado_en IS NULL");
         where.append(pestana(f.getPestana()));
 
         if (f.getTexto() != null && !f.getTexto().isBlank()) {
@@ -47,8 +47,12 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
             p.addValue("texto", "%" + escaparLike(normalizar(f.getTexto().trim())) + "%");
         }
         enLista(where, p, f.getAutores(), "autores", " AND EXISTS (SELECT 1 FROM unnest(o.autores) x WHERE x IN (:autores))");
-        enLista(where, p, f.getGeneros(), "generos", " AND EXISTS (SELECT 1 FROM unnest(o.generos) x WHERE x IN (:generos))");
-        enLista(where, p, f.getEtiquetas(), "etiquetas", " AND EXISTS (SELECT 1 FROM unnest(e.etiquetas) x WHERE x IN (:etiquetas))");
+        /* Generos y etiquetas sin distinguir mayusculas (QA BI-23): "Novela" y
+           "novela" son el mismo genero en el filtro y en las facetas. */
+        enLista(where, p, minusculas(f.getGeneros()), "generos",
+                " AND EXISTS (SELECT 1 FROM unnest(o.generos) x WHERE lower(x) IN (:generos))");
+        enLista(where, p, minusculas(f.getEtiquetas()), "etiquetas",
+                " AND EXISTS (SELECT 1 FROM unnest(e.etiquetas) x WHERE lower(x) IN (:etiquetas))");
         if (f.getFormatos() != null && !f.getFormatos().isEmpty()) {
             where.append(" AND a.formato_original IN (:formatos)");
             p.addValue("formatos", f.getFormatos().stream().map(s -> s.toUpperCase(Locale.ROOT)).toList());
@@ -79,14 +83,16 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
 
     static String pestana(FiltroLibrosDTO.Pestana pestana) {
         return switch (pestana == null ? FiltroLibrosDTO.Pestana.TODO : pestana) {
-            case LEYENDO -> " AND e.tipo <> 'DESEO' AND e.estado = 'LEYENDO'";
-            case POR_LEER -> " AND e.tipo <> 'DESEO' AND e.estado = 'POR_LEER'";
-            case LEIDOS -> " AND e.tipo <> 'DESEO' AND e.estado = 'LEIDO'";
+            /* QA BI-12: las pestanas de libros son SOLO libros. Los documentos
+               personales tienen su pestana (DOCUMENTOS) y los deseos la suya. */
+            case LEYENDO -> " AND e.tipo = 'LIBRO' AND e.estado = 'LEYENDO'";
+            case POR_LEER -> " AND e.tipo = 'LIBRO' AND e.estado = 'POR_LEER'";
+            case LEIDOS -> " AND e.tipo = 'LIBRO' AND e.estado = 'LEIDO'";
             case FAVORITOS -> " AND EXISTS (SELECT 1 FROM bah_lib_estante_item i JOIN bah_lib_estante s "
                     + "ON s.id = i.estante_id WHERE i.ejemplar_id = e.id AND s.usuario_id = :u AND s.tipo = 'FAVORITOS')";
             case DESEOS -> " AND e.tipo = 'DESEO'";
             case DOCUMENTOS -> " AND e.tipo = 'DOCUMENTO'";
-            case TODO -> " AND e.tipo <> 'DESEO'";
+            case TODO -> " AND e.tipo = 'LIBRO'";
         };
     }
 
@@ -96,7 +102,8 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
             case ANTIGUOS -> "e.fecha_llegada ASC";
             case ULTIMO_ABIERTO -> "e.ultima_apertura DESC NULLS LAST, e.fecha_llegada DESC";
             case TITULO -> "lower(o.titulo) ASC";
-            case AUTOR -> "lower(o.autores[1]) ASC NULLS LAST, lower(o.titulo) ASC";
+            // QA BI-24: por apellido (funcion de V4__orden_por_apellido.sql), no por el nombre de pila.
+            case AUTOR -> "bah_clave_autor(o.autores[1]) ASC NULLS LAST, lower(o.autores[1]) ASC, lower(o.titulo) ASC";
             case ANIO -> "o.anio DESC NULLS LAST, lower(o.titulo) ASC";
             case PROGRESO -> "COALESCE(pr.porcentaje, 0) DESC, e.fecha_llegada DESC";
             case CALIFICACION -> "e.calificacion DESC NULLS LAST, lower(o.titulo) ASC";
@@ -106,19 +113,25 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
         return criterio + ", e.id ASC";
     }
 
+    /**
+     * Valores de los filtros con su cuenta, para UNA pestana (QA BI-13): la
+     * cuenta de cada valor es exactamente cuantos ejemplares da ese filtro en
+     * esa pestana. Sin deseos ni documentos en las pestanas de libros, sin
+     * retirados, y generos y etiquetas sin distinguir mayusculas (BI-23).
+     */
     @Override
-    public FacetasDTO facetas(Long usuarioId) {
+    public FacetasDTO facetas(Long usuarioId, FiltroLibrosDTO.Pestana pestana) {
         MapSqlParameterSource p = new MapSqlParameterSource("u", usuarioId);
         String base = " FROM bah_lib_ejemplar e JOIN bah_lib_obra o ON o.id = e.obra_id"
                 + " LEFT JOIN bah_lib_archivo a ON a.id = e.archivo_id";
-        String donde = " WHERE e.usuario_id = :u";
+        String donde = " WHERE e.usuario_id = :u AND e.retirado_en IS NULL" + pestana(pestana);
         return FacetasDTO.builder()
-                .autores(contar("SELECT x AS nombre, COUNT(*) AS n" + base + ", unnest(o.autores) x" + donde
+                .autores(contar("SELECT x AS nombre, COUNT(DISTINCT e.id) AS n" + base + ", unnest(o.autores) x" + donde
                         + " GROUP BY x ORDER BY n DESC, x", p))
-                .generos(contar("SELECT x AS nombre, COUNT(*) AS n" + base + ", unnest(o.generos) x" + donde
-                        + " GROUP BY x ORDER BY n DESC, x", p))
-                .etiquetas(contar("SELECT x AS nombre, COUNT(*) AS n" + base + ", unnest(e.etiquetas) x" + donde
-                        + " GROUP BY x ORDER BY n DESC, x", p))
+                .generos(contar("SELECT min(x COLLATE \"C\") AS nombre, COUNT(DISTINCT e.id) AS n" + base + ", unnest(o.generos) x"
+                        + donde + " GROUP BY lower(x) ORDER BY n DESC, min(x COLLATE \"C\")", p))
+                .etiquetas(contar("SELECT min(x COLLATE \"C\") AS nombre, COUNT(DISTINCT e.id) AS n" + base + ", unnest(e.etiquetas) x"
+                        + donde + " GROUP BY lower(x) ORDER BY n DESC, min(x COLLATE \"C\")", p))
                 .anios(contar("SELECT CAST(o.anio AS TEXT) AS nombre, COUNT(*) AS n" + base + donde
                         + " AND o.anio IS NOT NULL GROUP BY o.anio ORDER BY o.anio DESC", p))
                 .formatos(contar("SELECT a.formato_original AS nombre, COUNT(*) AS n" + base + donde
@@ -129,6 +142,11 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
 
     private List<FacetaDTO> contar(String sql, MapSqlParameterSource p) {
         return jdbc.query(sql, p, (rs, i) -> new FacetaDTO(rs.getString("nombre"), rs.getLong("n")));
+    }
+
+    private static List<String> minusculas(List<String> valores) {
+        return valores == null ? null : valores.stream().filter(java.util.Objects::nonNull)
+                .map(v -> v.toLowerCase(Locale.ROOT)).toList();
     }
 
     private static void enLista(StringBuilder where, MapSqlParameterSource p, List<String> valores,

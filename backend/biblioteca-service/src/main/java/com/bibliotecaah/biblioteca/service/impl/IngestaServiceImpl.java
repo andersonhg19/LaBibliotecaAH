@@ -23,6 +23,9 @@ import com.bibliotecaah.biblioteca.util.Mensajes;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
@@ -100,7 +103,18 @@ public class IngestaServiceImpl implements IngestaService {
                 return rechazo(Message.Msj.formatoNoCoincide, nombre, formato.name());
             }
             TipoEjemplar tipoFinal = tipo == TipoEjemplar.DOCUMENTO ? TipoEjemplar.DOCUMENTO : TipoEjemplar.LIBRO;
-            EjemplarDTO dto = tx.execute(s -> registrar(usuarioId, nombre, formato, sha256, tamano, temporal, tipoFinal));
+            EjemplarDTO dto;
+            try {
+                dto = tx.execute(s -> registrar(usuarioId, nombre, formato, sha256, tamano, temporal, tipoFinal));
+            } catch (DataIntegrityViolationException carrera) {
+                /* QA DA-13: dos subidas del mismo fichero a la vez (dos usuarios,
+                   o doble envio) chocan en UNIQUE(sha256) o en el indice
+                   (usuario, archivo). La transaccion perdedora ya se deshizo y
+                   devolvio el fichero a su temporal; al repetir, encuentra el
+                   archivo (o el ejemplar) que dejo la ganadora. */
+                log.info("Subida simultanea del mismo archivo (sha256 {}): se reintenta una vez", sha256);
+                dto = tx.execute(s -> registrar(usuarioId, nombre, formato, sha256, tamano, temporal, tipoFinal));
+            }
             return new Resultado(dto, null);
         } finally {
             Files.deleteIfExists(temporal);
@@ -129,8 +143,28 @@ public class IngestaServiceImpl implements IngestaService {
             }
             Ejemplar existente = ejemplares.delUsuarioPorArchivo(usuarioId, archivo.getId()).orElse(null);
             if (existente != null) {
-                return ensamblador.uno(usuarioId, existente);
+                /* QA BI-16: ya lo tenia; se devuelve el suyo, marcado. */
+                EjemplarDTO dto = ensamblador.uno(usuarioId, existente);
+                dto.setYaLoTenias(true);
+                return dto;
             }
+        }
+
+        /* QA BI-01: si lo habia retirado, reaparece con sus notas, diario,
+           progreso, estantes y datos, como recien llegado. */
+        Ejemplar retirado = ejemplares.retiradoPorSha256(usuarioId, sha256).stream().findFirst().orElse(null);
+        if (retirado != null) {
+            retirado.setArchivo(archivo);
+            retirado.setRetiradoEn(null);
+            retirado.setFechaLlegada(Instant.now());
+            ejemplares.saveAndFlush(retirado);
+            eventos.publishEvent(new EntityChangeEvent("Ejemplar", retirado.getId().toString(),
+                    EntityChangeEvent.Accion.ACTUALIZAR, usuarioId, "Vuelve: " + nombre));
+            log.info("Usuario {} recupero el ejemplar retirado {} al volver a subir \"{}\"",
+                    usuarioId, retirado.getId(), nombre);
+            EjemplarDTO dto = ensamblador.uno(usuarioId, retirado);
+            dto.setYaLoTenias(false);
+            return dto;
         }
 
         Obra obra = Obra.builder()
@@ -150,16 +184,21 @@ public class IngestaServiceImpl implements IngestaService {
                 .usuarioId(usuarioId)
                 .obra(obra)
                 .archivo(archivo)
+                .archivoSha256(sha256)
                 .tipo(tipo)
                 .estado(EstadoLectura.POR_LEER)
                 .fechaLlegada(Instant.now())
                 .etiquetas(new ArrayList<>())
                 .build();
-        ejemplares.save(ejemplar);
+        /* saveAndFlush: si otra subida simultanea gano la carrera, el choque
+           salta AQUI (DataIntegrityViolationException) e ingerir reintenta. */
+        ejemplares.saveAndFlush(ejemplar);
         eventos.publishEvent(new EntityChangeEvent("Ejemplar", ejemplar.getId().toString(),
                 EntityChangeEvent.Accion.CREAR, usuarioId, nombre));
         log.info("Usuario {} recibio \"{}\" (ejemplar {})", usuarioId, nombre, ejemplar.getId());
-        return ensamblador.uno(usuarioId, ejemplar);
+        EjemplarDTO dto = ensamblador.uno(usuarioId, ejemplar);
+        dto.setYaLoTenias(false);
+        return dto;
     }
 
     private Archivo nuevoArchivo(String nombre, Formato formato, String sha256, long tamano, Path temporal) {
@@ -173,6 +212,11 @@ public class IngestaServiceImpl implements IngestaService {
             log.error("No se pudo guardar el original de {} en {}", nombre, destino, e);
             throw new ValidationException(Message.Msj.originalNoGuardado, CodigoError.ERROR_DE_PROCESO, nombre);
         }
+        /* QA DA-13: si la transaccion no llega a confirmarse (otra subida gano
+           la carrera, o falla la base), el fichero vuelve a su temporal y la
+           carpeta desaparece: sin huerfanos en originales/ y con el fichero a
+           mano para el reintento. */
+        devolverSiSeDeshace(destino, temporal, carpeta);
         Archivo archivo = Archivo.builder()
                 .id(id)
                 .sha256(sha256)
@@ -184,9 +228,25 @@ public class IngestaServiceImpl implements IngestaService {
                 .tienePortada(false)
                 .metadatosAplicados(false)
                 .build();
-        archivos.save(archivo);
+        archivos.saveAndFlush(archivo);
         trabajos.encolarConversion(id);
         return archivo;
+    }
+
+    static void devolverSiSeDeshace(Path destino, Path temporal, Path carpeta) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int estado) {
+                if (estado == STATUS_COMMITTED) return;
+                try {
+                    Files.move(destino, temporal, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    log.warn("No se pudo devolver {} a su temporal: {}", destino, e.getMessage());
+                }
+                AlmacenDeArchivos.borrarArbol(carpeta);
+            }
+        });
     }
 
     static String copiarCalculandoHash(InputStream in, Path destino) throws IOException {

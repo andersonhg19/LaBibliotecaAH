@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 
 import Button from '@componentes/atoms/Button'
@@ -12,7 +13,7 @@ import { useAuth } from '@contextos/AuthContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
 import type { Rutas } from '@navegacion/linking'
-import { Escudo } from '@pantallas/auth/LoginScreen'
+import { CLAVE_REGISTRO_CERRADO, Escudo } from '@pantallas/auth/LoginScreen'
 import { spacing } from '@tema'
 import { web } from '@tema/web'
 import { MENSAJES, mensajeDelServidor } from '@utils/mensajes'
@@ -20,15 +21,19 @@ import { esquemaRegistro, validar } from '@validaciones/index'
 
 type Props = NativeStackScreenProps<Rutas, 'Registro'>
 
-type Campos = { name: string; email: string; password: string; confirmar: string }
+type Campos = { name: string; email: string; alias: string; password: string; confirmar: string }
+
+/** ¿El servidor dijo que el registro público está cerrado? (contrato v1.2: errorCode 403) */
+export const esRegistroCerrado = (err: unknown) => (err as { codigo?: unknown } | null)?.codigo === 403
 
 const RegisterScreen: React.FC<Props> = ({ navigation }) => {
   const { colors } = useTheme()
   const { showToast } = useToast()
   const { register } = useAuth()
-  const [f, setF] = useState<Campos>({ name: '', email: '', password: '', confirmar: '' })
+  const [f, setF] = useState<Campos>({ name: '', email: '', alias: '', password: '', confirmar: '' })
   const [errores, setErrores] = useState<Partial<Record<keyof Campos, string>>>({})
   const [cargando, setCargando] = useState(false)
+  const [cerrado, setCerrado] = useState(false)
   const campo = (k: keyof Campos) => (v: string) => setF((x) => ({ ...x, [k]: v }))
 
   const crear = async () => {
@@ -37,8 +42,13 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
     if (!v.ok) return
     setCargando(true)
     try {
-      await register(v.datos.name, v.datos.email, v.datos.password)
+      await register(v.datos.name, v.datos.email, v.datos.alias, v.datos.password)
     } catch (err) {
+      if (esRegistroCerrado(err)) {
+        setCerrado(true)
+        AsyncStorage.setItem(CLAVE_REGISTRO_CERRADO, '1').catch(() => {})
+        return
+      }
       showToast('error', MENSAJES.registroFallo, mensajeDelServidor(err, MENSAJES.registroRespaldo))
     } finally {
       setCargando(false)
@@ -69,6 +79,7 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
               placeholder="Cómo te llamamos"
               autoComplete="name"
               error={errores.name}
+              testID="registro-nombre"
             />
             <Input
               label="Correo"
@@ -78,15 +89,28 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
               keyboardType="email-address"
               autoComplete="email"
               error={errores.email}
+              testID="registro-correo"
+            />
+            <Input
+              label="Usuario"
+              value={f.alias}
+              onChangeText={campo('alias')}
+              placeholder="p. ej. anderson"
+              autoComplete="username"
+              autoCapitalize="none"
+              ayuda={MENSAJES.aliasAyuda}
+              error={errores.alias}
+              testID="registro-alias"
             />
             <Input
               label="Contraseña"
               value={f.password}
               onChangeText={campo('password')}
-              placeholder="8 o más, con letras y números"
+              placeholder="10 o más, con letras y números"
               secureTextEntry
               autoComplete="new-password"
               error={errores.password}
+              testID="registro-clave"
             />
             <Input
               label="Repite la contraseña"
@@ -96,8 +120,19 @@ const RegisterScreen: React.FC<Props> = ({ navigation }) => {
               autoComplete="new-password"
               error={errores.confirmar}
               onSubmitEditing={crear}
+              testID="registro-confirmar"
             />
-            <Button title="Crear mi cuenta" onPress={crear} loading={cargando} size="large" />
+            {cerrado ? (
+              <View
+                style={[styles.cerrado, { borderColor: colors.warning }]}
+                accessibilityRole="alert"
+                testID="registro-cerrado"
+              >
+                <AppText variant="body">{MENSAJES.registroCerrado}</AppText>
+              </View>
+            ) : (
+              <Button title="Crear mi cuenta" onPress={crear} loading={cargando} size="large" testID="registro-boton" />
+            )}
           </View>
           <Pressable
             onPress={() => navigation.navigate('Entrar')}
@@ -130,6 +165,7 @@ const styles = StyleSheet.create({
   },
   cabecera: { alignItems: 'center', marginBottom: spacing.lg, gap: spacing.md },
   atril: { borderRadius: 14, borderWidth: 1, padding: spacing.lg },
+  cerrado: { borderWidth: 1, borderRadius: 10, padding: spacing.md, marginTop: spacing.sm },
   enlace: {
     flexDirection: 'row',
     justifyContent: 'center',

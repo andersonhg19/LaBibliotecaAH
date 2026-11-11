@@ -66,9 +66,12 @@ class ProgresoYNotasTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("sin fecha usa la del servidor; el porcentaje se acota a 0..100 y el modo por defecto es VISTA")
+        @DisplayName("sin fecha usa la del servidor y el modo por defecto es VISTA; un porcentaje fuera de 0..100 se rechaza (SE-13)")
         void valoresPorDefecto() throws Exception {
-            JsonNode r = pedir(ANDERSON, "/v1/progreso/save", Map.of("ejemplarId", ejemplar, "porcentaje", 250.0));
+            JsonNode fuera = pedir(ANDERSON, "/v1/progreso/save", Map.of("ejemplarId", ejemplar, "porcentaje", 250.0));
+            assertThat(fuera.get("errorCode").asInt()).isEqualTo(120);
+            assertThat(fuera.get("message").asText()).isEqualTo("El campo \"porcentaje\" debe ser un número entre 0 y 100.");
+            JsonNode r = pedir(ANDERSON, "/v1/progreso/save", Map.of("ejemplarId", ejemplar, "porcentaje", 100.0));
             assertThat(r.get("object").get("porcentaje").asDouble()).isEqualTo(100.0);
             assertThat(r.get("object").get("modo").asText()).isEqualTo("VISTA");
             assertThat(r.get("object").get("capitulo").asInt()).isZero();

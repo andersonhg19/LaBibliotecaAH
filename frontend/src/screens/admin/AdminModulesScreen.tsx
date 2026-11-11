@@ -7,13 +7,17 @@ import { useFocusEffect } from '@react-navigation/native'
 import Card from '@componentes/atoms/Card'
 import Spinner from '@componentes/atoms/Spinner'
 import AppText from '@componentes/atoms/Text'
+import Encabezado from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
+import Sala from '@componentes/molecules/Sala'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
 import { exigir, mensajeDeError, useCarga } from '@hooks/useCarga'
 import { adminService } from '@servicios/adminService'
 import { spacing } from '@tema'
+import { textoLegibleSobre } from '@tema/contraste'
 import { ModuloAdmin, PermisoDeRol, Rol } from '@tipos'
+import { estadoElegible } from '@utils/aria'
 
 type Accion = 'canRead' | 'canCreate' | 'canUpdate' | 'canDelete'
 
@@ -125,121 +129,129 @@ const AdminModulesScreen: React.FC = () => {
     }
   }
 
-  if (cargando) return <Spinner fullScreen />
+  if (cargando)
+    return (
+      <Sala>
+        <Encabezado titulo="Módulos y permisos" subtitulo="Administración" atras />
+        <Spinner fullScreen />
+      </Sala>
+    )
 
   if (error) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Sala>
+        <Encabezado titulo="Módulos y permisos" subtitulo="Administración" atras />
         <EstadoError mensaje={error} onReintentar={cargar} />
-      </View>
+      </Sala>
     )
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.contenido}
-      refreshControl={<RefreshControl refreshing={refrescando} onRefresh={refrescar} />}
-    >
-      <AppText variant="caption" color={colors.textSecondary} style={styles.explicacion}>
-        Un modulo es una parte de La Biblioteca. Lo que marques aqui decide que ve el rol elegido cuando entra.
-      </AppText>
+    <Sala>
+      <Encabezado titulo="Módulos y permisos" subtitulo="Administración" atras />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contenido}
+        refreshControl={<RefreshControl refreshing={refrescando} onRefresh={refrescar} />}
+      >
+        <AppText variant="caption" color={colors.textSecondary} style={styles.explicacion}>
+          Un módulo es una parte de La Biblioteca. Lo que marques aquí decide qué ve el rol elegido cuando entra.
+        </AppText>
 
-      <View style={styles.selectorDeRol}>
-        {roles.map((rol) => {
-          const elegido = rol.name === rolElegido
-          return (
-            <TouchableOpacity
-              key={rol.id}
-              onPress={() => elegirRol(rol.name)}
-              style={[
-                styles.chipRol,
-                {
-                  backgroundColor: elegido ? colors.primary : 'transparent',
-                  borderColor: elegido ? colors.primary : colors.border,
-                },
-              ]}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: elegido }}
-              accessibilityLabel={`Ver los permisos del rol ${rol.name}`}
-              testID={`elegir-rol-${rol.name}`}
-            >
-              <AppText variant="caption" color={elegido ? colors.background : colors.textSecondary}>
-                {rol.name}
-              </AppText>
-            </TouchableOpacity>
-          )
-        })}
-      </View>
-
-      {modulos.map((modulo) => (
-        <Card key={modulo.id} style={styles.tarjeta}>
-          <View style={styles.cabecera}>
-            <AppText variant="body" style={styles.nombreModulo}>
-              {modulo.name}
-            </AppText>
-            <AppText variant="caption" color={modulo.active ? colors.success : colors.textMuted}>
-              {modulo.active ? 'Activo' : 'Desactivado'}
-            </AppText>
-          </View>
-
-          {modulo.pages.map((pagina) => {
-            const permiso = porPagina.get(pagina.id)
+        <View style={styles.selectorDeRol}>
+          {roles.map((rol) => {
+            const elegido = rol.name === rolElegido
             return (
-              <View key={pagina.id} style={[styles.fila, { borderTopColor: colors.border }]}>
-                <View style={styles.datosPagina}>
-                  <AppText variant="caption">{pagina.name}</AppText>
-                  <AppText variant="caption" color={colors.textMuted}>
-                    {pagina.inMenu ? 'En el menu' : 'Solo desde dentro'}
-                  </AppText>
-                </View>
-
-                <View style={styles.acciones}>
-                  {ACCIONES.map(({ clave, rotulo, verbo }) => {
-                    const concedido = !!permiso?.[clave]
-                    return (
-                      <TouchableOpacity
-                        key={clave}
-                        onPress={() => alternar(pagina.id, clave)}
-                        disabled={guardando === pagina.id}
-                        style={[
-                          styles.casilla,
-                          {
-                            backgroundColor: concedido ? colors.accent : 'transparent',
-                            borderColor: concedido ? colors.accent : colors.border,
-                          },
-                        ]}
-                        accessibilityRole="switch"
-                        accessibilityState={{
-                          checked: concedido,
-                          disabled: guardando === pagina.id,
-                        }}
-                        accessibilityLabel={
-                          concedido
-                            ? `Quitar a ${rolElegido} el permiso de ${verbo} ${pagina.name}`
-                            : `Dar a ${rolElegido} el permiso de ${verbo} ${pagina.name}`
-                        }
-                        testID={`permiso-${pagina.id}-${clave}`}
-                      >
-                        <AppText variant="caption" color={concedido ? colors.background : colors.textMuted}>
-                          {rotulo}
-                        </AppText>
-                      </TouchableOpacity>
-                    )
-                  })}
-                </View>
-              </View>
+              <TouchableOpacity
+                key={rol.id}
+                onPress={() => elegirRol(rol.name)}
+                style={[
+                  styles.chipRol,
+                  {
+                    backgroundColor: elegido ? colors.primary : 'transparent',
+                    borderColor: elegido ? colors.primary : colors.border,
+                  },
+                ]}
+                {...estadoElegible('radio', elegido)}
+                accessibilityLabel={`Ver los permisos del rol ${rol.name}`}
+                testID={`elegir-rol-${rol.name}`}
+              >
+                <AppText variant="caption" color={elegido ? colors.background : colors.textSecondary}>
+                  {rol.name}
+                </AppText>
+              </TouchableOpacity>
             )
           })}
-        </Card>
-      ))}
-    </ScrollView>
+        </View>
+
+        {modulos.map((modulo) => (
+          <Card key={modulo.id} style={styles.tarjeta}>
+            <View style={styles.cabecera}>
+              <AppText variant="body" style={styles.nombreModulo}>
+                {modulo.name}
+              </AppText>
+              <AppText variant="caption" color={modulo.active ? colors.success : colors.textMuted}>
+                {modulo.active ? 'Activo' : 'Desactivado'}
+              </AppText>
+            </View>
+
+            {modulo.pages.map((pagina) => {
+              const permiso = porPagina.get(pagina.id)
+              return (
+                <View key={pagina.id} style={[styles.fila, { borderTopColor: colors.border }]}>
+                  <View style={styles.datosPagina}>
+                    <AppText variant="caption">{pagina.name}</AppText>
+                    <AppText variant="caption" color={colors.textMuted}>
+                      {pagina.inMenu ? 'En el menú' : 'Solo desde dentro'}
+                    </AppText>
+                  </View>
+
+                  <View style={styles.acciones}>
+                    {ACCIONES.map(({ clave, rotulo, verbo }) => {
+                      const concedido = !!permiso?.[clave]
+                      return (
+                        <TouchableOpacity
+                          key={clave}
+                          onPress={() => alternar(pagina.id, clave)}
+                          disabled={guardando === pagina.id}
+                          style={[
+                            styles.casilla,
+                            {
+                              backgroundColor: concedido ? colors.primary : 'transparent',
+                              borderColor: concedido ? colors.primary : colors.border,
+                            },
+                          ]}
+                          {...estadoElegible('switch', concedido, guardando === pagina.id)}
+                          accessibilityLabel={
+                            concedido
+                              ? `Quitar a ${rolElegido} el permiso de ${verbo} ${pagina.name}`
+                              : `Dar a ${rolElegido} el permiso de ${verbo} ${pagina.name}`
+                          }
+                          testID={`permiso-${pagina.id}-${clave}`}
+                        >
+                          <AppText
+                            variant="caption"
+                            color={concedido ? textoLegibleSobre(colors.primary) : colors.textSecondary}
+                          >
+                            {concedido ? `✓ ${rotulo}` : rotulo}
+                          </AppText>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                </View>
+              )
+            })}
+          </Card>
+        ))}
+      </ScrollView>
+    </Sala>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  contenido: { padding: spacing.md, paddingBottom: spacing.xl },
+  contenido: { padding: spacing.md, paddingBottom: spacing.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   explicacion: { marginBottom: spacing.md },
   selectorDeRol: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.md },
   chipRol: {

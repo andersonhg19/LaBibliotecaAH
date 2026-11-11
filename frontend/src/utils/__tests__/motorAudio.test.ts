@@ -1,6 +1,14 @@
 import type { EstadoAudioDTO, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import { MENSAJES } from '@utils/mensajes'
-import { DependenciasMotor, MotorAudio, SILENCIO } from '@utils/motorAudio'
+import {
+  DependenciasMotor,
+  MotorAudio,
+  SILENCIO,
+  acotar,
+  estimarPreparacion,
+  faltaParaEstar,
+  textoEspera,
+} from '@utils/motorAudio'
 
 /** Un <audio> de mentira: lo justo para que el motor crea que suena. */
 class AudioFalso {
@@ -245,5 +253,271 @@ describe('El motor de la voz', () => {
       posicionAudioSeg: 12,
       dispositivo: 'PC',
     })
+  })
+})
+
+/* ------------------------------------------------------------------ regresiones del QA lector/voz */
+
+const LIBRO3 = {
+  ...LIBRO,
+  capitulos: [
+    { indice: 0, titulo: 'Uno', minutos: 2 },
+    { indice: 1, titulo: 'Dos', minutos: 3 },
+    { indice: 2, titulo: 'Tres', minutos: 2 },
+  ],
+}
+
+/** LISTO con la voz en la URL, para distinguir qué voz suena. */
+const listoVoz = (vozId: string, cap: number): ResultDTO<EstadoAudioDTO> => ({
+  ...listo(cap),
+  object: { ...listo(cap).object!, url1x: `/a/${vozId}/cap-${cap}.m4a`, url2x: `/a/${vozId}/cap-${cap}-2x.m4a` },
+})
+const errorCapitulo = (error: string): ResultDTO<EstadoAudioDTO> => ({
+  ...generando,
+  object: { ...generando.object!, estado: 'ERROR', error },
+})
+
+describe('QA LV-02: un corte de red o un capítulo fallido no dejan la voz muerta', () => {
+  afterEach(() => jest.useRealTimers())
+
+  it('sin red al pasar de capítulo, ▶ reintenta ESE capítulo y suena', async () => {
+    let red = true
+    const { motor, el } = montar(async (d) => {
+      if (!red) throw new Error('Network Error')
+      return listo(d.capitulo)
+    })
+    motor.abrir(LIBRO3, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    red = false
+    el.emitir('ended')
+    await esperar()
+    expect(motor.obtener().fase).toBe('error')
+    expect(motor.obtener().capitulo).toBe(1)
+    red = true
+    motor.reproducir()
+    await esperar()
+    expect(motor.obtener().capitulo).toBe(1)
+    expect(el.src).toBe('/a/cap-1.m4a')
+    expect(el.paused).toBe(false)
+    expect(motor.obtener().fase).toBe('reproduciendo')
+    motor.detener()
+  })
+
+  it('sin red se reintenta solo, con espera creciente', async () => {
+    jest.useFakeTimers()
+    let veces = 0
+    const { motor } = montar(async (d) => {
+      veces++
+      if (veces < 3) throw new Error('Network Error')
+      return listo(d.capitulo)
+    })
+    motor.abrir(LIBRO3, { capitulo: 1, vozId: 'v', velocidad: 1 })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(motor.obtener().fase).toBe('error')
+    expect(motor.obtener().tipoError).toBe('red')
+    await jest.advanceTimersByTimeAsync(2100)
+    expect(veces).toBe(2)
+    await jest.advanceTimersByTimeAsync(4100)
+    expect(veces).toBe(3)
+    expect(motor.obtener().fase).toBe('reproduciendo')
+  })
+
+  it('«Capítulo siguiente» no se salta el capítulo que no se pudo oír', async () => {
+    let red = true
+    const { motor, el } = montar(async (d) => {
+      if (!red) throw new Error('Network Error')
+      return listo(d.capitulo)
+    })
+    motor.abrir(LIBRO3, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    red = false
+    el.emitir('ended')
+    await esperar()
+    red = true
+    motor.capituloSiguiente()
+    await esperar()
+    expect(motor.obtener().capitulo).toBe(1)
+    expect(el.src).toBe('/a/cap-1.m4a')
+    expect(el.paused).toBe(false)
+    motor.detener()
+  })
+
+  it('capítulo en ERROR (v1.2): dice el porqué, no insiste solo y «Reintentar» lo pide explícitamente', async () => {
+    jest.useFakeTimers()
+    let falla = true
+    const pedir = jest.fn(async (d: { capitulo: number }) =>
+      falla ? errorCapitulo('El motor de voz no respondió.') : listo(d.capitulo),
+    )
+    const { motor } = montar(pedir)
+    motor.abrir(LIBRO3, { capitulo: 1, vozId: 'v', velocidad: 1 })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(motor.obtener().fase).toBe('error')
+    expect(motor.obtener().tipoError).toBe('capitulo')
+    expect(motor.obtener().mensaje).toContain('El motor de voz no respondió.')
+    await jest.advanceTimersByTimeAsync(60_000)
+    expect(pedir).toHaveBeenCalledTimes(1)
+    falla = false
+    motor.reintentar()
+    await jest.advanceTimersByTimeAsync(10)
+    expect(pedir).toHaveBeenCalledTimes(2)
+    expect((pedir.mock.calls[1] as unknown[])[1]).toEqual({ reintentar: true })
+    expect(motor.obtener().fase).toBe('reproduciendo')
+  })
+
+  it('si el archivo no carga, ▶ lo vuelve a pedir desde donde iba', async () => {
+    const { motor, el } = montar()
+    motor.abrir(LIBRO3, { capitulo: 0, posicion: 30, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.emitir('loadedmetadata')
+    el.emitir('error')
+    expect(motor.obtener().fase).toBe('error')
+    el.src = ''
+    motor.reproducir()
+    await esperar()
+    el.emitir('loadedmetadata')
+    expect(el.src).toBe('/a/cap-0.m4a')
+    expect(el.currentTime).toBe(30)
+    expect(motor.obtener().fase).toBe('reproduciendo')
+    motor.detener()
+  })
+})
+
+describe('QA LV-03: al cerrar o caducar la sesión la voz se calla y se olvida', () => {
+  it('detener({ servidor: false }) para, guarda solo en el teléfono y deja el motor vacío', async () => {
+    const guardadosLocales: ProgresoDTO[] = []
+    const el = new AudioFalso()
+    const servidor: ProgresoDTO[] = []
+    const motor = new MotorAudio({
+      crearAudio: () => el as unknown as HTMLAudioElement,
+      pedirEstado: async (d) => listo(d.capitulo),
+      cargarTiempos: async () => TIEMPOS,
+      guardarServidor: async (p) => servidor.push(p),
+      guardarLocal: async (p) => guardadosLocales.push(p),
+      resolverUrl: (r) => r,
+      dispositivo: () => 'PC',
+      ahora: () => 1_000_000,
+    })
+    motor.abrir(LIBRO, { capitulo: 0, posicion: 12, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.emitir('loadedmetadata')
+    servidor.length = 0
+    motor.detener({ servidor: false })
+    expect(el.paused).toBe(true)
+    expect(servidor).toHaveLength(0)
+    expect(guardadosLocales[guardadosLocales.length - 1]).toMatchObject({ ejemplarId: 'e1', posicionAudioSeg: 12 })
+    expect(motor.obtener().libro).toBeNull()
+    expect(motor.obtener().fase).toBe('inactivo')
+    motor.reproducir()
+    expect(el.paused).toBe(true)
+  })
+})
+
+describe('QA LV-07 y LV-09: cambiar de voz', () => {
+  afterEach(() => jest.useRealTimers())
+
+  it('con la voz sonando, la actual sigue hasta que la nueva está lista y cambia en la misma frase', async () => {
+    jest.useFakeTimers()
+    let tomasListo = false
+    const { motor, el } = montar(async (d) =>
+      d.vozId === 'tomas' && !tomasListo ? generando : listoVoz(d.vozId, d.capitulo),
+    )
+    motor.abrir(LIBRO, { capitulo: 0, posicion: 12, vozId: 'alvaro', nombreVoz: 'Álvaro', velocidad: 1 })
+    await jest.advanceTimersByTimeAsync(10)
+    el.emitir('loadedmetadata')
+    expect(motor.obtener().fraseId).toBe('c000-s00001')
+    motor.setVoz('tomas', 'Tomás')
+    await jest.advanceTimersByTimeAsync(10)
+    expect(el.paused).toBe(false)
+    expect(el.src).toBe('/a/alvaro/cap-0.m4a')
+    expect(motor.obtener().fase).toBe('reproduciendo')
+    expect(motor.obtener().vozPendiente).toMatchObject({ id: 'tomas', nombre: 'Tomás' })
+    tomasListo = true
+    await jest.advanceTimersByTimeAsync(3100)
+    el.emitir('loadedmetadata')
+    expect(el.src).toBe('/a/tomas/cap-0.m4a')
+    expect(motor.obtener().vozId).toBe('tomas')
+    expect(motor.obtener().vozPendiente).toBeNull()
+    expect(el.currentTime).toBe(10)
+    expect(el.paused).toBe(false)
+  })
+
+  it('volver a la voz que suena mientras se prepara otra cancela el cambio y no la pausa', async () => {
+    jest.useFakeTimers()
+    const { motor, el } = montar(async (d) => (d.vozId === 'tomas' ? generando : listoVoz(d.vozId, d.capitulo)))
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'alvaro', nombreVoz: 'Álvaro', velocidad: 1 })
+    await jest.advanceTimersByTimeAsync(10)
+    motor.setVoz('tomas', 'Tomás')
+    await jest.advanceTimersByTimeAsync(10)
+    motor.setVoz('alvaro', 'Álvaro')
+    await jest.advanceTimersByTimeAsync(10_000)
+    expect(motor.obtener().vozPendiente).toBeNull()
+    expect(motor.obtener().vozId).toBe('alvaro')
+    expect(el.paused).toBe(false)
+    expect(motor.obtener().fase).toBe('reproduciendo')
+  })
+
+  it('en pausa, al quedar lista la nueva voz desaparece «Preparando…» (LV-09)', async () => {
+    jest.useFakeTimers()
+    let veces = 0
+    const { motor, el } = montar(async (d) =>
+      d.vozId === 'gonzalo' && ++veces < 2 ? generando : listoVoz(d.vozId, d.capitulo),
+    )
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'alvaro', nombreVoz: 'Álvaro', velocidad: 1 })
+    await jest.advanceTimersByTimeAsync(10)
+    motor.pausar()
+    motor.setVoz('gonzalo', 'Gonzalo')
+    await jest.advanceTimersByTimeAsync(10)
+    expect(motor.obtener().fase).toBe('preparando')
+    expect(motor.obtener().mensaje).toBe(MENSAJES.vozPreparando('Gonzalo'))
+    await jest.advanceTimersByTimeAsync(3100)
+    expect(el.src).toBe('/a/gonzalo/cap-0.m4a')
+    expect(motor.obtener().fase).toBe('pausado')
+    expect(motor.obtener().mensaje).toBeNull()
+    expect(el.paused).toBe(true)
+  })
+})
+
+describe('La espera del taller se cuenta (UX-11)', () => {
+  it('estima por los minutos del capítulo o usa la del servidor', () => {
+    expect(estimarPreparacion(3)).toBe(22)
+    expect(estimarPreparacion(3, 95)).toBe(95)
+  })
+  it('dice cuánto falta y, si se pasa, que tarda más de lo normal', () => {
+    const e = { desde: 0, estimadoSeg: 22 }
+    expect(textoEspera('Preparando la voz de Álvaro…', e, 0)).toBe('Preparando la voz de Álvaro… (≈ 25 s)')
+    expect(textoEspera('Preparando la voz de Álvaro…', { desde: 0, estimadoSeg: 150 }, 0)).toBe(
+      'Preparando la voz de Álvaro… (≈ 3 min)',
+    )
+    expect(textoEspera('Preparando la voz de Álvaro…', e, 30_000)).toMatch(/tarda más de lo normal/)
+    expect(faltaParaEstar(e, 30_000)).toBeNull()
+  })
+  it('mientras prepara, el estado trae la espera para pintarla', async () => {
+    const { motor } = montar(async () => generando)
+    motor.abrir(LIBRO3, { capitulo: 1, vozId: 'v', velocidad: 1 })
+    await esperar()
+    expect(motor.obtener().preparacion).toEqual({ desde: 1_000_000, estimadoSeg: estimarPreparacion(3) })
+    motor.detener()
+  })
+})
+
+describe('Contrato v1.2 del progreso', () => {
+  it('a 5x el progreso guarda 5 (el servidor acepta 0.25–5) y todo finito', async () => {
+    const { motor, el, servidor } = montar()
+    motor.abrir(LIBRO, { capitulo: 0, posicion: 12, vozId: 'v', velocidad: 5 })
+    await esperar()
+    el.emitir('loadedmetadata')
+    expect(motor.obtener().velocidad).toBe(5)
+    motor.pausar()
+    const p = servidor[servidor.length - 1]
+    expect(p.velocidad).toBe(5)
+    expect(Number.isFinite(p.porcentaje) && p.porcentaje >= 0 && p.porcentaje <= 100).toBe(true)
+    expect(p.posicionAudioSeg).toBeGreaterThanOrEqual(0)
+  })
+  it('acotar deja los valores dentro del rango y cambia NaN por el de por defecto', () => {
+    expect(acotar(5, 0.25, 4, 1)).toBe(4)
+    expect(acotar(Number.NaN, 0, 100, 0)).toBe(0)
+    expect(acotar(-3, 0, 100, 0)).toBe(0)
   })
 })

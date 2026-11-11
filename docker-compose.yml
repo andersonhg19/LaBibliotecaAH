@@ -1,5 +1,6 @@
 # La Biblioteca AH - stack completo.
 # Desarrollo:  docker compose up -d   (con .env basado en .env.ejemplo)
+# QA en casa:  otro proyecto (-p biblioteca-ah-qa) con PUERTO_* distintos en su .env (ver documentación/despliegue.md)
 # Casa:        mismas imagenes construidas en el PC de desarrollo, cargadas con docker load (ver documentación/despliegue.md)
 name: biblioteca-ah
 
@@ -21,7 +22,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
       TZ: America/Bogota
       PGTZ: America/Bogota
-    ports: ["127.0.0.1:5433:5432"]
+    ports: ["127.0.0.1:${PUERTO_POSTGRES:-5433}:5432"]
     volumes:
       - bah-postgres-data:/var/lib/postgresql/data
     mem_limit: 384m
@@ -36,7 +37,7 @@ services:
     <<: *java
     image: bah/discovery-service:${TAG:-latest}
     build: {context: ./backend, dockerfile: discovery-service/Dockerfile}
-    ports: ["127.0.0.1:8860:8860"]
+    ports: ["127.0.0.1:${PUERTO_DISCOVERY:-8860}:8860"]
     mem_limit: 384m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8860/actuator/health"]
@@ -50,7 +51,7 @@ services:
     environment:
       <<: *java-env
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS en .env}
-    ports: ["127.0.0.1:8920:8920"]
+    ports: ["127.0.0.1:${PUERTO_GATEWAY:-8920}:8920"]
     mem_limit: 384m
     depends_on:
       discovery-service: {condition: service_healthy}
@@ -65,11 +66,16 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-biblioteca}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SECRET: ${SECRET:?Define SECRET en .env}
-      EXP_TIME: ${EXP_TIME:-864000000}
+      # Vida del token en ms (24 h); la web lo renueva con /v1/auth/renovar (QA SE-02).
+      EXP_TIME: ${EXP_TIME:-86400000}
+      # Alta publica cerrada por defecto: las cuentas las crea un ADMIN (QA SE-03).
+      REGISTRO_PUBLICO: ${REGISTRO_PUBLICO:-false}
+      # Proxies de confianza delante de auth para saber el origen de un login (QA SE-08).
+      LOGIN_PROXIES_CONFIABLES: ${LOGIN_PROXIES_CONFIABLES:-2}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       SEED_ANDERSON_PASSWORD: ${SEED_ANDERSON_PASSWORD:-}
       SEED_SAMY_PASSWORD: ${SEED_SAMY_PASSWORD:-}
-    ports: ["127.0.0.1:8921:8921"]
+    ports: ["127.0.0.1:${PUERTO_AUTH:-8921}:8921"]
     mem_limit: 448m
     depends_on:
       postgres: {condition: service_healthy}
@@ -87,10 +93,25 @@ services:
       SECRET: ${SECRET}
       BIBLIOTECA_DATOS: /datos
       TALLER_URL: http://taller:8926
+      # Confirma cada sesion con auth-service, con cache de SESION_CACHE_SEGUNDOS (QA SE-02).
+      AUTH_URL: http://auth-service:8921
+      SESION_CACHE_SEGUNDOS: ${SESION_CACHE_SEGUNDOS:-30}
+      # Topes de subida (QA SE-07).
+      BIBLIOTECA_MAX_ARCHIVO: ${BIBLIOTECA_MAX_ARCHIVO:-300MB}
+      BIBLIOTECA_MAX_SUBIDA: ${BIBLIOTECA_MAX_SUBIDA:-1GB}
+      BIBLIOTECA_MAX_ARCHIVOS_POR_SUBIDA: ${BIBLIOTECA_MAX_ARCHIVOS_POR_SUBIDA:-20}
+      BIBLIOTECA_ESPACIO_MINIMO_MB: ${BIBLIOTECA_ESPACIO_MINIMO_MB:-1024}
+      BIBLIOTECA_MAX_ESTANTES: ${BIBLIOTECA_MAX_ESTANTES:-100}
       BUZON_USUARIOS: ${BUZON_USUARIOS:-}
+      # Traductor autoalojado (contratos v1.3). Sin depends_on a proposito: si el traductor no
+      # esta, solo la traduccion responde 503; el resto de la biblioteca sigue igual.
+      TRADUCTOR_URL: ${TRADUCTOR_URL:-http://traductor:5000}
+      TRADUCTOR_IDIOMAS: ${TRADUCTOR_IDIOMAS:-en,es}
+      TRADUCTOR_CARACTERES_POR_MINUTO: ${TRADUCTOR_CARACTERES_POR_MINUTO:-20000}
+      TRADUCTOR_CAPITULOS_POR_HORA: ${TRADUCTOR_CAPITULOS_POR_HORA:-30}
     volumes:
       - ${DATOS_HOST:-./datos-dev}:/datos
-    ports: ["127.0.0.1:8925:8925"]
+    ports: ["127.0.0.1:${PUERTO_BIBLIOTECA:-8925}:8925"]
     mem_limit: 640m
     depends_on:
       postgres: {condition: service_healthy}
@@ -106,12 +127,32 @@ services:
       TZ: America/Bogota
     volumes:
       - ${DATOS_HOST:-./datos-dev}:/datos
-    ports: ["127.0.0.1:8926:8926"]
+    ports: ["127.0.0.1:${PUERTO_TALLER:-8926}:8926"]
     mem_limit: 2g
     depends_on:
       postgres: {condition: service_healthy}
       # Las tablas bah_lib_* las crea Flyway en biblioteca-service.
       biblioteca-service: {condition: service_healthy}
+    networks: [biblioteca-ah]
+
+  # Traductor autoalojado (contratos v1.3.1): servicio propio con Opus-MT (Helsinki-NLP) en CTranslate2 int8,
+  # CPU, y la API de LibreTranslate que usa biblioteca-service. Los modelos en<->es van DENTRO de la imagen
+  # (se convierten al construirla): arranca sin internet en segundos, sin volumen. SIN puerto publicado (solo
+  # lo ve biblioteca-service por la red interna; asi QA y produccion no chocan). Usuario no root (uid 10002).
+  traductor:
+    image: bah/traductor:${TAG:-latest}
+    build: ./traductor
+    restart: unless-stopped
+    environment:
+      TRADUCTOR_IDIOMAS: ${TRADUCTOR_IDIOMAS:-en,es}
+      # Hilos de CTranslate2 por lote y lotes que traduce a la vez (medido en casa: 4 x 1).
+      TRADUCTOR_HILOS: ${TRADUCTOR_HILOS:-4}
+      TRADUCTOR_LOTES_PARALELOS: ${TRADUCTOR_LOTES_PARALELOS:-1}
+      TRADUCTOR_BEAM: ${TRADUCTOR_BEAM:-4}
+      TRADUCTOR_MAX_CARACTERES: "20000"
+      TRADUCTOR_MAX_TEXTOS: "100"
+      TZ: America/Bogota
+    mem_limit: 768m
     networks: [biblioteca-ah]
 
   frontend:
@@ -121,7 +162,7 @@ services:
       args:
         EXPO_PUBLIC_API_URL: ${API_URL:-http://localhost:8920}
     restart: unless-stopped
-    ports: ["127.0.0.1:3100:3100"]
+    ports: ["127.0.0.1:${PUERTO_WEB:-3100}:3100"]
     mem_limit: 256m
     networks: [biblioteca-ah]
 

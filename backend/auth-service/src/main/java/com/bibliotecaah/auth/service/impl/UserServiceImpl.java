@@ -10,8 +10,13 @@ import com.bibliotecaah.auth.entity.User;
 import com.bibliotecaah.auth.mapper.UserMapper;
 import com.bibliotecaah.auth.repository.RoleRepository;
 import com.bibliotecaah.auth.repository.UserRepository;
+import com.bibliotecaah.auth.enums.Message;
+import com.bibliotecaah.auth.security.EmisorDeTokens;
+import com.bibliotecaah.auth.util.Mensajes;
 import com.bibliotecaah.auth.service.UserService;
 import com.bibliotecaah.auth.util.SecurityUtils;
+import com.bibliotecaah.auth.util.ValidacionDeAlias;
+import com.bibliotecaah.auth.util.ValidationUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -38,15 +43,24 @@ public class UserServiceImpl implements UserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
+    private final ValidacionDeAlias validacionDeAlias;
+    private final EmisorDeTokens tokens;
+    private final Mensajes mensajes;
 
     public UserServiceImpl(UserRepository userRepository,
                            RoleRepository roleRepository,
                            PasswordEncoder passwordEncoder,
-                           UserMapper userMapper) {
+                           UserMapper userMapper,
+                           ValidacionDeAlias validacionDeAlias,
+                           EmisorDeTokens tokens,
+                           Mensajes mensajes) {
+        this.tokens = tokens;
+        this.mensajes = mensajes;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.userMapper = userMapper;
+        this.validacionDeAlias = validacionDeAlias;
     }
 
     /**
@@ -67,6 +81,7 @@ public class UserServiceImpl implements UserService {
             UserSaveDTO alta = new UserSaveDTO();
             alta.setName(dto.getName());
             alta.setEmail(dto.getEmail());
+            alta.setAlias(dto.getAlias());
             alta.setPassword(dto.getPassword());
             return createUser(alta);
         } catch (Exception e) {
@@ -98,12 +113,25 @@ public class UserServiceImpl implements UserService {
             return new ResultDTO(false, "La contraseña es obligatoria", 101);
         }
 
-        if (userRepository.existsByEmailAndActiveTrue(dto.getEmail())) {
+        if (ValidationUtils.esClaveDebil(dto.getPassword())) {
+            return new ResultDTO(false, mensajes.texto(Message.Msj.claveDebil), ValidacionDeAlias.DATO_INVALIDO);
+        }
+        dto.setEmail(ValidationUtils.normalizarCorreo(dto.getEmail()));
+        /* Activa O NO y sin distinguir mayusculas (QA SE-04 y SE-10): antes solo
+           miraba las activas y el correo exacto, asi que el de una cuenta
+           desactivada daba un 500 y "ANA@x" creaba una gemela de "ana@x". */
+        if (userRepository.existeCorreo(dto.getEmail())) {
             /* No hay forma de rechazar un correo repetido sin revelar que
                existe (sin verificacion por correo); al menos el mensaje no lo
                grita y lleva a iniciar sesion. */
             return new ResultDTO(false,
                     "No se pudo crear la cuenta con ese correo. Si ya tienes una, inicia sesión.", 102);
+        }
+
+        /* El alias es obligatorio en el alta (V3): con el se puede entrar. */
+        Optional<ResultDTO> aliasMalo = validacionDeAlias.problema(dto.getAlias(), null);
+        if (aliasMalo.isPresent()) {
+            return aliasMalo.get();
         }
 
         /* El alta publica nace con el rol USER. En Oh Churus se creaba sin
@@ -120,6 +148,7 @@ public class UserServiceImpl implements UserService {
         User user = User.builder()
                 .name(dto.getName())
                 .email(dto.getEmail())
+                .alias(ValidationUtils.normalizarAlias(dto.getAlias()))
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .active(true)
                 .roles(roles)
@@ -142,8 +171,19 @@ public class UserServiceImpl implements UserService {
             return new ResultDTO(false, "Usuario no encontrado", 103);
         }
 
-        if (userRepository.existsByEmailAndActiveTrueAndIdNot(dto.getEmail(), dto.getId())) {
+        dto.setEmail(ValidationUtils.normalizarCorreo(dto.getEmail()));
+        if (userRepository.existeCorreoEnOtraCuenta(dto.getEmail(), dto.getId())) {
             return new ResultDTO(false, "Ese correo no está disponible", 102);
+        }
+
+        /* El alias es opcional al editar: si no llega, se conserva. Si llega,
+           pasa las mismas reglas que en el alta (sin contar la propia cuenta
+           en la unicidad: guardar sin cambiarlo no es un duplicado). */
+        if (dto.getAlias() != null) {
+            Optional<ResultDTO> aliasMalo = validacionDeAlias.problema(dto.getAlias(), dto.getId());
+            if (aliasMalo.isPresent()) {
+                return aliasMalo.get();
+            }
         }
 
         User user = existing.get();
@@ -156,17 +196,32 @@ public class UserServiceImpl implements UserService {
             log.warn("Cambio de contrasena rechazado: la actual no coincide (usuario {})", user.getId());
             return new ResultDTO(false, "La contraseña actual no es correcta", 400);
         }
+        if (cambiaClave && ValidationUtils.esClaveDebil(dto.getPassword())) {
+            return new ResultDTO(false, mensajes.texto(Message.Msj.claveDebil), ValidacionDeAlias.DATO_INVALIDO);
+        }
 
         user.setName(dto.getName());
         user.setEmail(dto.getEmail());
+        if (dto.getAlias() != null) {
+            user.setAlias(ValidationUtils.normalizarAlias(dto.getAlias()));
+        }
 
         if (cambiaClave) {
             user.setPassword(passwordEncoder.encode(dto.getPassword()));
+            /* QA SE-02: cambiar la clave cierra las demas sesiones (un token
+               robado deja de valer). La sesion actual recibe un token nuevo en
+               la respuesta para no echar a quien acaba de cambiarla. */
+            user.revocarSesiones();
         }
 
         User saved = userRepository.save(user);
         log.info("User updated: {}", saved.getEmail());
-        return new ResultDTO(userMapper.toResultDTO(saved));
+        ResultUserDTO salida = userMapper.toResultDTO(saved);
+        if (cambiaClave) {
+            User conRoles = userRepository.findByIdWithRoles(saved.getId()).orElse(saved);
+            salida.setToken(tokens.emitir(saved, EmisorDeTokens.rolesActivos(conRoles)));
+        }
+        return new ResultDTO(salida);
     }
 
     @Override
@@ -207,7 +262,7 @@ public class UserServiceImpl implements UserService {
          *   · con correo -> coincidencia EXACTA, nunca parcial.
          * Se pierde el listado libre, que no lo usaba ninguna pantalla.
          */
-        String correoBuscado = filter.getEmail() == null ? null : filter.getEmail().trim();
+        String correoBuscado = filter.getEmail() == null ? null : ValidationUtils.normalizarCorreo(filter.getEmail());
         Pageable pageable = PageRequest.of(filter.getPage(), filter.getSize(), Sort.by("name").ascending());
 
         Page<User> page;
@@ -252,6 +307,7 @@ public class UserServiceImpl implements UserService {
 
         User entity = user.get();
         entity.setActive(false);
+        entity.revocarSesiones();
         userRepository.save(entity);
         log.info("User deleted (soft): {}", entity.getEmail());
         return new ResultDTO(true, "User deleted successfully", 0);

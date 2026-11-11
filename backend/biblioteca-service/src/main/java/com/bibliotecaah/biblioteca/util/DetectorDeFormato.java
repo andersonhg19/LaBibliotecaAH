@@ -75,8 +75,35 @@ public final class DetectorDeFormato {
         return false;
     }
 
-    /** Texto plano: sin bytes nulos (UTF-8 y Latin-1 si; UTF-16 no). */
-    private static boolean esTexto(byte[] datos) {
+    /**
+     * Texto plano: sin bytes nulos (UTF-8 y Latin-1), o UTF-16 CON marca de orden
+     * (FF FE / FE FF: lo que guarda el Bloc de notas como "Unicode"; el taller lo
+     * decodifica, QA DA-15), o UTF-16 SIN marca reconocible: los ceros caen solo en
+     * las posiciones pares (BE) o solo en las impares (LE) y son al menos la mitad
+     * de los pares de bytes (texto latino; 8 pares como minimo). Un binario con ceros dispersos no cumple.
+     */
+    static boolean pareceUtf16SinMarca(byte[] datos) {
+        int n = datos.length - (datos.length % 2);
+        if (n < 16) return false;
+        int cerosPares = 0;
+        int cerosImpares = 0;
+        for (int i = 0; i < n; i += 2) {
+            if (datos[i] == 0 && datos[i + 1] == 0) return false;
+            if (datos[i] == 0) cerosPares++;
+            if (datos[i + 1] == 0) cerosImpares++;
+        }
+        int pares = n / 2;
+        return (cerosPares == 0 && cerosImpares * 2 >= pares) || (cerosImpares == 0 && cerosPares * 2 >= pares);
+    }
+
+    static boolean esTexto(byte[] datos) {
+        if (datos.length >= 2 && ((datos[0] == (byte) 0xFF && datos[1] == (byte) 0xFE)
+                || (datos[0] == (byte) 0xFE && datos[1] == (byte) 0xFF))) {
+            return true;
+        }
+        if (pareceUtf16SinMarca(datos)) {
+            return true;
+        }
         for (byte b : datos) {
             if (b == 0) return false;
         }

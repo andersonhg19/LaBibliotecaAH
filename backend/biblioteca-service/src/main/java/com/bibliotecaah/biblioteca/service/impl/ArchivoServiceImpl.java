@@ -66,7 +66,12 @@ public class ArchivoServiceImpl implements ArchivoService {
         almacen.exigirDisponible();
         Path ruta = almacen.raiz().resolve(a.getRutaOriginal()).normalize();
         ValidationUtils.exigir(ruta.startsWith(almacen.raiz()), Message.Msj.archivoNoEncontrado, CodigoError.NO_ENCONTRADO);
-        return existente(ruta, tipoDe(a.getFormatoOriginal()), ruta.getFileName().toString());
+        /* QA SE-14: el nombre de descarga sale del titulo de TU ejemplar, no del
+           nombre que puso quien subio primero ese mismo fichero. */
+        String titulo = ejemplares.delUsuarioPorArchivo(SecurityUtils.usuarioActual(), archivoId)
+                .map(e -> e.getObra().getTitulo()).orElse("original");
+        String nombre = AlmacenDeArchivos.sanear(titulo + "." + a.getFormatoOriginal().name().toLowerCase(java.util.Locale.ROOT));
+        return existente(ruta, tipoDe(a.getFormatoOriginal()), nombre);
     }
 
     @Override

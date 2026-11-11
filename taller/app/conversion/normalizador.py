@@ -30,7 +30,12 @@ LIGADURAS = {
 }
 _INVISIBLES = dict.fromkeys(map(ord, "­​‌‍⁠﻿"), None)
 _ESPACIOS_DUROS = dict.fromkeys(map(ord, "             　"), " ")
-_TABLA_VISUAL = {**{ord(k): v for k, v in LIGADURAS.items()}, **_INVISIBLES, **_ESPACIOS_DUROS}
+# Caracteres de control (QA DA-03): XML no los admite y no son texto. Salto de página y tabulador vertical pasan a
+# espacio; el resto de C0 (salvo \t \n \r), DEL, C1 y los no-caracteres U+FFFE/U+FFFF se quitan.
+_CONTROLES: dict[int, str | None] = {c: None for c in range(0x20) if chr(c) not in "\t\n\r"}
+_CONTROLES.update(dict.fromkeys(range(0x7F, 0xA0)))
+_CONTROLES.update({0x0B: " ", 0x0C: " ", 0xFFFE: None, 0xFFFF: None})
+_TABLA_VISUAL = {**{ord(k): v for k, v in LIGADURAS.items()}, **_INVISIBLES, **_ESPACIOS_DUROS, **_CONTROLES}
 
 _GUIONES_CORTE = "-‐­"
 
@@ -210,7 +215,7 @@ _EXPANSIONES = [
     (r"dcha\.", "derecha"),
     (r"admón\.", "administración"),
     (r"§", "sección"),
-    (r"&", "y"),
+    (r"&", " y "),  # "AT&T" → "AT y T" (DA-25)
 ]
 
 _PALABRAS_TITULO = (
@@ -218,7 +223,19 @@ _PALABRAS_TITULO = (
     r"|Escena|ESCENA|Lecci[oó]n|LECCI[OÓ]N|Volumen|VOLUMEN|Cuaderno|Jornada)"
 )
 _ROMANO = r"[IVXLCDM]+"
-_REYES = r"(?:XX|XIX|XVIII|XVII|XVI|XV|XIV|XIII|XII|XI|X|IX|VIII|VII|VI|V|IV|III|II)"
+# Ordinales de reyes/papas. "X" y "V" solas son ambiguas ("Malcolm X", "Generación X", "Grupo V", DA-24):
+# solo se leen como ordinal detrás de un nombre de rey o papa conocido.
+_REYES = r"(?:XX|XIX|XVIII|XVII|XVI|XV|XIV|XIII|XII|XI|IX|VIII|VII|VI|IV|III|II)"
+_NOMBRES_REGIOS = (
+    r"(?:Alfonso|Alejandro|Amadeo|Benedicto|Bonifacio|Carlos|Catalina|Clemente|Constantino|Eduardo|Enrique|"
+    r"Federico|Felipe|Fernando|Francisco|Gregorio|Guillermo|Gustavo|Inocencio|Isabel|Iván|Jaime|Jorge|Juan|"
+    r"Juana|León|Leopoldo|Luis|Manuel|María|Martín|Napoleón|Nicolás|Pablo|Pedro|Pío|Ramiro|Ricardo|Sancho|"
+    r"Sixto|Urbano|Víctor|Victoria)"
+)
+_UNIDADES = {"km": "kilómetros", "hm": "hectómetros", "dm": "decímetros", "cm": "centímetros", "mm": "milímetros"}
+_UNIDADES["m"] = "metros"
+_POTENCIA = {"²": "cuadrados", "³": "cúbicos"}
+_SUPERINDICES = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789")
 
 
 class _Regla:
@@ -246,6 +263,15 @@ def _construir_reglas() -> list[_Regla]:
     reglas: list[_Regla] = []
     # 1) Marcadores de nota al pie: [12], [*], superíndices numéricos
     reglas.append(_Regla(r"\[\d{1,3}\]|\[\*\]", lambda m: ""))
+    # superíndices (DA-25): unidad² / unidad³ → "metros cuadrados"; 10³ → "10 elevado a 3"; tras una palabra es
+    # una llamada de nota y se quita
+    reglas.append(
+        _Regla(
+            r"(?<=\d)\s?(km|hm|dm|cm|mm|m)([²³])(?!\w)",
+            lambda m: f" {_UNIDADES[m.group(1)]} {_POTENCIA[m.group(2)]}",
+        )
+    )
+    reglas.append(_Regla(r"(?<=\d)[¹²³⁰⁴-⁹]+", lambda m: f" elevado a {m.group(0).translate(_SUPERINDICES)}"))
     reglas.append(_Regla(r"[¹²³⁰⁴-⁹]+", lambda m: ""))
     # 2) "Capítulo IV", "Parte II" (en títulos y en el texto)
     reglas.append(_Regla(rf"(?<!\w){_PALABRAS_TITULO}\s+({_ROMANO})\b", lambda m: _rom_cardinal(m, 1), grupo=1))
@@ -255,6 +281,13 @@ def _construir_reglas() -> list[_Regla]:
     reglas.append(
         _Regla(
             rf"(?<!\w)[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{{2,}}\s+({_REYES})\b(?!\.\w)",
+            lambda m: ordinal_o_cardinal(romano_a_entero(m.group(1)) or 0),
+            grupo=1,
+        )
+    )
+    reglas.append(
+        _Regla(
+            rf"(?<!\w){_NOMBRES_REGIOS}\s+(X|V)\b(?!\.\w)",
             lambda m: ordinal_o_cardinal(romano_a_entero(m.group(1)) or 0),
             grupo=1,
         )

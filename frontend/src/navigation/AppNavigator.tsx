@@ -125,14 +125,9 @@ const AppNavigator: React.FC = () => {
               <Pila.Screen name="Documentos" component={pantalla(DocumentosScreen)} />
               <Pila.Screen name="Notas" component={pantalla(NotasScreen)} />
               <Pila.Screen name="Ajustes" component={pantalla(AjustesScreen)} />
-              <Pila.Group
-                screenOptions={{
-                  headerShown: true,
-                  headerStyle: { backgroundColor: colors.surface },
-                  headerTintColor: colors.text,
-                  headerShadowVisible: false,
-                }}
-              >
+              {/* La administración vive dentro de la casa (UX-14): cada pantalla pinta su
+                  Sala y su Encabezado (atrás de 44 px), no la cabecera genérica. */}
+              <Pila.Group>
                 <Pila.Screen name="AdminUsers" component={pantalla(AdminUsersScreen)} options={{ title: 'Usuarios' }} />
                 <Pila.Screen name="AdminRoles" component={pantalla(AdminRolesScreen)} options={{ title: 'Roles' }} />
                 <Pila.Screen

@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import logging
 import mimetypes
+import re
 import shutil
 import subprocess
 import tempfile
@@ -19,11 +20,17 @@ from lxml import etree
 
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import AlmacenImagenes, Capitulo, ErrorDefinitivo, ErrorReintentable, Libro, NodoToc
+from . import limites
 from .html_util import Elemento, limpiar_cuerpo, texto_de
+from .limites import revisar_tamano, revisar_zip_en_disco
+from .metadatos import normalizar_autores, titulo_desde_nombre, titulo_util
 
 log = logging.getLogger(__name__)
 
 TIEMPO_MAXIMO = 300
+_ID_NOTA = re.compile(r"^(?:fn|footnote-|endnote-)(\d+)$")
+_ID_LLAMADA = re.compile(r"^(?:fnref|footnote-ref-|endnote-ref-)(\d+)$")
+_ESTILOS_TITULO = {"title", "título", "titulo"}
 
 
 def _html_con_pandoc(ruta: Path, medios: Path) -> str:
@@ -31,6 +38,7 @@ def _html_con_pandoc(ruta: Path, medios: Path) -> str:
         ["pandoc", "-f", "docx", "-t", "html5", "--wrap=none", f"--extract-media={medios}", str(ruta)],
         capture_output=True,
         timeout=TIEMPO_MAXIMO,
+        preexec_fn=limites.liberar_limite_memoria,  # pandoc reserva mucho espacio virtual (GHC)
     )
     if r.returncode != 0:
         log.error("pandoc falló: %s", r.stderr.decode("utf-8", "replace")[:500])
@@ -45,24 +53,41 @@ def _html_con_mammoth(ruta: Path) -> str:
         return mammoth.convert_to_html(f).value
 
 
-def _metadatos_docx(ruta: Path, libro: Libro) -> None:
+def _metadatos_docx(ruta: Path, libro: Libro, nombre: str | None) -> None:
+    """Título, autores e idioma de las propiedades del documento.
+
+    Si el título es el genérico del programa ("Word Document", "Microsoft Word - x.doc"…, QA BI-17) o falta, se
+    usa el párrafo con estilo Título del documento y, si no lo hay, el nombre del archivo.
+    """
+    titulo: str | None = None
     try:
         import docx
 
-        props = docx.Document(str(ruta)).core_properties
-        if props.title and props.title.strip():
-            libro.metadatos["titulo"] = props.title.strip()[:300]
-        if props.author and props.author.strip():
-            libro.metadatos["autores"] = [props.author.strip()]
+        documento = docx.Document(str(ruta))
+        props = documento.core_properties
+        titulo = titulo_util(props.title)
+        if titulo is None:
+            for parrafo in documento.paragraphs[:50]:
+                estilo = (parrafo.style.name if parrafo.style is not None else "") or ""
+                if estilo.strip().lower() in _ESTILOS_TITULO:
+                    titulo = titulo_util(parrafo.text)
+                    if titulo:
+                        break
+        autores = normalizar_autores(props.author)
+        if autores:
+            libro.metadatos["autores"] = autores
         if props.language:
             libro.metadatos["idioma"] = props.language[:10]
     except Exception as e:
         log.info("Sin metadatos DOCX: %s", e)
+    libro.metadatos["titulo"] = titulo or (titulo_desde_nombre(nombre) if nombre else None)
 
 
-def convertir_docx(ruta: Path) -> Libro:
+def convertir_docx(ruta: Path, nombre: str | None = None) -> Libro:
+    """`nombre`: nombre del archivo original sin extensión (para el título si el documento no trae uno real)."""
+    revisar_zip_en_disco(ruta)
     libro = Libro()
-    _metadatos_docx(ruta, libro)
+    _metadatos_docx(ruta, libro, nombre if nombre is not None else ruta.stem)
     with tempfile.TemporaryDirectory(prefix="bah-docx-") as tmp:
         medios = Path(tmp) / "medios"
         try:
@@ -100,10 +125,64 @@ def convertir_docx(ruta: Path) -> Libro:
 
         body = raiz.find("body")
         cuerpo = limpiar_cuerpo(body if body is not None else raiz, resolver_imagen, None)
+    notas = _separar_notas(cuerpo)
     _partir_por_titulos(cuerpo, libro)
     if not libro.capitulos:
         raise ErrorDefinitivo(Msj.SIN_TEXTO)
+    _repartir_notas(libro, notas)
     return libro
+
+
+def _separar_notas(cuerpo: Elemento) -> dict[str, Elemento]:
+    """Quita del cuerpo la lista final de notas al pie (pandoc: <section class="footnotes">; mammoth: <ol> de
+    <li id="footnote-N">) y devuelve número → <li> de la nota."""
+    notas: dict[str, Elemento] = {}
+    for bloque in list(cuerpo):
+        if not isinstance(bloque.tag, str):
+            continue
+        items = [li for li in bloque.iter("li") if _ID_NOTA.match(li.get("id") or "")]
+        es_seccion = "bah-nota-pie" in (bloque.get("class") or "").split()
+        es_lista_mammoth = bloque.tag == "ol" and items and len(items) == len(bloque.findall("li"))
+        if not (es_seccion or es_lista_mammoth):
+            continue
+        for li in items:
+            m = _ID_NOTA.match(li.get("id") or "")
+            if m:
+                notas[m.group(1)] = li
+        cola = bloque.tail
+        previo = bloque.getprevious()
+        cuerpo.remove(bloque)
+        if cola and cola.strip():
+            if previo is not None:
+                previo.tail = (previo.tail or "") + cola
+            else:
+                cuerpo.text = (cuerpo.text or "") + cola
+    return notas
+
+
+def _repartir_notas(libro: Libro, notas: dict[str, Elemento]) -> None:
+    """Cada nota va al final del capítulo donde está su llamada, marcada para que no se lea en voz (QA DA-09)."""
+    if not notas:
+        return
+    pendientes = dict(notas)
+    for cap in libro.capitulos:
+        propias: list[Elemento] = []
+        for el in cap.cuerpo.iter():
+            m = _ID_LLAMADA.match(el.get("id") or "")
+            if m and m.group(1) in pendientes:
+                propias.append(pendientes.pop(m.group(1)))
+        if propias:
+            _anexar_notas(cap.cuerpo, propias)
+    if pendientes:  # notas sin llamada localizable: al final del libro, igual sin leerse
+        _anexar_notas(libro.capitulos[-1].cuerpo, list(pendientes.values()))
+
+
+def _anexar_notas(cuerpo: Elemento, items: list[Elemento]) -> None:
+    aside = etree.SubElement(cuerpo, "aside", {"class": "bah-nota-pie"})
+    ol = etree.SubElement(aside, "ol")
+    for li in items:
+        li.tail = None
+        ol.append(li)
 
 
 def _partir_por_titulos(cuerpo: Elemento, libro: Libro) -> None:
@@ -147,6 +226,7 @@ def _partir_por_titulos(cuerpo: Elemento, libro: Libro) -> None:
 
 def convertir_doc(ruta: Path) -> Libro:
     """Word 97-2003 (.doc): LibreOffice headless lo pasa a DOCX y se sigue el camino DOCX."""
+    revisar_tamano(ruta, limites.MAX_DOC, "documento .doc")
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
         raise ErrorDefinitivo(Msj.DOC_SIN_LIBREOFFICE)
@@ -169,6 +249,7 @@ def convertir_doc(ruta: Path) -> Libro:
                 ],
                 capture_output=True,
                 timeout=TIEMPO_MAXIMO,
+                preexec_fn=limites.liberar_limite_memoria,
             )
         except subprocess.TimeoutExpired as e:
             raise ErrorReintentable(Msj.DOC_NO_CONVERTIBLE) from e
@@ -176,4 +257,4 @@ def convertir_doc(ruta: Path) -> Libro:
         if r.returncode != 0 or not salida.exists():
             log.error("LibreOffice falló: %s", (r.stderr or r.stdout).decode("utf-8", "replace")[:500])
             raise ErrorDefinitivo(Msj.DOC_NO_CONVERTIBLE)
-        return convertir_docx(salida)
+        return convertir_docx(salida, nombre=ruta.stem)

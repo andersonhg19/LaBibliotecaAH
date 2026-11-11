@@ -10,12 +10,24 @@ from lxml import etree
 
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import Capitulo, ErrorDefinitivo, Libro, NodoToc
+from . import limites
+from .limites import revisar_tamano
 from .normalizador import normalizar_visual, unir_lineas
 from .numeros import romano_a_entero
+from .partir import partir_parrafo
 
-_NUMERO = r"(?:\d{1,4}|[IVXLCDM]{1,8}|[A-ZÁÉÍÓÚa-záéíóúñ]+)"
-_CAPITULO = re.compile(rf"^\s*(?:cap[ií]tulo|CAP[IÍ]TULO|Cap[ií]tulo|CAP\.|Cap\.)\s+{_NUMERO}\b.{{0,100}}$")
-_PARTE = re.compile(rf"^\s*(?:parte|PARTE|Parte|libro|LIBRO|Libro|tomo|TOMO|Tomo)\s+{_NUMERO}\b.{{0,100}}$")
+# Un título de capítulo/parte es "Capítulo|CAPÍTULO|Parte…" (con mayúscula inicial) + un número: cifras, romano o
+# un numeral escrito ("uno", "primero", "único"…). Antes valía cualquier palabra y en minúscula, y una línea de un
+# párrafo cortado a 70 columnas que empezaba por "parte de la casa…" se volvía título (QA DA-06).
+_NUMERALES = (
+    "uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciséis|"
+    "diecisiete|dieciocho|diecinueve|veinte|veintiuno|veintidós|veintitrés|veinticuatro|veinticinco|treinta|"
+    "primero|primera|segundo|segunda|tercero|tercera|cuarto|cuarta|quinto|quinta|sexto|sexta|séptimo|séptima|"
+    "octavo|octava|noveno|novena|décimo|décima|último|última|único|única|final"
+)
+_NUMERO = rf"(?:\d{{1,4}}|[IVXLCDM]{{1,8}}|(?i:{_NUMERALES}))"
+_CAPITULO = re.compile(rf"^\s*(?:CAP[IÍ]TULO|Cap[ií]tulo|CAP\.|Cap\.)\s+{_NUMERO}\b.{{0,100}}$")
+_PARTE = re.compile(rf"^\s*(?:PARTE|Parte|LIBRO|Libro|TOMO|Tomo)\s+{_NUMERO}\b.{{0,100}}$")
 _SOLO_ROMANO = re.compile(r"^\s*([IVXLCDM]{1,8})\.?\s*$")
 _PROLOGO = re.compile(
     r"^\s*(?:pr[oó]logo|PR[OÓ]LOGO|Pr[oó]logo|ep[ií]logo|EP[IÍ]LOGO|Ep[ií]logo|"
@@ -31,6 +43,9 @@ def decodificar(datos: bytes) -> str:
         return datos[3:].decode("utf-8", "replace")
     if datos.startswith((b"\xff\xfe", b"\xfe\xff")):
         return datos.decode("utf-16", "replace")
+    utf16 = _utf16_sin_bom(datos)
+    if utf16:
+        return datos.decode(utf16, "replace")
     try:
         return datos.decode("utf-8")
     except UnicodeDecodeError:
@@ -54,14 +69,29 @@ def decodificar(datos: bytes) -> str:
     return elegido if elegido is not None else datos.decode("cp1252", "replace")
 
 
+def _utf16_sin_bom(datos: bytes) -> str | None:
+    """UTF-16 sin BOM (Bloc de notas "Unicode" exportado por otros programas, QA DA-15): texto latino → la mitad de
+    los bytes pares (LE) o impares (BE) son 0."""
+    muestra = datos[:4096]
+    if len(muestra) < 4:
+        return None
+    pares = muestra[0::2]
+    impares = muestra[1::2]
+    if impares.count(0) > 0.4 * len(impares) and pares.count(0) < 0.05 * len(pares):
+        return "utf-16-le"
+    if pares.count(0) > 0.4 * len(pares) and impares.count(0) < 0.05 * len(impares):
+        return "utf-16-be"
+    return None
+
+
 def _es_titulo(linea: str, previa_vacia: bool, siguiente_vacia: bool, usar_mayusculas: bool) -> int:
-    """0 = no es título; 1 = parte; 2 = capítulo."""
+    """0 = no es título; 1 = parte; 2 = capítulo. Un título va en su propia línea, tras una línea en blanco."""
     s = linea.strip()
     if not s or len(s) > 120:
         return 0
-    if _PARTE.match(s):
+    if _PARTE.match(s) and previa_vacia:
         return 1
-    if _CAPITULO.match(s) or _PROLOGO.match(s):
+    if (_CAPITULO.match(s) or _PROLOGO.match(s)) and previa_vacia:
         return 2
     m = _SOLO_ROMANO.match(s)
     if m and romano_a_entero(m.group(1)) and previa_vacia:
@@ -80,14 +110,20 @@ def _es_titulo(linea: str, previa_vacia: bool, siguiente_vacia: bool, usar_mayus
 
 
 def convertir_txt(ruta: Path) -> Libro:
-    texto = normalizar_visual(decodificar(ruta.read_bytes())).replace("\r\n", "\n").replace("\r", "\n")
+    revisar_tamano(ruta, limites.MAX_TXT, "archivo de texto")
+    crudo = decodificar(ruta.read_bytes()).replace("\r\n", "\n").replace("\r", "\n")
+    # salto de página (\f) y tabulador vertical (\v) separan líneas; el resto de controles los quita el normalizador
+    texto = normalizar_visual(crudo.replace("\f", "\n").replace("\v", "\n"))
     if not texto.strip():
         raise ErrorDefinitivo(Msj.TXT_VACIO)
     lineas = texto.split("\n")
-    hay_capitulos = any(_CAPITULO.match(ln) or _PARTE.match(ln) for ln in lineas)
     vacias = sum(1 for ln in lineas if not ln.strip())
     # Si no hay líneas en blanco, cada línea es un párrafo
     linea_es_parrafo = vacias == 0 and len(lineas) > 3
+    hay_capitulos = any(
+        (_CAPITULO.match(ln) or _PARTE.match(ln)) and (i == 0 or linea_es_parrafo or not lineas[i - 1].strip())
+        for i, ln in enumerate(lineas)
+    )
 
     # 1) recorrer líneas → secuencia de ("titulo", nivel, texto) / ("parrafo", texto)
     eventos: list[tuple] = []
@@ -95,11 +131,12 @@ def convertir_txt(ruta: Path) -> Libro:
 
     def cerrar_parrafo() -> None:
         if buffer:
-            eventos.append(("p", unir_lineas(buffer)))
+            # un párrafo gigante (una línea de megabytes) se parte por frases (QA DA-18)
+            eventos.extend(("p", trozo) for trozo in partir_parrafo(unir_lineas(buffer)))
             buffer.clear()
 
     for i, linea in enumerate(lineas):
-        previa_vacia = i == 0 or not lineas[i - 1].strip()
+        previa_vacia = i == 0 or not lineas[i - 1].strip() or linea_es_parrafo
         siguiente_vacia = i + 1 >= len(lineas) or not lineas[i + 1].strip()
         nivel = _es_titulo(linea, previa_vacia, siguiente_vacia, not hay_capitulos)
         if nivel:

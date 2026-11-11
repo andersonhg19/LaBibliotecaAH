@@ -10,12 +10,12 @@ export const EXTENSIONES = ['.epub', '.pdf', '.docx', '.doc', '.txt'] as const
 
 export const extensionAdmitida = (nombre: string) => EXTENSIONES.some((e) => nombre.toLowerCase().endsWith(e))
 
-export function elegirArchivos(): Promise<File[]> {
+export function elegirArchivos(varios = true): Promise<File[]> {
   return new Promise((resolve) => {
     if (typeof document === 'undefined') return resolve([])
     const input = document.createElement('input')
     input.type = 'file'
-    input.multiple = true
+    input.multiple = varios
     input.accept = [...EXTENSIONES, 'application/epub+zip', 'application/pdf', 'text/plain'].join(',')
     input.style.position = 'fixed'
     input.style.left = '-1000px'

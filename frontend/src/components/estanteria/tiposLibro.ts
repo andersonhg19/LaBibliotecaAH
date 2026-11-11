@@ -1,3 +1,4 @@
+import type { Postura } from '@logica/lomos'
 import type { EjemplarDTO } from '@tipos'
 
 export type ModoEstante = 'lomo' | 'portada'
@@ -21,6 +22,10 @@ export interface PropsLibroEnEstante {
   onSoltarEn?: (desde: number, x: number) => void
   /** Mostrar la barra de progreso bajo la portada (estante "Leyendo ahora"). */
   conProgreso?: boolean
+  /** De pie (por defecto), tumbado en pila o inclinado contra su vecino. */
+  postura?: Postura
+  /** Escala del lomo (el PC los agranda). */
+  escala?: number
 }
 
 export const etiquetaLibro = (l: EjemplarDTO) => {

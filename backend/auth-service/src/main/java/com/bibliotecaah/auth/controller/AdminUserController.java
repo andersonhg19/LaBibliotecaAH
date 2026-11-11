@@ -42,10 +42,14 @@ public class AdminUserController {
         return ResponseEntity.ok(adminUserService.getById(id));
     }
 
-    @Operation(summary = "Alta de una cuenta desde administracion")
+    @Operation(summary = "Alta (sin id) o edicion (con id) de una cuenta desde administracion",
+            description = "Alta: name, email, alias y password obligatorios. Edicion: name y email; el alias, "
+                    + "si no llega, se conserva; la contrasena de otra cuenta no se cambia aqui.")
     @PostMapping(value = "/save", produces = "application/json")
     public ResponseEntity<ResultDTO> crear(@Valid @RequestBody UserSaveDTO dto) {
-        return ResponseEntity.ok(adminUserService.crear(dto));
+        return ResponseEntity.ok(dto.getId() == null
+                ? adminUserService.crear(dto)
+                : adminUserService.actualizar(dto));
     }
 
     @Operation(summary = "Fija los roles de una cuenta (lista completa, no incremental)")

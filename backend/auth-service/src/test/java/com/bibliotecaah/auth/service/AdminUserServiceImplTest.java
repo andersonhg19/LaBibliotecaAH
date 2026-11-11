@@ -41,6 +41,10 @@ class AdminUserServiceImplTest {
     @Mock private RoleRepository roleRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private org.springframework.context.ApplicationEventPublisher eventos;
+    /* Sin stub devuelve Optional.empty(): "el alias sirve". Las reglas del
+       alias se prueban en ElAliasEnAltasYEdicionesTest con la validacion real. */
+    @Mock private com.bibliotecaah.auth.util.ValidacionDeAlias validacionDeAlias;
+    @Mock private com.bibliotecaah.auth.util.Mensajes mensajes;
 
     @InjectMocks private AdminUserServiceImpl servicio;
 
@@ -169,16 +173,16 @@ class AdminUserServiceImplTest {
         @Test
         @DisplayName("toda cuenta nueva nace con USER")
         void naceConUser() {
-            when(userRepository.existsByEmailAndActiveTrue("n@x.com")).thenReturn(false);
+            when(userRepository.existeCorreo("n@x.com")).thenReturn(false);
             when(roleRepository.findByNameAndActiveTrue("USER")).thenReturn(Optional.of(rolUser));
-            when(passwordEncoder.encode("Clave123")).thenReturn("cifrada");
+            when(passwordEncoder.encode("Clave12345x")).thenReturn("cifrada");
             when(userRepository.save(any(User.class))).thenAnswer(i -> {
                 User u = i.getArgument(0);
                 u.setId(5L);
                 return u;
             });
 
-            ResultDTO resultado = servicio.crear(alta("n@x.com", "Clave123"));
+            ResultDTO resultado = servicio.crear(alta("n@x.com", "Clave12345x"));
 
             assertThat(resultado.isCorrect()).isTrue();
             assertThat(datos(resultado).getRoles()).containsExactly("USER");
@@ -194,20 +198,20 @@ class AdminUserServiceImplTest {
         @Test
         @DisplayName("con un correo ya en uso, tampoco")
         void correoRepetido() {
-            when(userRepository.existsByEmailAndActiveTrue("n@x.com")).thenReturn(true);
-            assertThat(servicio.crear(alta("n@x.com", "Clave123")).isCorrect()).isFalse();
+            when(userRepository.existeCorreo("n@x.com")).thenReturn(true);
+            assertThat(servicio.crear(alta("n@x.com", "Clave12345x")).isCorrect()).isFalse();
             verify(userRepository, never()).save(any());
         }
 
         @Test
         @DisplayName("si el rol USER no estuviera, la cuenta se crea igualmente sin rol")
         void sinRolBase() {
-            when(userRepository.existsByEmailAndActiveTrue("n@x.com")).thenReturn(false);
+            when(userRepository.existeCorreo("n@x.com")).thenReturn(false);
             when(roleRepository.findByNameAndActiveTrue("USER")).thenReturn(Optional.empty());
             when(passwordEncoder.encode(anyString())).thenReturn("cifrada");
             when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
 
-            ResultDTO resultado = servicio.crear(alta("n@x.com", "Clave123"));
+            ResultDTO resultado = servicio.crear(alta("n@x.com", "Clave12345x"));
 
             assertThat(resultado.isCorrect()).isTrue();
             assertThat(datos(resultado).getRoles()).isEmpty();

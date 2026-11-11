@@ -8,7 +8,10 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import lombok.extern.slf4j.Slf4j;
+import com.bibliotecaah.biblioteca.config.Topes;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -29,9 +32,11 @@ public class GlobalExceptionHandler {
     private static final int LARGO_MAXIMO_ECO = 40;
 
     private final Mensajes mensajes;
+    private final Topes topes;
 
-    public GlobalExceptionHandler(Mensajes mensajes) {
+    public GlobalExceptionHandler(Mensajes mensajes, Topes topes) {
         this.mensajes = mensajes;
+        this.topes = topes;
     }
 
     @ExceptionHandler(ValidationException.class)
@@ -79,13 +84,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ResultDTO> demasiadoGrande(MaxUploadSizeExceededException ex) {
         log.warn("Subida demasiado grande: {}", ex.getMessage());
-        return respuesta(CodigoError.DATO_INVALIDO, Message.Msj.archivoDemasiadoGrande);
+        return respuesta(CodigoError.DEMASIADO_GRANDE, Message.Msj.archivoDemasiadoGrande,
+                Topes.legible(topes.getMaxArchivo()), Topes.legible(topes.getMaxSubida()));
     }
 
     @ExceptionHandler(MultipartException.class)
     public ResponseEntity<ResultDTO> subidaRota(MultipartException ex) {
         log.warn("Subida multipart invalida: {}", ex.getMessage());
         return respuesta(CodigoError.DATO_INVALIDO, Message.Msj.subidaIncompleta);
+    }
+
+    /**
+     * Dos peticiones iguales a la vez (doble clic, reintento de red) que chocan
+     * en una restriccion unica (QA BI-09, DA-13): nunca un "error inesperado".
+     * Las operaciones idempotentes ya lo evitan; esto es la red de seguridad.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ResultDTO> conflicto(DataIntegrityViolationException ex) {
+        log.warn("Conflicto de concurrencia en la base: {}", ex.getMostSpecificCause().getMessage());
+        return respuesta(CodigoError.DUPLICADO, Message.Msj.conflictoConcurrente);
+    }
+
+    /** QA SE-16: cuerpo XML u otro tipo: 120 con mensaje, no 103 con stacktrace. */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ResultDTO> tipoDeContenido(HttpMediaTypeNotSupportedException ex) {
+        return respuesta(CodigoError.DATO_INVALIDO, Message.Msj.contenidoNoSoportado);
     }
 
     @ExceptionHandler(Exception.class)

@@ -59,13 +59,13 @@ class AislamientoDeCuentasTest {
         usuarios.deleteAll();
 
         User ana = usuarios.save(User.builder()
-                .name("Ana").email("ana@biblioteca.ah")
+                .name("Ana").email("ana@biblioteca.ah").alias("ana")
                 .password(cifrador.encode("ClaveDeAna1")).active(true).build());
         idDeAna = ana.getId();
         claveOriginalDeAna = ana.getPassword();
 
         idDeBruno = usuarios.save(User.builder()
-                .name("Bruno").email("bruno@biblioteca.ah")
+                .name("Bruno").email("bruno@biblioteca.ah").alias("bruno")
                 .password(cifrador.encode("ClaveDeBruno1")).active(true).build())
                 .getId();
     }

@@ -21,6 +21,8 @@ app/
   cola/                repositorio.py (SQL de bah_lib_trabajo/archivo/audio), trabajador.py (bucle + manejadores)
   conversion/          desde_epub|pdf|docx|txt.py → html_util (limpieza) → normalizador → segmentador
                        → frases (spans por frase) → epub_salida (EPUB3) ; convertir.py orquesta
+                       limites.py (topes anti zip-bomb), aislado.py (subproceso acotado), partir.py (troceo de
+                       capítulos largos), metadatos.py (títulos genéricos, "Apellido, Nombre")
   voz/                 motor.py (MotorDeVoz, EdgeTts, PiperLocal pendiente), capitulo.py (síntesis + ensamblado),
                        alineacion.py (palabras → offsets del texto visual), audio.py (ffmpeg), muestras.py
 tests/                 corpus generado por programa (corpus.py) + pruebas pytest
@@ -35,8 +37,13 @@ tests/                 corpus generado por programa (corpus.py) + pruebas pytest
 | `TALLER_PUERTO` | `8926` | |
 | `TALLER_INTERVALO_SEG` | `2` | sondeo de la cola |
 | `TALLER_MAX_INTENTOS` | `3` | |
-| `TALLER_MINUTOS_ATASCADO` | `30` | EN_CURSO más viejos vuelven a PENDIENTE al arrancar |
-| `TALLER_CONCURRENCIA_VOZ` | `4` | peticiones simultáneas a edge-tts |
+| `TALLER_MINUTOS_ATASCADO` | `5` | EN_CURSO sin latido durante más de esto vuelven a PENDIENTE (barrido periódico) |
+| `TALLER_INTERVALO_BARRIDO_SEG` | `60` | cada cuánto se barren los EN_CURSO colgados |
+| `TALLER_HILOS_VOZ` | `2` | trabajos de voz simultáneos (un capítulo largo no bloquea a los demás) |
+| `TALLER_CONCURRENCIA_VOZ` | `4` | peticiones simultáneas a edge-tts **por hilo de voz** |
+| `TALLER_AISLAR_CONVERSION` | `true` | cada conversión en un subproceso con memoria y tiempo acotados |
+| `TALLER_MEMORIA_CONVERSION_MB` | `1536` | tope de memoria virtual del subproceso de conversión |
+| `TALLER_TIEMPO_CONVERSION_SEG` | `1200` | tiempo máximo de una conversión |
 | `TALLER_TRABAJADORES` / `TALLER_MUESTRAS` | `true` | apagar hilos / generación de muestras (pruebas) |
 | `TALLER_LOG` | `INFO` | |
 
@@ -44,11 +51,28 @@ Zona horaria del contenedor: `America/Bogota`. Logs: `fecha nivel=… hilo=… t
 
 ## Cola de trabajos
 
-Dos hilos: `conversion` (tipo `CONVERTIR`) y `voz` (tipo `VOZ_CAPITULO`); la voz nunca bloquea conversiones.
+Hilos: `conversion` (tipo `CONVERTIR`) y `voz`, `voz-2`… (`TALLER_HILOS_VOZ`, tipo `VOZ_CAPITULO`); la voz nunca
+bloquea conversiones y un capítulo largo no deja esperando a los demás.
 SQL de toma = el del contrato **más** `AND tipo = ANY(%(tipos)s)` en la subconsulta (ver `cola/repositorio.py`).
 Fallo: intentos < 3 → `PENDIENTE` (con el mensaje en `error`); 3.º fallo o error sin arreglo (`ErrorDefinitivo`:
-PDF escaneado, formato no soportado, archivo dañado…) → `ERROR`. Los mensajes al usuario salen de `dominio/mensajes.py`.
-Los trabajos de voz largos refrescan `actualizado` cada 60 s (latido) para no parecer atascados.
+PDF escaneado, formato no soportado, archivo dañado, DRM, voz inexistente, libro desmesurado…) → `ERROR`.
+Los mensajes al usuario salen de `dominio/mensajes.py` y nunca llevan detalle técnico (va al log).
+
+Recuperación (QA DA-01):
+- Todo trabajo en curso refresca `actualizado` cada 60 s (latido, en un hilo aparte).
+- Al arrancar se devuelven a `PENDIENTE` **todos** los `EN_CURSO` de los tipos del taller (hay un único taller por
+  base de datos: lo que estaba en curso murió con el proceso anterior), junto con su archivo (`PROCESANDO` →
+  `PENDIENTE`) o su audio (`GENERANDO` → `PENDIENTE`). El contador de intentos no se toca: un archivo que tumba el
+  proceso tres veces acaba en `ERROR`.
+- Un barrendero devuelve a `PENDIENTE` cada minuto los `EN_CURSO` sin latido desde hace `TALLER_MINUTOS_ATASCADO`.
+
+Libro retirado mientras se procesa (QA DA-14/DA-28): el taller comprueba que el original, la fila de
+`bah_lib_archivo` y la carpeta `normalizados/` siguen existiendo; si no, borra lo que escribió y termina el trabajo
+sin reintentos. El UPSERT de `bah_lib_audio` solo inserta si el archivo existe (no deja filas huérfanas).
+
+Seguridad de la conversión (QA SE-01): topes antes de leer (ZIP: entradas, tamaño total y por parte, ratio de
+compresión; TXT 32 MB; DOC 64 MB; PDF 3000 páginas; ver `conversion/limites.py`) y subproceso con `RLIMIT_AS`,
+`oom_score_adj=1000` y tiempo máximo: un archivo hostil acaba en `ERROR` con un mensaje claro sin tumbar el servicio.
 
 ## Pruebas y calidad (una sola puerta)
 
@@ -96,4 +120,7 @@ python -m app.cli voz 00000000-0000-0000-0000-000000000001 edge.es-ES-AlvaroNeur
 - OCR de PDF escaneados (Ola 7): hoy quedan en `ERROR` con "PDF escaneado: el OCR llegará en una ola posterior".
 - Motor Piper local: solo la interfaz (`PiperLocal`), sin modelos descargados.
 - PDF: las imágenes internas no se copian (solo la portada = página 1); capítulos con granularidad de página.
+- PDF sin marcadores: capítulos por tramos de 15 páginas, no por los títulos grandes (QA DA-22).
+- PDF a tres columnas: el orden de lectura se mezcla (QA DA-23; dos columnas sí va bien).
+- Resaltado de palabra en expansiones de voz ("12/10/1492", "1.250,50") aproximado (QA DA-26).
 - RTF/MOBI/AZW3/FB2 (Calibre) no soportados todavía.

@@ -105,4 +105,59 @@ class LimiteDeIntentosDeLoginTest {
         assertThat(limite.estaBloqueado(null)).isFalse();
         assertThat(limite.estaBloqueado("")).isFalse();
     }
+    @org.junit.jupiter.api.Nested
+    @DisplayName("QA SE-08: frenos por origen y global")
+    class PorOrigen {
+
+        @Test
+        @DisplayName("fallar con la cuenta de otro desde mi dispositivo no la bloquea en el suyo")
+        void otroOrigenNoBloquea() {
+            for (int i = 0; i < 5; i++) limite.registrarFallo("cuenta:1", "100.64.0.9");
+
+            assertThat(limite.estaBloqueado("cuenta:1", "100.64.0.9")).isTrue();
+            assertThat(limite.estaBloqueado("cuenta:1", "100.64.0.2")).isFalse();
+            assertThat(limite.estaBloqueado("cuenta:1")).as("sin origen = 'desconocido', otro contador").isFalse();
+        }
+
+        @Test
+        @DisplayName("un exito en un origen no limpia los fallos de otro")
+        void exitoSoloEnSuOrigen() {
+            for (int i = 0; i < 5; i++) limite.registrarFallo("cuenta:1", "100.64.0.9");
+            limite.registrarExito("cuenta:1", "100.64.0.2");
+            assertThat(limite.estaBloqueado("cuenta:1", "100.64.0.9")).isTrue();
+            limite.registrarExito("cuenta:1", "100.64.0.9");
+            assertThat(limite.estaBloqueado("cuenta:1", "100.64.0.9")).isFalse();
+        }
+
+        @Test
+        @DisplayName("un barrido desde un origen (20 cuentas distintas) frena ese origen 10 minutos")
+        void barridoDesdeUnOrigen() {
+            for (int i = 0; i < 19; i++) limite.registrarFallo("identificador:u" + i, "100.64.0.9");
+            assertThat(limite.estaBloqueado("identificador:nueva", "100.64.0.9")).isFalse();
+
+            limite.registrarFallo("identificador:u19", "100.64.0.9");
+            assertThat(limite.estaBloqueado("identificador:nueva", "100.64.0.9")).isTrue();
+            assertThat(limite.estaBloqueado("identificador:nueva", "100.64.0.2")).isFalse();
+
+            reloj.avanzar(Duration.ofMinutes(10));
+            assertThat(limite.estaBloqueado("identificador:nueva", "100.64.0.9")).isFalse();
+        }
+
+        @Test
+        @DisplayName("60 fallos en un minuto entre todos los origenes frenan a todos durante ese minuto")
+        void global() {
+            for (int i = 0; i < 60; i++) limite.registrarFallo("identificador:u" + i, "10.0.0." + (i % 30));
+            assertThat(limite.estaBloqueado("cuenta:7", "100.64.0.99")).isTrue();
+
+            reloj.avanzar(Duration.ofMinutes(1));
+            assertThat(limite.estaBloqueado("cuenta:7", "100.64.0.99")).isFalse();
+        }
+
+        @Test
+        @DisplayName("origenes con mayusculas o espacios cuentan como el mismo")
+        void origenNormalizado() {
+            for (int i = 0; i < 5; i++) limite.registrarFallo("cuenta:1", i % 2 == 0 ? " FD7A::1 " : "fd7a::1");
+            assertThat(limite.estaBloqueado("cuenta:1", "fd7a::1")).isTrue();
+        }
+    }
 }

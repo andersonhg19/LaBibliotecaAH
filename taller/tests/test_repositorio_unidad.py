@@ -26,7 +26,8 @@ class CursorFalso:
         self.con.ejecutadas.append((sql, params))
 
     def fetchone(self):
-        return {"id": "t1"}
+        sql = self.con.ejecutadas[-1][0]
+        return {"n": 2} if "count(*)" in sql else {"id": "t1"}
 
 
 class ConexionFalsa:
@@ -71,7 +72,7 @@ def test_tomar_usa_sql_del_contrato_con_filtro_de_tipo(repo):
 
 
 def test_operaciones_y_parametros(repo):
-    repo.reiniciar_atascados(30)
+    assert repo.reiniciar_atascados(300, ["CONVERTIR"]) == 2
     repo.marcar_hecho("t1")
     repo.marcar_fallo("t1", "x" * 5000, definitivo=False)
     repo.marcar_fallo("t1", "fin", definitivo=True)
@@ -82,7 +83,7 @@ def test_operaciones_y_parametros(repo):
     repo.archivo_estado("a1", "PENDIENTE", None)
     repo.audio_estado("a1", "edge.v", 0, "LISTO", duracion=1.5)
     ej = repo.conexiones[0].ejecutadas
-    assert ej[0] == (R.SQL_REINICIAR_ATASCADOS, {"minutos": 30})
+    assert ej[0] == (R.SQL_REINICIAR_ATASCADOS, {"segundos": 300, "tipos": ["CONVERTIR"]})
     assert ej[2][1]["estado"] == "PENDIENTE" and len(ej[2][1]["error"]) == 4000
     assert ej[3][1]["estado"] == "ERROR"
     assert json.loads(ej[6][1]["metadatos"]) == {"titulo": "Ñ"} and ej[6][1]["portada"] is True

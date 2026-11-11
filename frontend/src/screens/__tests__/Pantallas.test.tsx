@@ -105,7 +105,7 @@ describe('La entrada', () => {
     const r = render(<LoginScreen navigation={nav} route={{ key: 'e', name: 'Entrar' }} />, { wrapper: Envoltura })
     expect(r.getByText('La Biblioteca AH')).toBeTruthy()
     fireEvent.press(r.getByTestId('entrar-boton'))
-    await waitFor(() => expect(r.getByText(`⚠ ${MENSAJES.requerido('El correo')}`)).toBeTruthy())
+    await waitFor(() => expect(r.getByText(`⚠ ${MENSAJES.requerido('El correo o usuario')}`)).toBeTruthy())
     expect(login).not.toHaveBeenCalled()
     fireEvent.changeText(r.getByTestId('entrar-correo'), '  anderson@casa.co ')
     fireEvent.changeText(r.getByTestId('entrar-clave'), 'secreto1')
@@ -194,10 +194,10 @@ describe('La ficha del libro', () => {
     expect(mockLibros.guardar).toHaveBeenCalledWith({ id: 'ej-guardian', favorito: false })
   })
 
-  it('un deseo no se puede leer y lo explica', async () => {
+  it('un deseo no se lee: en vez de Leer/Escuchar apagados ofrece «Ya lo tengo» (QA RW-07)', async () => {
     const r = render(<FichaLibro ejemplarId="ej-deseo-1" />, { wrapper: Envoltura })
-    await waitFor(() => expect(r.getByText(/Es un deseo/)).toBeTruthy())
-    expect(r.getByTestId('boton-leer').props.accessibilityState.disabled).toBe(true)
+    await waitFor(() => expect(r.getByTestId('ya-lo-tengo')).toBeTruthy())
+    expect(r.queryByTestId('boton-leer')).toBeNull()
   })
 })
 

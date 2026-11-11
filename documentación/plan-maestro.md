@@ -508,6 +508,7 @@ sin construir nada todavía.
 | foliate-js "no estable" | Commit fijado y vendorizado en `lector-web/` |
 | Consumo de GPU/CPU del servidor al generar audio | Cola con 1 trabajador de voz, prioridad al capítulo que se está escuchando, horario nocturno para "libro completo" |
 | Oh Churus en producción | Ningún cambio en Oh Churus sin autorización explícita (ver D1) |
+| Traducción automática (v1.3) con calidad irregular en literatura o traductor caído | Servicio propio `traductor` (v1.3.1: Opus-MT + CTranslate2 int8, medido mejor que LibreTranslate en novela: 1 error grave frente a 7 en 15 frases) con la API de LibreTranslate detrás de `TraductorClient`: cambiar de motor es cambiar una imagen. Modelos dentro de la imagen (sin descargas al arrancar). Caído = 503 solo en traducción; capítulos cacheados por archivo; freno por usuario |
 
 ## 17. Decisiones
 Resueltas por Anderson el 2026-11-10:

@@ -34,16 +34,41 @@ import {
   leerFiltrosGuardados,
   limpiarFiltros,
 } from '@logica/filtros'
-import { autoresTexto, duracion, nombreEstado } from '@logica/formato'
+import { autoresTexto, cuentaDePestana, duracion, nombreEstado, plural } from '@logica/formato'
+import { HUECO_FLOTANTE, esApaisado } from '@pantallas/biblioteca/flotante'
 import { librosService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes } from '@tema'
+import { placaActiva } from '@tema/materiales'
 import { web } from '@tema/web'
-import type { EjemplarDTO, FacetasDTO } from '@tipos'
+import type { EjemplarDTO, FacetasDTO, Orden, Pestana } from '@tipos'
+import { estadoElegible } from '@utils/aria'
+import { MENSAJES } from '@utils/mensajes'
+
+/** El borde derecho de la fila de pestañas se funde con lo que haya detrás (madera o papel), sin pintar color. */
+const mascaraDerecha = {
+  maskImage: 'linear-gradient(90deg, #000 calc(100% - 40px), transparent)',
+  WebkitMaskImage: 'linear-gradient(90deg, #000 calc(100% - 40px), transparent)',
+}
+
+/** Abrir el catálogo en una pestaña y un orden ("Ver todos" de una balda). `n` cambia en cada pedido. */
+export interface PedidoCatalogo {
+  pestana: Pestana
+  orden: Orden
+  n: number
+}
+
+/** Los años de las facetas, de menor a mayor (vienen en orden descendente: BI-19). */
+export function extremosDeAnios(anios: { nombre: string }[]): { min: string | undefined; max: string | undefined } {
+  const n = anios.map((a) => Number(a.nombre)).filter((x) => Number.isFinite(x))
+  if (!n.length) return { min: undefined, max: undefined }
+  return { min: String(Math.min(...n)), max: String(Math.max(...n)) }
+}
 
 interface Props {
   cabecera: React.ReactElement
   onAbrir: (l: EjemplarDTO) => void
   version: number
+  pedido?: PedidoCatalogo | null
 }
 
 /*
@@ -52,10 +77,13 @@ interface Props {
  * lista en rejilla de portadas o en fichas. Los filtros se recuerdan por
  * usuario: al volver, el catálogo está como lo dejaste.
  */
-const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
-  const { colors } = useTheme()
+const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
+  const { colors, isDark } = useTheme()
   const { user } = useAuth()
-  const { width } = useWindowDimensions()
+  const { width, height } = useWindowDimensions()
+  const apaisado = esApaisado(height)
+  const [lupaAbierta, setLupaAbierta] = useState(false)
+  const [fila, setFila] = useState({ ancho: 0, contenido: 0, x: 0 })
   const [filtros, setFiltros] = useState<EstadoFiltros>(FILTROS_INICIALES)
   const [listos, setListos] = useState(false)
   const [texto, setTexto] = useState('')
@@ -69,6 +97,8 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
   const [hoja, setHoja] = useState<'filtros' | 'orden' | null>(null)
   const [facetas, setFacetas] = useState<FacetasDTO | null>(null)
   const turno = useRef(0)
+  const filaPestanas = useRef<ScrollView>(null)
+  const posiciones = useRef<Record<string, number>>({})
 
   /* Los filtros guardados de ESTE usuario. */
   useEffect(() => {
@@ -81,6 +111,18 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
       .catch(() => {})
       .finally(() => setListos(true))
   }, [user?.userId])
+
+  /* "Ver todos ›" de una balda: el catálogo se abre en esa pestaña y orden. */
+  useEffect(() => {
+    if (!pedido || !listos) return
+    setFiltros((f) => ({ ...f, pestana: pedido.pestana, orden: pedido.orden }))
+  }, [pedido, listos])
+
+  /* La pestaña activa siempre a la vista (UX-01): la fila se desplaza hasta ella. */
+  useEffect(() => {
+    const x = posiciones.current[filtros.pestana]
+    if (x != null) filaPestanas.current?.scrollTo({ x: Math.max(0, x - 24), animated: true })
+  }, [filtros.pestana])
 
   useEffect(() => {
     if (!listos) return
@@ -102,9 +144,11 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
         const r = await librosService.todos(aFiltroDTO(filtros, page))
         if (mio !== turno.current) return
         if (!r.correct) throw new Error(r.message)
-        setLibros((prev) =>
-          page === 0 ? r.object.list : [...prev, ...r.object.list.filter((l) => !prev.some((p) => p.id === l.id))],
-        )
+        /* Los documentos tienen su archivador (BI-12): si el servidor aún los mezcla
+           en las pestañas de libros (contrato v1.1), aquí no se pintan. */
+        const lista =
+          filtros.pestana === 'DOCUMENTOS' ? r.object.list : r.object.list.filter((l) => l.tipo !== 'DOCUMENTO')
+        setLibros((prev) => (page === 0 ? lista : [...prev, ...lista.filter((l) => !prev.some((p) => p.id === l.id))]))
         setPagina(r.object.page)
         setTotalPaginas(r.object.totalPage)
         setTotal(r.object.totalElements ?? null)
@@ -121,14 +165,22 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
     if (listos) pedir(0)
   }, [pedir, listos, version])
 
+  /* Las facetas de la pestaña actual (BI-13) se piden CADA VEZ que se abre la hoja (BI-14): un género o una
+     etiqueta nuevos aparecen sin recargar la página. Mientras llegan, se ven las
+     anteriores. */
   useEffect(() => {
-    if (hoja === 'filtros' && !facetas) {
-      librosService
-        .facetas()
-        .then((r) => r.correct && setFacetas(r.object))
-        .catch((e) => console.warn('[catalogo] facetas', e))
+    if (hoja !== 'filtros') return
+    let vivo = true
+    librosService
+      .facetas(filtros.pestana)
+      .then((r) => {
+        if (vivo && r.correct) setFacetas(r.object)
+      })
+      .catch((e) => console.warn('[catalogo] facetas', e))
+    return () => {
+      vivo = false
     }
-  }, [hoja, facetas])
+  }, [hoja, version, filtros.pestana])
 
   const reemplazar = useCallback((l: EjemplarDTO) => setLibros((prev) => prev.map((x) => (x.id === l.id ? l : x))), [])
   usePreparacion(libros, reemplazar)
@@ -139,91 +191,181 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
   const nFiltros = contarFiltros(filtros)
   const ordenActual = ORDENES.find((o) => o.clave === filtros.orden)?.nombre ?? ''
 
-  const controles = (
-    <View style={styles.controles}>
-      <Input
-        label=""
-        accessibilityLabel="Buscar en tu biblioteca"
-        value={texto}
-        onChangeText={setTexto}
-        placeholder="Buscar por título, autor, etiqueta…"
-        testID="buscar"
-      />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pestanas}
-        accessibilityRole="tablist"
-      >
-        {PESTANAS.map((p) => {
-          const activa = filtros.pestana === p.clave
-          return (
-            <Pressable
-              key={p.clave}
-              onPress={() => setFiltros((f) => ({ ...f, pestana: p.clave }))}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activa }}
-              accessibilityLabel={p.nombre}
-              testID={`pestana-${p.clave}`}
-              style={[styles.pestana, activa && { borderBottomColor: colors.primary }, web({ cursor: 'pointer' })]}
+  /* La fila de pestañas se desvanece por la derecha SOLO si sigue (QA RW-05): con una máscara, no con un bloque de color. */
+  const desvanecer = fila.contenido > fila.ancho + 2 && fila.x + fila.ancho < fila.contenido - 2
+  const pestanas = (
+    <ScrollView
+      ref={filaPestanas}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.pestanas}
+      accessibilityRole="tablist"
+      onLayout={(e) => {
+        const w = e.nativeEvent.layout.width
+        setFila((f) => (Math.abs(f.ancho - w) > 1 ? { ...f, ancho: w } : f))
+      }}
+      onContentSizeChange={(w) => setFila((f) => (Math.abs(f.contenido - w) > 1 ? { ...f, contenido: w } : f))}
+      onScroll={(e) => {
+        const x = e.nativeEvent.contentOffset.x
+        setFila((f) => (Math.abs(f.x - x) > 4 ? { ...f, x } : f))
+      }}
+      scrollEventThrottle={64}
+      style={[apaisado && styles.flex, desvanecer && web(mascaraDerecha)]}
+      testID="fila-pestanas"
+    >
+      {PESTANAS.map((p) => {
+        const activa = filtros.pestana === p.clave
+        return (
+          <Pressable
+            key={p.clave}
+            onPress={() => setFiltros((f) => ({ ...f, pestana: p.clave }))}
+            onLayout={(e) => {
+              posiciones.current[p.clave] = e.nativeEvent.layout.x
+            }}
+            {...estadoElegible('tab', activa)}
+            accessibilityLabel={p.nombre}
+            testID={`pestana-${p.clave}`}
+            style={[
+              styles.pestana,
+              activa && { borderColor: colors.primaryLight },
+              activa && web(placaActiva(isDark)),
+              web({ cursor: 'pointer' }),
+            ]}
+          >
+            <Text
+              style={[
+                styles.pestanaTexto,
+                {
+                  color: activa ? colors.text : colors.textSecondary,
+                  fontFamily: activa ? fuentes.uiSemi : fuentes.ui,
+                },
+              ]}
             >
-              <Text
-                style={[
-                  styles.pestanaTexto,
-                  {
-                    color: activa ? colors.primary : colors.textSecondary,
-                    fontFamily: activa ? fuentes.uiSemi : fuentes.ui,
-                  },
-                ]}
-              >
-                {p.nombre}
-              </Text>
-            </Pressable>
-          )
-        })}
-      </ScrollView>
-      <View style={styles.herramientas}>
-        <Chip
-          etiqueta={nFiltros ? `Filtros (${nFiltros})` : 'Filtros'}
-          icono="filtro"
-          activo={nFiltros > 0}
-          onPress={() => setHoja('filtros')}
-          accessibilityLabel={`Filtros${nFiltros ? `, ${nFiltros} activos` : ''}`}
-          testID="abrir-filtros"
-        />
-        <Chip
-          etiqueta={ordenActual}
-          icono="orden"
-          onPress={() => setHoja('orden')}
-          accessibilityLabel={`Ordenar: ${ordenActual}`}
-          testID="abrir-orden"
-        />
-        <View style={styles.flex} />
-        <BotonIcono
-          icono={rejilla ? 'lista' : 'rejilla'}
-          etiqueta={rejilla ? 'Ver como lista' : 'Ver como rejilla'}
-          onPress={() => setRejilla((r) => !r)}
-        />
-      </View>
-      {chips.length ? (
-        <View style={styles.chips}>
-          {chips.map((c) => (
-            <Chip key={c.clave} etiqueta={c.etiqueta} quitable onPress={() => setFiltros(c.quitar)} />
-          ))}
-          <Chip
-            etiqueta="Limpiar"
-            quitable
-            accessibilityLabel="Quitar todos los filtros"
-            onPress={() => setFiltros(limpiarFiltros)}
-          />
-        </View>
-      ) : null}
-      {total != null ? (
-        <AppText variant="caption" style={styles.total}>
-          {total === 1 ? '1 libro' : `${total} libros`}
-        </AppText>
-      ) : null}
+              {p.nombre}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </ScrollView>
+  )
+
+  const campoBusqueda = (
+    <Input
+      label=""
+      accessibilityLabel="Buscar en tu biblioteca"
+      value={texto}
+      onChangeText={setTexto}
+      placeholder="Buscar por título, autor, etiqueta…"
+      testID="buscar"
+      autoFocus={apaisado}
+      compacto
+    />
+  )
+
+  const cuenta =
+    total != null ? (
+      <Text style={[styles.cuenta, { color: colors.textSecondary }]} numberOfLines={1} testID="cuenta-catalogo">
+        {cuentaDePestana(filtros.pestana, total)}
+      </Text>
+    ) : null
+
+  const chipsFiltros = chips.length ? (
+    <View style={styles.chips}>
+      {chips.map((c) => (
+        <Chip key={c.clave} etiqueta={c.etiqueta} quitable onPress={() => setFiltros(c.quitar)} />
+      ))}
+      <Chip
+        etiqueta="Limpiar"
+        quitable
+        accessibilityLabel="Quitar todos los filtros"
+        onPress={() => setFiltros(limpiarFiltros)}
+      />
     </View>
+  ) : null
+
+  const botonVista = (
+    <BotonIcono
+      icono={rejilla ? 'lista' : 'rejilla'}
+      etiqueta={rejilla ? 'Ver como lista' : 'Ver como rejilla'}
+      onPress={() => setRejilla((r) => !r)}
+    />
+  )
+
+  /*
+   * En horizontal (alto < 500, UX-12 y diseño 3) todo va en UNA fila junto a la
+   * cabecera: la búsqueda plegada en una lupa, las pestañas, filtros y orden.
+   * Así la cabecera del catálogo no pasa del 25 % del alto.
+   */
+  const buscando = apaisado && (lupaAbierta || !!texto)
+  const controles = apaisado ? (
+    <View style={styles.controlesApaisado} testID="controles-apaisados">
+      <View style={styles.filaApaisada}>
+        <View style={styles.cabeceraApaisada}>{cabecera}</View>
+        {buscando ? (
+          <>
+            <View style={styles.flex}>{campoBusqueda}</View>
+            <BotonIcono
+              icono="close"
+              etiqueta="Cerrar la búsqueda"
+              onPress={() => {
+                setTexto('')
+                setLupaAbierta(false)
+              }}
+              testID="cerrar-busqueda"
+            />
+          </>
+        ) : (
+          <>
+            <BotonIcono icono="search" etiqueta="Buscar" onPress={() => setLupaAbierta(true)} testID="abrir-busqueda" />
+            {pestanas}
+            <BotonIcono
+              icono="filtro"
+              etiqueta={`Filtros${nFiltros ? `, ${nFiltros} activos` : ''}`}
+              activo={nFiltros > 0}
+              onPress={() => setHoja('filtros')}
+              testID="abrir-filtros"
+            />
+            <BotonIcono
+              icono="orden"
+              etiqueta={`Ordenar: ${ordenActual}`}
+              onPress={() => setHoja('orden')}
+              testID="abrir-orden"
+            />
+            {botonVista}
+          </>
+        )}
+      </View>
+      {chipsFiltros}
+    </View>
+  ) : (
+    <>
+      {cabecera}
+      <View style={styles.controles}>
+        {campoBusqueda}
+        {pestanas}
+        <View style={styles.herramientas}>
+          <Chip
+            etiqueta={nFiltros ? `Filtros (${nFiltros})` : 'Filtros'}
+            icono="filtro"
+            activo={nFiltros > 0}
+            onPress={() => setHoja('filtros')}
+            accessibilityLabel={`Filtros${nFiltros ? `, ${nFiltros} activos` : ''}`}
+            testID="abrir-filtros"
+          />
+          <Chip
+            etiqueta={ordenActual}
+            icono="orden"
+            onPress={() => setHoja('orden')}
+            accessibilityLabel={`Ordenar: ${ordenActual}`}
+            testID="abrir-orden"
+          />
+          <View style={styles.flex} />
+          {botonVista}
+        </View>
+        {chipsFiltros}
+        {cuenta}
+      </View>
+    </>
   )
 
   const renderLibro = ({ item }: { item: EjemplarDTO }) =>
@@ -278,7 +420,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
             {item.formatoOriginal ? ` · ${item.formatoOriginal}` : ''}
             {item.minutosEstimados ? ` · ${duracion(item.minutosEstimados)}` : ''}
             {item.favorito ? ' · ♥ favorito' : ''}
-            {item.nNotas ? ` · ${item.nNotas} notas` : ''}
+            {item.nNotas ? ` · ${plural(item.nNotas, 'nota')}` : ''}
           </Text>
           {item.porcentaje > 0 ? <Barra porcentaje={item.porcentaje} etiqueta={`Progreso de ${item.titulo}`} /> : null}
         </View>
@@ -297,12 +439,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
         renderItem={renderLibro}
         columnWrapperStyle={columnas > 1 ? styles.filaRejilla : undefined}
         contentContainerStyle={styles.contenido}
-        ListHeaderComponent={
-          <>
-            {cabecera}
-            {controles}
-          </>
-        }
+        ListHeaderComponent={controles}
         ListEmptyComponent={
           cargando ? (
             <Spinner />
@@ -310,14 +447,33 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
             <EstadoError mensaje={error} onReintentar={() => pedir(0)} />
           ) : (
             <EmptyState
-              title="Ningún libro aquí"
+              title={filtros.texto ? `Nada coincide con «${filtros.texto}»` : 'Nada aquí todavía'}
               message={
-                nFiltros || filtros.texto
-                  ? 'Prueba quitando algún filtro.'
-                  : 'Esta parte de la biblioteca aún está vacía.'
+                filtros.texto && nFiltros
+                  ? `Ni el texto ni los ${plural(nFiltros, 'filtro')} dan resultados juntos.`
+                  : filtros.texto
+                    ? 'Prueba con otra palabra; da igual si escribes con tildes o mayúsculas.'
+                    : nFiltros
+                      ? 'Prueba quitando algún filtro.'
+                      : 'Esta parte de la biblioteca aún está vacía.'
               }
               icon="search"
-            />
+            >
+              {filtros.texto ? (
+                <Button
+                  title="Limpiar la búsqueda"
+                  variant="secondary"
+                  onPress={() => {
+                    setTexto('')
+                    setFiltros((f) => ({ ...f, texto: '' }))
+                  }}
+                  testID="limpiar-busqueda"
+                />
+              ) : null}
+              {nFiltros ? (
+                <Button title="Quitar los filtros" variant="secondary" onPress={() => setFiltros(limpiarFiltros)} />
+              ) : null}
+            </EmptyState>
           )
         }
         ListFooterComponent={cargando && libros.length ? <Spinner /> : <View style={styles.pie} />}
@@ -331,6 +487,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
         {ORDENES.map((o) => (
           <Chip
             key={o.clave}
+            rol="radio"
             etiqueta={o.nombre}
             activo={filtros.orden === o.clave}
             onPress={() => {
@@ -371,6 +528,9 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
               onAlternar={(v) => setFiltros((f) => ({ ...f, etiquetas: alternar(f.etiquetas, v) }))}
             />
             <AppText variant="label">Año</AppText>
+            {filtros.anioDesde != null && filtros.anioHasta != null && filtros.anioDesde > filtros.anioHasta ? (
+              <Text style={[styles.aviso, { color: colors.warning }]}>⚠ {MENSAJES.rangoAniosInvertido}</Text>
+            ) : null}
             <View style={styles.anios}>
               <View style={styles.flex}>
                 <Input
@@ -378,7 +538,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
                   keyboardType="number-pad"
                   value={filtros.anioDesde != null ? String(filtros.anioDesde) : ''}
                   onChangeText={(t) => setFiltros((f) => ({ ...f, anioDesde: /^\d{1,4}$/.test(t) ? Number(t) : null }))}
-                  placeholder={facetas.anios[0]?.nombre}
+                  placeholder={extremosDeAnios(facetas.anios).min}
                 />
               </View>
               <View style={styles.flex}>
@@ -387,7 +547,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version }) => {
                   keyboardType="number-pad"
                   value={filtros.anioHasta != null ? String(filtros.anioHasta) : ''}
                   onChangeText={(t) => setFiltros((f) => ({ ...f, anioHasta: /^\d{1,4}$/.test(t) ? Number(t) : null }))}
-                  placeholder={facetas.anios[facetas.anios.length - 1]?.nombre}
+                  placeholder={extremosDeAnios(facetas.anios).max}
                 />
               </View>
             </View>
@@ -445,20 +605,31 @@ const SeccionFacetas: React.FC<{
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  contenido: { paddingBottom: 120, maxWidth: 1400, width: '100%', alignSelf: 'center' },
+  contenido: { paddingBottom: HUECO_FLOTANTE, maxWidth: 1400, width: '100%', alignSelf: 'center' },
   controles: { paddingHorizontal: 16, paddingTop: 8, gap: 4 },
-  pestanas: { gap: 4, paddingBottom: 4 },
+  pestanas: { gap: 6, paddingBottom: 4, paddingRight: 28 },
   pestana: {
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
+  aviso: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
   pestanaTexto: { fontSize: fontSize.sm },
   herramientas: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  total: { marginTop: 8, marginBottom: 4 },
+  cuenta: {
+    fontFamily: fuentes.ui,
+    fontSize: fontSize.xs,
+    fontVariant: ['lining-nums'],
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  controlesApaisado: { paddingHorizontal: 8, paddingTop: 4, paddingBottom: 4 },
+  filaApaisada: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  cabeceraApaisada: { flexShrink: 0 },
   filaRejilla: { paddingHorizontal: 12, gap: 0 },
   celda: { padding: 12, gap: 6, alignItems: 'flex-start', minHeight: 44 },
   celdaTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.md, lineHeight: 20 },

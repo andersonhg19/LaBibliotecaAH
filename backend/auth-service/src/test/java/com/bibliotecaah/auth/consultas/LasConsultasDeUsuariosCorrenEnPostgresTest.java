@@ -48,7 +48,8 @@ class LasConsultasDeUsuariosCorrenEnPostgresTest extends PostgresDeVerdad {
 
     private User usuario(String nombre, String correo, boolean vivo) {
         return User.builder()
-                .name(nombre).email(correo).password("$2a$10$hashDePrueba")
+                .name(nombre).email(correo).alias(correo.substring(0, correo.indexOf('@')).toLowerCase())
+                .password("$2a$10$hashDePrueba")
                 .active(vivo)
                 .build();
     }

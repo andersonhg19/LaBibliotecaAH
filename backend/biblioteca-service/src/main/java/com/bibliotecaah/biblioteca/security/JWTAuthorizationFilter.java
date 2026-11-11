@@ -39,10 +39,17 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
     static final Pattern RUTAS_CON_TOKEN_EN_URL =
             Pattern.compile("^/v1/(archivos/.+|voces/[^/]+/muestra\\.mp3)$");
 
-    private final SecParams secParams;
+    static final String TOKEN_INVALIDO =
+            "{\"correct\":false,\"message\":\"Sesion invalida o vencida\",\"errorCode\":401}";
+    static final String SESION_REVOCADA = "{\"correct\":false,\"message\":\"Tu sesión ya no es válida "
+            + "(la cuenta cambió o se desactivó). Vuelve a iniciar sesión.\",\"errorCode\":401}";
 
-    public JWTAuthorizationFilter(SecParams secParams) {
+    private final SecParams secParams;
+    private final VigenciaDeSesiones vigencia;
+
+    public JWTAuthorizationFilter(SecParams secParams, VigenciaDeSesiones vigencia) {
         this.secParams = secParams;
+        this.vigencia = vigencia;
     }
 
     @Override
@@ -54,27 +61,39 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
             return;
         }
 
+        DecodedJWT jwt;
         try {
-            DecodedJWT jwt = JWT.require(Algorithm.HMAC256(secParams.getSecret())).build().verify(token);
-
-            Collection<GrantedAuthority> autoridades = new ArrayList<>();
-            List<String> roles = jwt.getClaim("roles").asList(String.class);
-            if (roles != null) {
-                roles.forEach(rol -> autoridades.add(new SimpleGrantedAuthority(rol)));
-            }
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(jwt.getSubject(), null, autoridades);
-            auth.setDetails(jwt.getClaim("userId").asLong());
-            SecurityContextHolder.getContext().setAuthentication(auth);
+            /* exp y userId obligatorios (QA SE-18). */
+            jwt = JWT.require(Algorithm.HMAC256(secParams.getSecret()))
+                    .withClaimPresence("exp").withClaimPresence("userId").build().verify(token);
         } catch (JWTVerificationException e) {
-            SecurityContextHolder.clearContext();
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"correct\":false,\"message\":\"Sesion invalida o vencida\",\"errorCode\":401}");
+            rechazar(response, TOKEN_INVALIDO);
             return;
         }
+        /* QA SE-02: cuenta desactivada o version de sesion vieja = fuera. */
+        if (!vigencia.vigente(jwt.getClaim("userId").asLong(), jwt.getClaim("ver").asInt(), token)) {
+            rechazar(response, SESION_REVOCADA);
+            return;
+        }
+        Collection<GrantedAuthority> autoridades = new ArrayList<>();
+        List<String> roles = jwt.getClaim("roles").asList(String.class);
+        if (roles != null) {
+            roles.forEach(rol -> autoridades.add(new SimpleGrantedAuthority(rol)));
+        }
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(jwt.getSubject(), null, autoridades);
+        auth.setDetails(jwt.getClaim("userId").asLong());
+        SecurityContextHolder.getContext().setAuthentication(auth);
 
         filterChain.doFilter(request, response);
+    }
+
+    private static void rechazar(HttpServletResponse response, String cuerpo) throws IOException {
+        SecurityContextHolder.clearContext();
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write(cuerpo);
     }
 
     private String tokenDe(HttpServletRequest request) {

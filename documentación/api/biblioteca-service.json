@@ -11,10 +11,14 @@
           },
           "cfi" : {
             "example" : "epubcfi(/6/8!/4/2/10,/1:0,/1:42)",
+            "maxLength" : 2000,
+            "minLength" : 0,
             "type" : "string"
           },
           "color" : {
             "example" : "amarillo",
+            "maxLength" : 30,
+            "minLength" : 0,
             "type" : "string"
           },
           "creado" : {
@@ -32,10 +36,14 @@
           },
           "fraseFin" : {
             "example" : "c003-s00124",
+            "maxLength" : 20,
+            "minLength" : 0,
             "type" : "string"
           },
           "fraseInicio" : {
             "example" : "c003-s00123",
+            "maxLength" : 20,
+            "minLength" : 0,
             "type" : "string"
           },
           "id" : {
@@ -44,6 +52,8 @@
           },
           "nota" : {
             "example" : "Me encanta este comienzo",
+            "maxLength" : 10000,
+            "minLength" : 0,
             "type" : "string"
           },
           "offsetFin" : {
@@ -57,13 +67,19 @@
             "type" : "integer"
           },
           "prefijo" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
             "type" : "string"
           },
           "sufijo" : {
+            "maxLength" : 1000,
+            "minLength" : 0,
             "type" : "string"
           },
           "textoCitado" : {
             "example" : "En un lugar de la Mancha",
+            "maxLength" : 5000,
+            "minLength" : 0,
             "type" : "string"
           },
           "tipo" : {
@@ -97,6 +113,9 @@
           "ejemplarId" : {
             "format" : "uuid",
             "type" : "string"
+          },
+          "reintentar" : {
+            "type" : "boolean"
           },
           "vozId" : {
             "type" : "string"
@@ -150,6 +169,8 @@
             "type" : "string"
           },
           "nota" : {
+            "maxLength" : 2000,
+            "minLength" : 0,
             "type" : "string"
           },
           "titulo" : {
@@ -289,12 +310,18 @@
         "properties" : {
           "anio" : {
             "format" : "int32",
+            "maximum" : 2100,
+            "minimum" : -3000,
             "type" : "integer"
           },
           "autores" : {
             "items" : {
+              "maxLength" : 300,
+              "minLength" : 0,
               "type" : "string"
             },
+            "maxItems" : 20,
+            "minItems" : 0,
             "type" : "array"
           },
           "calificacion" : {
@@ -317,8 +344,12 @@
           },
           "etiquetas" : {
             "items" : {
+              "maxLength" : 50,
+              "minLength" : 0,
               "type" : "string"
             },
+            "maxItems" : 50,
+            "minItems" : 0,
             "type" : "array"
           },
           "favorito" : {
@@ -326,8 +357,12 @@
           },
           "generos" : {
             "items" : {
+              "maxLength" : 100,
+              "minLength" : 0,
               "type" : "string"
             },
+            "maxItems" : 20,
+            "minItems" : 0,
             "type" : "array"
           },
           "id" : {
@@ -335,6 +370,8 @@
             "type" : "string"
           },
           "sinopsis" : {
+            "maxLength" : 10000,
+            "minLength" : 0,
             "type" : "string"
           },
           "tipo" : {
@@ -367,14 +404,19 @@
           "capitulo" : {
             "example" : 3,
             "format" : "int32",
+            "minimum" : 0,
             "type" : "integer"
           },
           "cfi" : {
             "example" : "epubcfi(/6/8!/4/2/10)",
+            "maxLength" : 2000,
+            "minLength" : 0,
             "type" : "string"
           },
           "dispositivo" : {
             "example" : "iPhone de Anderson",
+            "maxLength" : 100,
+            "minLength" : 0,
             "type" : "string"
           },
           "ejemplarId" : {
@@ -384,6 +426,8 @@
           },
           "fraseId" : {
             "example" : "c003-s00123",
+            "maxLength" : 20,
+            "minLength" : 0,
             "type" : "string"
           },
           "modo" : {
@@ -411,6 +455,8 @@
           },
           "vozId" : {
             "example" : "edge.es-ES-AlvaroNeural",
+            "maxLength" : 80,
+            "minLength" : 0,
             "type" : "string"
           }
         },
@@ -435,6 +481,68 @@
             "type" : "object"
           }
         },
+        "type" : "object"
+      },
+      "TraducirCapituloDTO" : {
+        "description" : "Capitulo a traducir (la primera llamada lo lanza; las siguientes lo consultan)",
+        "properties" : {
+          "capitulo" : {
+            "example" : 3,
+            "format" : "int32",
+            "maximum" : 999,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "destino" : {
+            "default" : "es",
+            "example" : "es",
+            "maxLength" : 10,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "example" : "3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f",
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "reintentar" : {
+            "example" : false,
+            "type" : "boolean"
+          }
+        },
+        "required" : [
+          "capitulo",
+          "ejemplarId"
+        ],
+        "type" : "object"
+      },
+      "TraducirDTO" : {
+        "description" : "Texto a traducir con el traductor autoalojado",
+        "properties" : {
+          "destino" : {
+            "default" : "es",
+            "example" : "es",
+            "maxLength" : 10,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "origen" : {
+            "default" : "auto",
+            "example" : "auto",
+            "maxLength" : 10,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "texto" : {
+            "example" : "It was a bright cold day in April, and the clocks were striking thirteen.",
+            "maxLength" : 5000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "texto"
+        ],
         "type" : "object"
       }
     },
@@ -576,6 +684,14 @@
             "schema" : {
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -623,6 +739,14 @@
             "schema" : {
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -656,6 +780,14 @@
               "format" : "uuid",
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -685,6 +817,14 @@
             "required" : true,
             "schema" : {
               "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
               "type" : "string"
             }
           }
@@ -720,6 +860,14 @@
               "format" : "uuid",
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -749,6 +897,14 @@
             "required" : true,
             "schema" : {
               "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
               "type" : "string"
             }
           }
@@ -784,6 +940,14 @@
               "format" : "uuid",
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -813,6 +977,14 @@
             "required" : true,
             "schema" : {
               "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
               "type" : "string"
             }
           }
@@ -1299,7 +1471,17 @@
     },
     "/v1/libros/facetas" : {
       "post" : {
+        "description" : "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.",
         "operationId" : "facetas",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FiltroLibrosDTO"
+              }
+            }
+          }
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -1396,6 +1578,16 @@
                 "DOCUMENTO",
                 "DESEO"
               ],
+              "type" : "string"
+            }
+          },
+          {
+            "description" : "\"Ya lo tengo\" (v1.3.2): id de un deseo propio que este archivo cumple. Un solo archivo; el ejemplar que llega hereda nota, etiquetas y estantes, y el deseo se borra.",
+            "in" : "query",
+            "name" : "deseoId",
+            "required" : false,
+            "schema" : {
+              "format" : "uuid",
               "type" : "string"
             }
           }
@@ -1506,6 +1698,68 @@
         ]
       }
     },
+    "/v1/traducir" : {
+      "post" : {
+        "operationId" : "traducir",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TraducirDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+        "tags" : [
+          "Traduccion"
+        ]
+      }
+    },
+    "/v1/traducir/capitulo" : {
+      "post" : {
+        "operationId" : "capitulo",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TraducirCapituloDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+        "tags" : [
+          "Traduccion"
+        ]
+      }
+    },
     "/v1/voces/all" : {
       "post" : {
         "operationId" : "voces",
@@ -1538,6 +1792,14 @@
             "schema" : {
               "type" : "string"
             }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
           }
         ],
         "responses" : {
@@ -1565,6 +1827,14 @@
             "in" : "path",
             "name" : "vozId",
             "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
             "schema" : {
               "type" : "string"
             }
@@ -1619,6 +1889,10 @@
     {
       "description" : "Retomar exactamente donde lo dejaste, en cualquier dispositivo",
       "name" : "Progreso"
+    },
+    {
+      "description" : "Traduccion autoalojada (los libros no salen de casa)",
+      "name" : "Traduccion"
     },
     {
       "description" : "Catalogo de voces y audio por capitulo",

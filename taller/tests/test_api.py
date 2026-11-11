@@ -50,6 +50,6 @@ def test_arranque_con_trabajadores_y_bd_caida_no_tumba_el_servicio(tmp_path, mon
     )
     with TestClient(crear_app(a)) as c:
         cuerpo = c.get("/salud").json()
-        assert [t["nombre"] for t in cuerpo["trabajadores"]] == ["conversion", "voz"]
+        assert [t["nombre"] for t in cuerpo["trabajadores"]] == ["conversion", "voz", "voz-2"]
         assert all(t["vivo"] for t in cuerpo["trabajadores"])
     assert generadas == [tmp_path / "muestras"]

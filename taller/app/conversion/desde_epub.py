@@ -16,6 +16,7 @@ from lxml import etree
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import AlmacenImagenes, Capitulo, ErrorDefinitivo, Libro, NodoToc
 from .html_util import Elemento, buscar_body, limpiar_cuerpo, nombre_local, parsear_xhtml, texto_de, texto_plano
+from .limites import revisar_zip
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,11 @@ class _Item:
     props: list[str]
 
 
-_XML = etree.XMLParser(resolve_entities=False, no_network=True, recover=True, huge_tree=True)
+# sin huge_tree: libxml2 conserva sus topes de profundidad y tamaño de nodo (SE-01)
+_XML = etree.XMLParser(resolve_entities=False, no_network=True, recover=True)
+_TITULOS_HTML = ("h1", "h2", "h3")
+# algoritmos de ofuscación de fuentes (legítimos, no impiden leer el texto)
+_OFUSCACION_FUENTES = {"http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC"}
 
 
 def _leer(z: zipfile.ZipFile, ruta: str) -> bytes | None:
@@ -80,14 +85,43 @@ def convertir_epub(ruta: Path) -> Libro:
     except zipfile.BadZipFile as e:
         raise ErrorDefinitivo(Msj.EPUB_DANADO) from e
     with z:
+        revisar_zip(z)
+        _revisar_drm(z)
         return _convertir(z)
+
+
+def _xml(datos: bytes) -> Elemento | None:
+    """XML tolerante; None si no se puede leer (con recover=True lxml devuelve None o lanza según el caso)."""
+    try:
+        return etree.fromstring(datos, _XML)
+    except (etree.XMLSyntaxError, ValueError):
+        return None
+
+
+def _revisar_drm(z: zipfile.ZipFile) -> None:
+    """DRM = META-INF/encryption.xml que cifra algo que no es una fuente ofuscada (QA DA-05)."""
+    datos = _leer(z, "META-INF/encryption.xml")
+    if datos is None:
+        return
+    raiz = _xml(datos)
+    if raiz is None:
+        if _leer(z, "META-INF/rights.xml") is not None:
+            raise ErrorDefinitivo(Msj.EPUB_CON_DRM)
+        return
+    for cifrado in (e for e in raiz.iter() if nombre_local(e) == "encrypteddata"):
+        metodo = next((e for e in cifrado.iter() if nombre_local(e) == "encryptionmethod"), None)
+        algoritmo = metodo.get("Algorithm", "") if metodo is not None else ""
+        if algoritmo not in _OFUSCACION_FUENTES:
+            raise ErrorDefinitivo(Msj.EPUB_CON_DRM)
 
 
 def _convertir(z: zipfile.ZipFile) -> Libro:
     container = _leer(z, "META-INF/container.xml")
     if container is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_CONTAINER)
-    raiz_c = etree.fromstring(container, _XML)
+    raiz_c = _xml(container)
+    if raiz_c is None:
+        raise ErrorDefinitivo(Msj.EPUB_CONTAINER_ILEGIBLE)
     rootfile = raiz_c.find(".//c:rootfile", NS)
     if rootfile is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_OPF)
@@ -95,7 +129,9 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
     datos_opf = _leer(z, ruta_opf) if ruta_opf else None
     if datos_opf is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_OPF)
-    opf = etree.fromstring(datos_opf, _XML)
+    opf = _xml(datos_opf)
+    if opf is None:
+        raise ErrorDefinitivo(Msj.EPUB_SIN_OPF)
 
     libro = Libro()
     _metadatos(opf, libro)
@@ -155,19 +191,51 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
             continue
         parseados.append((ruta_doc, raiz))
 
+    # títulos y niveles desde el índice
+    titulos: dict[str, tuple[str, int]] = {}
+
+    def recorrer(nodos: list[_EntradaToc], nivel: int) -> None:
+        for titulo, ruta, frag, hijos in nodos:
+            nuevo = ruta not in titulos and titulo
+            # misma página en dos niveles ("Parte I" → "Capítulo 1", sin fragmento): gana la más concreta (DA-27)
+            mas_concreto = ruta in titulos and not frag and titulo and nivel > titulos[ruta][1]
+            if ruta and (nuevo or mas_concreto):
+                titulos[ruta] = (titulo, nivel)
+            recorrer(hijos, nivel + 1)
+
+    recorrer(toc_crudo, 1)
+
     elegidos: list[tuple[str, Elemento]] = []
+    anexos: dict[str, list[tuple[str, Elemento]]] = {}  # documentos que continúan el capítulo anterior
+    principal_de: dict[str, str] = {}
     pendientes_img: list[tuple[str, Elemento]] = []  # láminas sin texto: se anteponen al siguiente capítulo
     for ruta_doc, raiz in parseados:
         body = buscar_body(raiz)
         texto = texto_de(body)
         imgs = [e for e in body.iter() if nombre_local(e) in ("img", "image")]
         if texto:
-            elegidos.append((ruta_doc, raiz))
+            # Un capítulo repartido en varios XHTML (DA-17): si hay índice, el documento no está en él y no trae
+            # título propio, es la continuación del capítulo anterior.
+            continua = (
+                bool(titulos)
+                and bool(elegidos)
+                and ruta_doc not in titulos
+                and not any(nombre_local(e) in _TITULOS_HTML for e in body.iter())
+            )
+            if continua:
+                principal = elegidos[-1][0]
+                anexos.setdefault(principal, []).append((ruta_doc, raiz))
+                principal_de[ruta_doc] = principal
+            else:
+                elegidos.append((ruta_doc, raiz))
+                principal_de[ruta_doc] = ruta_doc
         elif imgs and not _solo_portada(imgs, ruta_doc, ruta_portada):
             pendientes_img.append((ruta_doc, raiz))
     if not elegidos:
         raise ErrorDefinitivo(Msj.SIN_TEXTO)
     indice_doc = {ruta: i for i, (ruta, _r) in enumerate(elegidos)}
+    for ruta, principal in principal_de.items():
+        indice_doc[ruta] = indice_doc[principal]
 
     almacen = AlmacenImagenes(libro)
 
@@ -195,18 +263,6 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
 
         return resolver
 
-    # títulos y niveles desde el índice
-    titulos: dict[str, tuple[str, int]] = {}
-
-    def recorrer(nodos: list[_EntradaToc], nivel: int) -> None:
-        for titulo, ruta, frag, hijos in nodos:
-            nuevo = ruta not in titulos and titulo
-            if ruta and (nuevo or (ruta in titulos and not frag and titulos[ruta][1] > nivel)):
-                titulos[ruta] = (titulo, nivel)
-            recorrer(hijos, nivel + 1)
-
-    recorrer(toc_crudo, 1)
-
     # documentos de imagen pendientes → se anexan al capítulo siguiente
     previos_por_doc: dict[str, list[tuple[str, Elemento]]] = {}
     orden = [r for r, _ in parseados]
@@ -214,10 +270,15 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
         pos = orden.index(ruta_img_doc)
         siguiente = next((r for r in orden[pos + 1 :] if r in indice_doc), None)
         if siguiente:
-            previos_por_doc.setdefault(siguiente, []).append((ruta_img_doc, raiz))
+            previos_por_doc.setdefault(principal_de[siguiente], []).append((ruta_img_doc, raiz))
 
     for i, (ruta_doc, raiz) in enumerate(elegidos):
         cuerpo = limpiar_cuerpo(buscar_body(raiz), resolver_imagen_desde(ruta_doc), resolver_enlace_desde(ruta_doc))
+        for ruta_anexo, raiz_anexo in anexos.get(ruta_doc, []):
+            extra = limpiar_cuerpo(
+                buscar_body(raiz_anexo), resolver_imagen_desde(ruta_anexo), resolver_enlace_desde(ruta_anexo)
+            )
+            _anexar_cuerpo(cuerpo, extra)
         for ruta_img_doc, raiz_img in previos_por_doc.get(ruta_doc, []):
             extra = limpiar_cuerpo(buscar_body(raiz_img), resolver_imagen_desde(ruta_img_doc), None)
             for k, hijo in enumerate(list(extra)):
@@ -230,6 +291,21 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
 
     libro.toc = _toc_final(toc_crudo, indice_doc)
     return libro
+
+
+def _anexar_cuerpo(cuerpo: Elemento, extra: Elemento) -> None:
+    """Añade el contenido de `extra` al final de `cuerpo` sin repetir ids (el XHTML de salida exige ids únicos)."""
+    vistos = {e.get("id") for e in cuerpo.iter() if e.get("id")}
+    for e in extra.iter():
+        ident = e.get("id")
+        if ident and ident in vistos:
+            del e.attrib["id"]
+        elif ident:
+            vistos.add(ident)
+    if extra.text and extra.text.strip():
+        etree.SubElement(cuerpo, "p").text = extra.text
+    for hijo in list(extra):
+        cuerpo.append(hijo)
 
 
 def _solo_portada(imgs: list[Elemento], ruta_doc: str, ruta_portada: str | None) -> bool:
@@ -249,7 +325,8 @@ def _metadatos(opf: Elemento, libro: Libro) -> None:
         return
     md["titulo"] = _texto(meta.find("dc:title", NS))
     md["autores"] = [t for t in (_texto(c) for c in meta.iterfind("dc:creator", NS)) if t]
-    md["idioma"] = (_texto(meta.find("dc:language", NS)) or "es")[:10]
+    idioma = _texto(meta.find("dc:language", NS))
+    md["idioma"] = idioma[:10] if idioma else None  # sin dc:language lo detecta convertir (QA NU-02)
     md["editorial"] = _texto(meta.find("dc:publisher", NS))
     fecha = _texto(meta.find("dc:date", NS))
     if fecha:
@@ -331,7 +408,10 @@ def _toc_ncx(z: zipfile.ZipFile, ruta_ncx: str) -> list[_EntradaToc]:
     datos = _leer(z, ruta_ncx)
     if datos is None:
         return []
-    raiz = etree.fromstring(datos, _XML)
+    raiz = _xml(datos)
+    if raiz is None:  # el índice es opcional: un NCX roto no tumba el libro (DA-04)
+        log.warning("Índice NCX ilegible (%s); se usan los títulos del texto", ruta_ncx)
+        return []
     nav_map = raiz.find(".//ncx:navMap", NS)
     if nav_map is None:
         return []

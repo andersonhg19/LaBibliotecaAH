@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import threading
+import weakref
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -36,19 +38,24 @@ class EdgeTts:
     version = "edge-tts-7/48k-mono-mp3/v1"
 
     def __init__(self, concurrencia: int = 4, reintentos: int = 5, pausa_base: float = 1.5):
-        self._semaforo: asyncio.Semaphore | None = None
-        self._bucle: asyncio.AbstractEventLoop | None = None
+        # un semáforo por bucle de eventos: cada trabajo corre su propio asyncio.run y puede haber varios hilos de
+        # voz a la vez (QA DA-19); compartir uno entre bucles daría "bound to a different event loop"
+        self._semaforos: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+            weakref.WeakKeyDictionary()
+        )
+        self._cerrojo = threading.Lock()
         self._concurrencia = concurrencia
         self.reintentos = reintentos
         self.pausa_base = pausa_base
 
     def _sem(self) -> asyncio.Semaphore:
-        # el semáforo pertenece al bucle de eventos que lo usa (cada trabajo corre su propio asyncio.run)
         bucle = asyncio.get_running_loop()
-        if self._semaforo is None or self._bucle is not bucle:
-            self._semaforo = asyncio.Semaphore(self._concurrencia)
-            self._bucle = bucle
-        return self._semaforo
+        with self._cerrojo:
+            sem = self._semaforos.get(bucle)
+            if sem is None:
+                sem = asyncio.Semaphore(self._concurrencia)
+                self._semaforos[bucle] = sem
+            return sem
 
     async def sintetizar(self, texto: str, voz: str) -> Sintesis:
         import edge_tts
@@ -71,6 +78,9 @@ class EdgeTts:
                         raise ConnectionError("edge-tts no devolvió audio")
                     return Sintesis(bytes(audio), "mp3", palabras)
                 except Exception as e:  # 403, desconexiones, límites…
+                    if isinstance(e, ValueError) and "voice" in str(e).lower():
+                        # "Invalid voice": no es una caída del servicio, no se reintenta (QA DA-12)
+                        raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz, detalle=str(e)) from e
                     ultimo = e
                     espera = self.pausa_base * (2 ** (intento - 1)) + random.uniform(0, 0.5)
                     log.warning(

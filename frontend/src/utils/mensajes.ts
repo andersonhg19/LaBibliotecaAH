@@ -39,7 +39,23 @@ export const MENSAJES = {
   favoritoQuitado: 'Fuera de favoritos',
   ordenFallo: 'No se pudo guardar el nuevo orden. Se deja como estaba.',
   estanteCreado: 'Estante creado',
+  estanteRenombrado: 'Estante renombrado',
+  estanteBorrado: 'Estante retirado. Sus libros siguen en tu biblioteca.',
+  favoritosProtegido: 'Favoritos es de la casa: no se renombra ni se borra.',
   libroBorrado: 'Libro retirado de la biblioteca',
+  /* BI-01: lo que se conserva al retirar (el servidor guarda notas, diario y avance). */
+  retirarAviso: (titulo: string) =>
+    `«${titulo}» saldrá de tu biblioteca. Tus notas, tu diario y dónde ibas se guardan: si vuelves a traer el mismo archivo, reaparecen.`,
+  /* BI-07/08: el servidor respondió bien pero no aplicó el cambio: no se dice "Guardado". */
+  noSeAplico: 'El servidor no aplicó el cambio. Se deja como estaba.',
+  calificacionQuitada: 'Calificación quitada',
+  archivoGrande: (max: string) => `El archivo es demasiado grande (máximo ${max}).`,
+  demasiadosArchivos: 'Son demasiados archivos de una vez. Súbelos en tandas más pequeñas.',
+  yaLoTenias: 'Ya estaba en tu biblioteca',
+  yaLoTeniasComoLibro: 'Ya lo tienes como libro: no se duplica',
+  deseoCumplido: 'Deseo cumplido: el libro ya está en tu biblioteca',
+  registroCerrado: 'El registro está cerrado. Pide a quien administra la biblioteca que te cree la cuenta.',
+  rangoAniosInvertido: '«Desde» es posterior a «Hasta»: no hay años en ese rango.',
   preparandoLibro: 'Preparando el libro…',
   conversionFallo: 'No se pudo preparar este archivo. Prueba a subirlo de nuevo o en otro formato.',
   // lector
@@ -61,17 +77,27 @@ export const MENSAJES = {
   vozFinLibro: 'Fin del libro.',
   vozSinDocumento: 'Este documento no tiene voz todavía.',
   // validaciones de formularios
-  requerido: (campo: string) => `${campo} es obligatorio.`,
+  /* "La contraseña es obligatoria", "El título es obligatorio" (UX-17): el
+     género sale del artículo con que se nombra el campo. */
+  requerido: (campo: string) => `${campo} es ${/^(la|las)\s/i.test(campo) ? 'obligatoria' : 'obligatorio'}.`,
   correoInvalido: 'Escribe un correo válido.',
+  // alias (mismas reglas que el backend: ValidationUtils.FORMATO_ALIAS)
+  aliasInvalido:
+    'El usuario debe tener de 3 a 30 caracteres: letras sin tilde, números, punto (.), guion (-) o guion bajo (_). Sin espacios ni @.',
+  aliasAyuda: 'Con él también podrás entrar. De 3 a 30: letras sin tilde, números, punto, guion o guion bajo.',
+  aliasGuardado: 'Usuario actualizado',
   claveCorta: 'La contraseña debe tener al menos 6 caracteres.',
-  claveDebil: 'Usa al menos 8 caracteres, con letras y números.',
+  claveDebil: 'Usa al menos 10 caracteres, con letras y números (y que no sea fácil de adivinar).',
   claveNoCoincide: 'Las contraseñas no coinciden.',
   textoLargo: (max: number) => `Máximo ${max} caracteres.`,
-  anioInvalido: 'Escribe un año entre 1 y el año próximo.',
+  anioInvalido: 'Escribe un año entero entre -3000 y 2100 (o déjalo vacío).',
+  archivoVacio: 'El archivo está vacío.',
+  conflicto: 'Otro cambio llegó a la vez. Se recarga lo que hay.',
+  cuentaCreada: 'Cuenta creada',
 } as const
 
 const EXACTOS: Record<string, string> = {
-  'invalid email or password': 'Correo o contraseña incorrectos.',
+  'invalid email or password': 'Correo/usuario o contraseña incorrectos.',
   'email already in use': 'Ese correo ya está registrado.',
   'email already in use by another user': 'Ese correo ya lo usa otra cuenta.',
   'password is required for new users': 'La contraseña es obligatoria.',

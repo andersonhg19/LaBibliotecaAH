@@ -168,20 +168,22 @@ def test_arranque_con_configuracion_lanza_uvicorn(monkeypatch, tmp_path):
 def test_manejador_voz_ok_y_errores(tmp_path, monkeypatch):
     import app.cola.trabajador as tr
 
-    async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None):
+    async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None, seguir=None):
         latido()
+        assert seguir()
         return 12.345
 
     monkeypatch.setattr(tr, "generar_capitulo", generar_falso)
     p = {"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 2}
     repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload=p)])
+    Rutas(tmp_path).normalizados("a1").mkdir(parents=True)
     m = ManejadorVoz(Rutas(tmp_path))
     assert procesar(repo.tomar(["VOZ_CAPITULO"]), m, repo, 3) == "HECHO"
     assert repo.audios[("a1", "edge.es-ES-AlvaroNeural", 2)] == {"estado": "LISTO", "duracion": 12.35, "error": None}
 
     repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload={"vozId": "raro.x", "capitulo": 0})])
     assert procesar(repo.tomar(["VOZ_CAPITULO"]), m, repo, 3) == "ERROR"
-    assert repo.trabajos[0]["error"] == "La voz raro.x no está disponible."
+    assert repo.trabajos[0]["error"] == "La voz «raro.x» no está disponible. Elige otra voz de la lista."
     assert repo.audios[("a1", "raro.x", 0)]["estado"] == "ERROR"
 
     repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload='{"capitulo": 1}')])

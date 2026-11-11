@@ -24,4 +24,10 @@ public class AudioEstadoPeticionDTO {
     @NotNull(message = "{validacion.obligatorio}")
     @Min(value = 0, message = "{validacion.noNegativo}")
     private Integer capitulo;
+    /**
+     * true = volver a intentar un capitulo que quedo en ERROR (QA DA-02). Sin el,
+     * un ERROR se informa y NO se reencola: antes cada consulta del reproductor
+     * lo volvia a encolar sin fin.
+     */
+    private Boolean reintentar;
 }

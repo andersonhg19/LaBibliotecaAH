@@ -23,7 +23,16 @@ export const adminService = {
     return response.data
   },
 
-  crearUsuario: async (data: { name: string; email: string; password: string }) => {
+  crearUsuario: async (data: { name: string; email: string; alias: string; password: string }) => {
+    const response = await api.post<ResultDTO<AdminUser>>(`${ADMIN_BASE}/users/save`, data)
+    return response.data
+  },
+
+  /**
+   * Edita nombre, correo y alias de otra cuenta (con id). Sin alias, el
+   * servidor conserva el que tenía. La contraseña de otro no se cambia aquí.
+   */
+  editarUsuario: async (data: { id: number; name: string; email: string; alias?: string }) => {
     const response = await api.post<ResultDTO<AdminUser>>(`${ADMIN_BASE}/users/save`, data)
     return response.data
   },

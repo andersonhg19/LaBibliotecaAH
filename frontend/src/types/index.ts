@@ -24,17 +24,21 @@ export interface AuthResponse {
   userId: string
   name: string
   email: string
+  /** Nombre de usuario con el que también se entra (auth V3). */
+  alias?: string
   roles?: string[]
 }
 
+/** `usuario` es el correo O el alias; el backend acepta aún `email` como sinónimo. */
 export interface LoginRequest {
-  email: string
+  usuario: string
   password: string
 }
 
 export interface RegisterRequest {
   name: string
   email: string
+  alias: string
   password: string
 }
 
@@ -42,6 +46,7 @@ export interface ResultUserDTO {
   id: string
   name: string
   email: string
+  alias?: string
   active?: boolean
 }
 
@@ -56,6 +61,7 @@ export interface AdminUser {
   id: number
   name: string
   email: string
+  alias?: string
   active: boolean
   roles: string[]
   createdAt?: string
@@ -149,6 +155,10 @@ export interface EjemplarDTO {
   fechaFin: string | null
   nNotas: number
   fuenteMetadatos: FuenteMetadatos
+  /** Nota de un deseo ("regalo de cumpleaños"); contrato v1.2 (BI-15). */
+  nota?: string | null
+  /** v1.2, solo en la respuesta de /subir: ese archivo ya estaba en tu biblioteca (BI-16). */
+  yaLoTenias?: boolean
 }
 
 export interface CapituloResumen {
@@ -185,12 +195,13 @@ export interface FiltroLibrosDTO {
 export interface GuardarEjemplarDTO {
   id: string
   titulo?: string
-  autores?: string[]
+  /** v1.2: ausente = no se toca; null = se vacía. */
+  autores?: string[] | null
   anio?: number | null
   editorial?: string | null
   sinopsis?: string | null
-  generos?: string[]
-  etiquetas?: string[]
+  generos?: string[] | null
+  etiquetas?: string[] | null
   estado?: EstadoLectura
   calificacion?: number | null
   favorito?: boolean
@@ -283,6 +294,10 @@ export interface EstadoAudioDTO {
   url1x: string | null
   url2x: string | null
   urlTiempos: string | null
+  /** v1.2: por qué falló el capítulo, en texto humano (cuando `estado` es ERROR). */
+  error?: string | null
+  /** Opcional (aún no en el contrato): segundos estimados hasta que esté LISTO. */
+  estimadoSeg?: number | null
 }
 
 /** cap-NNN.tiempos.json (contratos §6). Palabras: [inicioChar, finChar, t0, t1]. */
@@ -298,4 +313,17 @@ export interface TiemposCapitulo {
   vozId: string
   duracion: number
   frases: FraseTiempo[]
+}
+
+/** Traducción de un trozo de texto (POST /v1/traducir). */
+export interface TraduccionDTO {
+  traduccion: string
+  origenDetectado: string | null
+}
+
+/** Traducción por frase de un capítulo (POST /v1/traducir/capitulo); si PENDIENTE, volver a preguntar. */
+export interface TraduccionCapituloDTO {
+  estado: 'LISTO' | 'PENDIENTE' | 'ERROR'
+  frases: { id: string; texto: string }[]
+  error?: string | null
 }

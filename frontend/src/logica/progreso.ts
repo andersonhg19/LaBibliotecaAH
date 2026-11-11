@@ -80,10 +80,15 @@ export function nombreDispositivo(ua: string | undefined | null): string {
   return 'otro dispositivo'
 }
 
-/** "el capítulo 7 «La tormenta» (42 %)" */
+/**
+ * "el capítulo 7 «La tormenta» (42 % del libro)". Si el título ya dice el
+ * capítulo («Capítulo 4: El invierno largo») no se repite, y el % se aclara
+ * que es del LIBRO, no del capítulo (QA LV-13).
+ */
 export function describirPosicion(p: ProgresoDTO, capitulos?: CapituloResumen[]): string {
   const cap = capitulos?.find((c) => c.indice === p.capitulo)
-  const nombre = cap?.titulo ? ` «${cap.titulo}»` : ''
-  const pct = Math.round(p.porcentaje ?? 0)
-  return `el capítulo ${p.capitulo + 1}${nombre} (${pct} %)`
+  const titulo = cap?.titulo?.trim() ?? ''
+  const pct = `(${Math.round(p.porcentaje ?? 0)} % del libro)`
+  if (titulo && /^cap[ií]tulo\b/i.test(titulo)) return `«${titulo}» ${pct}`
+  return `el capítulo ${p.capitulo + 1}${titulo ? ` «${titulo}»` : ''} ${pct}`
 }

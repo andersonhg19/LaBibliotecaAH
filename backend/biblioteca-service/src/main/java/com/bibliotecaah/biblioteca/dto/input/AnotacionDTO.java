@@ -3,6 +3,7 @@ package com.bibliotecaah.biblioteca.dto.input;
 import com.bibliotecaah.biblioteca.enums.TipoAnotacion;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -27,24 +28,32 @@ public class AnotacionDTO {
     @NotNull(message = "{validacion.obligatorio}")
     @Schema(example = "RESALTADO")
     private TipoAnotacion tipo;
+    @Size(max = 30, message = "{validacion.maximo}")
     @Schema(example = "amarillo")
     private String color;
+    @Size(max = 2000, message = "{validacion.maximo}")
     @Schema(example = "epubcfi(/6/8!/4/2/10,/1:0,/1:42)")
     private String cfi;
+    @Size(max = 20, message = "{validacion.maximo}")
     @Schema(example = "c003-s00123")
     private String fraseInicio;
     @Schema(example = "0")
     private Integer offsetInicio;
+    @Size(max = 20, message = "{validacion.maximo}")
     @Schema(example = "c003-s00124")
     private String fraseFin;
     @Schema(example = "42")
     private Integer offsetFin;
     @Schema(example = "1")
     private Integer versionTexto;
+    @Size(max = 5000, message = "{validacion.maximo}")
     @Schema(example = "En un lugar de la Mancha")
     private String textoCitado;
+    @Size(max = 1000, message = "{validacion.maximo}")
     private String prefijo;
+    @Size(max = 1000, message = "{validacion.maximo}")
     private String sufijo;
+    @Size(max = 10000, message = "{validacion.maximo}")
     @Schema(example = "Me encanta este comienzo")
     private String nota;
     @Schema(example = "3")

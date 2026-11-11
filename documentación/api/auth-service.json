@@ -71,14 +71,22 @@
       "AuthenticationRequest" : {
         "properties" : {
           "email" : {
+            "deprecated" : true,
+            "description" : "Sinonimo retrocompatible de 'usuario' (correo o alias)",
+            "example" : "anderson@biblioteca.ah",
             "type" : "string"
           },
           "password" : {
+            "example" : "Clave1234",
+            "type" : "string"
+          },
+          "usuario" : {
+            "description" : "Correo o alias de la cuenta",
+            "example" : "anderson",
             "type" : "string"
           }
         },
         "required" : [
-          "email",
           "password"
         ],
         "type" : "object"
@@ -186,6 +194,13 @@
       },
       "UserRegisterDTO" : {
         "properties" : {
+          "alias" : {
+            "description" : "Alias para iniciar sesion: 3-30 caracteres [a-z0-9._-], sin @",
+            "example" : "anderson",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
           "email" : {
             "maxLength" : 150,
             "minLength" : 0,
@@ -198,12 +213,13 @@
           },
           "password" : {
             "maxLength" : 100,
-            "minLength" : 8,
+            "minLength" : 10,
             "pattern" : "^(?=.*\\p{L})(?=.*\\d).*$",
             "type" : "string"
           }
         },
         "required" : [
+          "alias",
           "email",
           "name",
           "password"
@@ -212,6 +228,13 @@
       },
       "UserSaveDTO" : {
         "properties" : {
+          "alias" : {
+            "description" : "Alias para iniciar sesion: 3-30 caracteres [a-z0-9._-], sin @. Al editar, si no llega se conserva",
+            "example" : "anderson",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
           "currentPassword" : {
             "maxLength" : 100,
             "minLength" : 0,
@@ -233,7 +256,7 @@
           },
           "password" : {
             "maxLength" : 100,
-            "minLength" : 8,
+            "minLength" : 10,
             "pattern" : "^(?=.*\\p{L})(?=.*\\d).*$",
             "type" : "string"
           }
@@ -576,6 +599,7 @@
     },
     "/v1/admin/users/save" : {
       "post" : {
+        "description" : "Alta: name, email, alias y password obligatorios. Edicion: name y email; el alias, si no llega, se conserva; la contrasena de otra cuenta no se cambia aqui.",
         "operationId" : "crear",
         "requestBody" : {
           "content" : {
@@ -599,7 +623,7 @@
             "description" : "OK"
           }
         },
-        "summary" : "Alta de una cuenta desde administracion",
+        "summary" : "Alta (sin id) o edicion (con id) de una cuenta desde administracion",
         "tags" : [
           "Administracion de usuarios"
         ]
@@ -713,6 +737,7 @@
     },
     "/v1/auth/login" : {
       "post" : {
+        "description" : "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -736,6 +761,7 @@
             "description" : "OK"
           }
         },
+        "summary" : "Inicia sesion con correo o alias",
         "tags" : [
           "authentication-controller"
         ]
@@ -766,6 +792,50 @@
             "description" : "OK"
           }
         },
+        "tags" : [
+          "authentication-controller"
+        ]
+      }
+    },
+    "/v1/auth/renovar" : {
+      "post" : {
+        "description" : "Devuelve lo mismo que /login con un token nuevo (misma version de sesion, caducidad contada desde ahora). La web lo llama al abrir y cada pocas horas: asi los tokens pueden ser cortos (EXP_TIME) sin pedir la clave a diario. Con la sesion revocada responde 401.",
+        "operationId" : "renovar",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Renueva el token de la sesion actual",
+        "tags" : [
+          "authentication-controller"
+        ]
+      }
+    },
+    "/v1/auth/sesion" : {
+      "post" : {
+        "description" : "Uso interno de biblioteca-service (QA SE-02): si el token llega hasta aqui, la cuenta esta activa y su version de sesion coincide con la del token; si no, el filtro ya respondio 401.",
+        "operationId" : "sesion",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Comprueba que el token sigue vigente",
         "tags" : [
           "authentication-controller"
         ]

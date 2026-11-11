@@ -29,7 +29,7 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (p) => {
         style={styles.tocable}
       >
         {modo === 'lomo' ? (
-          <Lomo libro={libro} colorFijo={p.colorFijo} />
+          <Lomo libro={libro} colorFijo={p.colorFijo} escala={p.escala} tumbado={p.postura === 'tumbado'} />
         ) : (
           <Portada libro={libro} ancho={p.anchoPortada ?? 104} />
         )}

@@ -1,9 +1,14 @@
 """Bucle de trabajadores: sondea la cola, ejecuta el manejador del tipo y registra el resultado.
 
-- Dos hilos: uno para CONVERTIR y otro para VOZ_CAPITULO (la voz nunca bloquea conversiones).
+- Un hilo para CONVERTIR y `hilos_voz` (2) para VOZ_CAPITULO: la voz nunca bloquea conversiones y un capítulo
+  largo no deja esperando a los demás (QA DA-19).
 - Máx. `max_intentos` (3): un fallo con intentos < 3 vuelve a PENDIENTE; al 3.º queda ERROR.
-- `ErrorDefinitivo` (formato no soportado, PDF escaneado…) va directo a ERROR: reintentar no lo arregla.
-- Ninguna excepción mata el bucle y ninguna se traga sin log.
+- `ErrorDefinitivo` (formato no soportado, PDF escaneado, voz inexistente…) va directo a ERROR.
+- `TrabajoCancelado` (el libro se retiró mientras se procesaba): se limpia lo escrito y no se toca nada más.
+- Mientras un trabajo corre, un hilo de latido refresca `actualizado` cada `intervalo_latido` s; el `Barrendero`
+  devuelve a PENDIENTE los EN_CURSO sin latido (QA DA-01).
+- La conversión corre en un subproceso con memoria y tiempo acotados (QA SE-01).
+- Al usuario solo llegan mensajes del catálogo; el detalle técnico va al log. Ninguna excepción mata el bucle.
 """
 
 from __future__ import annotations
@@ -11,22 +16,26 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 import threading
 from collections.abc import Callable
 from typing import Any
 
 from ..config.registro import contexto
 from ..config.rutas import Rutas
+from ..conversion.aislado import ejecutar_aislado
 from ..conversion.convertir import VERSION_TEXTO, buscar_original, convertir
 from ..dominio.mensajes import Msj, texto
-from ..dominio.modelo import ErrorDefinitivo, ErrorDeTaller
-from ..voz.capitulo import generar_capitulo
+from ..dominio.modelo import ErrorDefinitivo, ErrorDeTaller, TrabajoCancelado
+from ..dominio.voces import voz_conocida
+from ..voz.capitulo import borrar_audio_capitulo, generar_capitulo
 from ..voz.motor import motor_para
 from .repositorio import Repositorio
 
 log = logging.getLogger(__name__)
 
 Trabajo = dict[str, Any]
+INTERVALO_LATIDO = 60.0
 
 
 def _payload(trabajo: Trabajo) -> dict[str, Any]:
@@ -55,17 +64,34 @@ class ManejadorConvertir(Manejador):
     tipos = ("CONVERTIR",)
     mensaje_interno = Msj.ERROR_INTERNO_CONVERSION
 
-    def __init__(self, rutas: Rutas):
+    def __init__(self, rutas: Rutas, aislar: bool = True, memoria_mb: int = 1536, tiempo_seg: float = 1200):
         self.rutas = rutas
+        self.aislar = aislar
+        self.memoria_mb = memoria_mb
+        self.tiempo_seg = tiempo_seg
 
     def ejecutar(self, trabajo: Trabajo, repo: Repositorio) -> None:
         archivo_id = str(trabajo["archivo_id"])
-        repo.archivo_procesando(archivo_id)
+        if not repo.archivo_procesando(archivo_id):
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         original = buscar_original(self.rutas.originales(archivo_id))
-        r = convertir(original, self.rutas.normalizados(archivo_id), archivo_id)
-        repo.archivo_listo(
+        destino = self.rutas.normalizados(archivo_id)
+        if self.aislar:
+            r = ejecutar_aislado(
+                convertir,
+                (original, destino, archivo_id),
+                memoria_mb=self.memoria_mb,
+                tiempo_seg=self.tiempo_seg,
+                ids=(str(trabajo["id"]), archivo_id),
+            )
+        else:
+            r = convertir(original, destino, archivo_id)
+        retirado = not original.exists() or not repo.archivo_listo(
             archivo_id, r.metadatos, r.n_capitulos, r.n_palabras, r.minutos_estimados, r.tiene_portada, VERSION_TEXTO
         )
+        if retirado:  # el libro se retiró mientras se convertía: no se deja nada huérfano (QA DA-14)
+            shutil.rmtree(destino, ignore_errors=True)
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         log.info(
             "Convertido: capitulos=%d frases=%d palabras=%d portada=%s",
             r.n_capitulos,
@@ -95,23 +121,38 @@ class ManejadorVoz(Manejador):
         capitulo = p.get("capitulo")
         if not voz_id or capitulo is None:
             raise ErrorDefinitivo(Msj.TRABAJO_VOZ_INCOMPLETO)
+        voz_id, capitulo = str(voz_id), int(capitulo)
+        # Voz fuera del catálogo: error definitivo inmediato, sin llamar al servicio ni reintentar (QA DA-12)
+        if not voz_conocida(voz_id):
+            raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz_id)
         try:
-            motor, voz_motor = motor_para(str(voz_id), self.concurrencia)
+            motor, voz_motor = motor_para(voz_id, self.concurrencia)
         except ValueError as e:
             raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz_id) from e
-        repo.audio_estado(archivo_id, str(voz_id), int(capitulo), "GENERANDO")
+        if not repo.audio_estado(archivo_id, voz_id, capitulo, "GENERANDO"):
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
+
+        def sigue_existiendo() -> bool:
+            return self.rutas.normalizados(archivo_id).is_dir()
+
         duracion = asyncio.run(
             generar_capitulo(
                 self.rutas,
                 archivo_id,
-                str(voz_id),
-                int(capitulo),
+                voz_id,
+                capitulo,
                 motor,
                 voz_motor,
                 latido=lambda: repo.latido(trabajo["id"]),
+                seguir=sigue_existiendo,
             )
         )
-        repo.audio_estado(archivo_id, str(voz_id), int(capitulo), "LISTO", duracion=round(duracion, 2))
+        listo = sigue_existiendo() and repo.audio_estado(
+            archivo_id, voz_id, capitulo, "LISTO", duracion=round(duracion, 2)
+        )
+        if not listo:  # retirado mientras se generaba: se borra lo escrito (QA DA-28)
+            borrar_audio_capitulo(self.rutas, archivo_id, voz_id, capitulo)
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         log.info("Audio listo: voz=%s capitulo=%s duracion=%.1fs", voz_id, capitulo, duracion)
 
     def al_fallar(self, trabajo: Trabajo, repo: Repositorio, mensaje: str, definitivo: bool) -> None:
@@ -126,14 +167,48 @@ class ManejadorVoz(Manejador):
             )
 
 
-def mensaje_de(e: BaseException, manejador: Manejador, intentos: int) -> str:
-    """Mensaje claro para el usuario: el del catálogo o uno genérico con el detalle técnico al final."""
+def mensaje_de(e: BaseException, manejador: Manejador) -> str:
+    """Mensaje para el usuario: el del catálogo. Nunca nombres de excepciones ni salidas de programas (QA DA-20)."""
     if isinstance(e, ErrorDeTaller):
         return str(e)
-    return texto(manejador.mensaje_interno, intentos=intentos, detalle=f"{type(e).__name__}: {e}")[:2000]
+    return texto(manejador.mensaje_interno)
 
 
-def procesar(trabajo: Trabajo, manejador: Manejador, repo: Repositorio, max_intentos: int) -> str:
+class Latido:
+    """Hilo que refresca `actualizado` del trabajo mientras se ejecuta (para el barrido de colgados)."""
+
+    def __init__(self, repo: Repositorio, trabajo_id: Any, intervalo: float):
+        self.repo = repo
+        self.trabajo_id = trabajo_id
+        self.intervalo = intervalo
+        self.latidos = 0
+        self._fin = threading.Event()
+        self._hilo = threading.Thread(target=self._latir, name=f"{threading.current_thread().name}-latido", daemon=True)
+
+    def _latir(self) -> None:
+        while not self._fin.wait(self.intervalo):
+            try:
+                self.repo.latido(self.trabajo_id)
+                self.latidos += 1
+            except Exception as e:
+                log.warning("Latido fallido: %s", e)
+
+    def __enter__(self) -> Latido:
+        self._hilo.start()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._fin.set()
+        self._hilo.join(5)
+
+
+def procesar(
+    trabajo: Trabajo,
+    manejador: Manejador,
+    repo: Repositorio,
+    max_intentos: int,
+    intervalo_latido: float = INTERVALO_LATIDO,
+) -> str:
     """Ejecuta un trabajo ya tomado. Devuelve el estado final del trabajo (HECHO | PENDIENTE | ERROR)."""
     with contexto(trabajo["id"], trabajo.get("archivo_id")):
         tid = trabajo["id"]
@@ -144,16 +219,32 @@ def procesar(trabajo: Trabajo, manejador: Manejador, repo: Repositorio, max_inte
             _registrar_fallo(trabajo, manejador, repo, str(msg), True)
             return "ERROR"
         try:
-            manejador.ejecutar(trabajo, repo)
+            with Latido(repo, tid, intervalo_latido):
+                manejador.ejecutar(trabajo, repo)
             repo.marcar_hecho(tid)
             return "HECHO"
+        except TrabajoCancelado as e:
+            log.info("Trabajo cancelado: %s", e)
+            try:
+                repo.marcar_fallo(tid, str(e), True)
+            except Exception:
+                log.exception("No se pudo registrar la cancelación del trabajo")
+            return "ERROR"
         except Exception as e:
             definitivo = isinstance(e, ErrorDefinitivo) or intentos >= max_intentos
-            msg = mensaje_de(e, manejador, intentos)
+            msg = mensaje_de(e, manejador)
+            detalle = getattr(e, "detalle", None)
             if isinstance(e, ErrorDefinitivo):
-                log.warning("Sin solución al reintentar: %s", msg)
+                log.warning("Sin solución al reintentar: %s%s", msg, f" (detalle: {detalle})" if detalle else "")
             else:
-                log.exception("Falló (intento %d/%d, definitivo=%s): %s", intentos, max_intentos, definitivo, msg)
+                log.exception(
+                    "Falló (intento %d/%d, definitivo=%s): %s%s",
+                    intentos,
+                    max_intentos,
+                    definitivo,
+                    msg,
+                    f" (detalle: {detalle})" if detalle else "",
+                )
             _registrar_fallo(trabajo, manejador, repo, msg, definitivo)
             return "ERROR" if definitivo else "PENDIENTE"
 
@@ -180,6 +271,7 @@ class Trabajador(threading.Thread):
         intervalo: float,
         max_intentos: int,
         parar: threading.Event,
+        intervalo_latido: float = INTERVALO_LATIDO,
     ):
         super().__init__(name=nombre, daemon=True)
         self.manejador = manejador
@@ -187,6 +279,7 @@ class Trabajador(threading.Thread):
         self.intervalo = intervalo
         self.max_intentos = max_intentos
         self.parar = parar
+        self.intervalo_latido = intervalo_latido
         self.procesados = 0
         self.ultimo_error: str | None = None
 
@@ -203,7 +296,7 @@ class Trabajador(threading.Thread):
                     continue
                 with contexto(trabajo["id"], trabajo["archivo_id"]):
                     log.info("Trabajo tomado: tipo=%s intento=%s", trabajo["tipo"], trabajo.get("intentos"))
-                procesar(trabajo, self.manejador, repo, self.max_intentos)
+                procesar(trabajo, self.manejador, repo, self.max_intentos, self.intervalo_latido)
                 self.procesados += 1
                 self.ultimo_error = None
             except Exception as e:  # BD caída, etc.: se registra, se reconecta y se espera
@@ -216,3 +309,44 @@ class Trabajador(threading.Thread):
         if repo is not None:
             repo.cerrar()
         log.info("Trabajador detenido")
+
+
+class Barrendero(threading.Thread):
+    """Cada `intervalo` s devuelve a PENDIENTE los trabajos EN_CURSO sin latido desde hace `segundos_atascado`
+    (un hilo colgado o un proceso que murió sin que el contenedor se reiniciara, QA DA-01)."""
+
+    def __init__(
+        self,
+        fabrica_repo: Callable[[], Repositorio],
+        tipos: list[str],
+        segundos_atascado: int,
+        intervalo: float,
+        parar: threading.Event,
+    ):
+        super().__init__(name="barrendero", daemon=True)
+        self.fabrica_repo = fabrica_repo
+        self.tipos = tipos
+        self.segundos_atascado = segundos_atascado
+        self.intervalo = intervalo
+        self.parar = parar
+        self.barridos = 0
+        self.devueltos = 0
+
+    def barrer(self) -> int:
+        repo = self.fabrica_repo()
+        try:
+            n = repo.reiniciar_atascados(self.segundos_atascado, self.tipos)
+        finally:
+            repo.cerrar()
+        self.barridos += 1
+        self.devueltos += n
+        if n:
+            log.warning("Trabajos EN_CURSO sin latido devueltos a PENDIENTE: %d", n)
+        return n
+
+    def run(self) -> None:
+        while not self.parar.wait(self.intervalo):
+            try:
+                self.barrer()
+            except Exception:
+                log.exception("No se pudo barrer los trabajos colgados (se reintenta en el próximo barrido)")

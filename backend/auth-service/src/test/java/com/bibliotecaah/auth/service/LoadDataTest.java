@@ -58,11 +58,25 @@ class LoadDataTest {
         loadData.run();
 
         verify(userRepository).save(argThat(u -> u.getEmail().equals("admin@biblioteca.ah")
-                && u.tieneRol("ADMIN") && u.tieneRol("USER")));
+                && u.getAlias().equals("admin") && u.tieneRol("ADMIN") && u.tieneRol("USER")));
         verify(userRepository).save(argThat(u -> u.getEmail().equals("anderson@biblioteca.ah")
-                && u.tieneRol("ADMIN") && u.tieneRol("USER")));
+                && u.getAlias().equals("anderson") && u.tieneRol("ADMIN") && u.tieneRol("USER")));
         verify(userRepository).save(argThat(u -> u.getEmail().equals("samy@biblioteca.ah")
-                && !u.tieneRol("ADMIN") && u.tieneRol("USER")));
+                && u.getAlias().equals("samy") && !u.tieneRol("ADMIN") && u.tieneRol("USER")));
+    }
+
+    @Test
+    @DisplayName("si el alias de la semilla ya es de otra cuenta, usa el primer alias-N libre y no tumba el arranque")
+    void aliasOcupado() {
+        claves(null, null, "ClaveSamy1");
+        when(userRepository.existsByAlias("samy")).thenReturn(true);
+        when(userRepository.existsByAlias("samy-2")).thenReturn(true);
+        when(userRepository.existsByAlias("samy-3")).thenReturn(false);
+
+        loadData.run();
+
+        verify(userRepository).save(argThat(u -> u.getEmail().equals("samy@biblioteca.ah")
+                && u.getAlias().equals("samy-3")));
     }
 
     @Test

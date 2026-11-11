@@ -37,14 +37,16 @@ export const FILTROS_INICIALES: EstadoFiltros = {
   orden: 'RECIENTES',
 }
 
+/* "Todo" va PRIMERO (UX-01): es la pestaña por defecto y, al final de la fila,
+   quedaba fuera de la pantalla del teléfono sin que se viera cuál estaba activa. */
 export const PESTANAS: { clave: Pestana; nombre: string }[] = [
+  { clave: 'TODO', nombre: 'Todo' },
   { clave: 'LEYENDO', nombre: 'Leyendo' },
   { clave: 'POR_LEER', nombre: 'Por leer' },
   { clave: 'LEIDOS', nombre: 'Leídos' },
   { clave: 'FAVORITOS', nombre: 'Favoritos' },
   { clave: 'DESEOS', nombre: 'Deseos' },
   { clave: 'DOCUMENTOS', nombre: 'Documentos' },
-  { clave: 'TODO', nombre: 'Todo' },
 ]
 
 export const ORDENES: { clave: Orden; nombre: string }[] = [

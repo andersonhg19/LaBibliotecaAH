@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AuthenticationController.class)
 @AutoConfigureMockMvc(addFilters = false)
+@org.springframework.context.annotation.Import(com.bibliotecaah.auth.util.Mensajes.class)
 class AuthenticationControllerTest {
 
     @Autowired
@@ -63,7 +64,7 @@ class AuthenticationControllerTest {
         authResponse.setName("Test");
         authResponse.setUserId(1L);
 
-        when(authenticationService.authenticate(any())).thenReturn(authResponse);
+        when(authenticationService.authenticate(any(), any())).thenReturn(authResponse);
 
         mockMvc.perform(post("/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -81,7 +82,7 @@ class AuthenticationControllerTest {
         request.setEmail("test@biblioteca.ah");
         request.setPassword("wrong");
 
-        when(authenticationService.authenticate(any())).thenThrow(new BadCredentialsException("Invalid"));
+        when(authenticationService.authenticate(any(), any())).thenThrow(new BadCredentialsException("Invalid"));
 
         mockMvc.perform(post("/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -89,13 +90,59 @@ class AuthenticationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.correct").value(false))
                 .andExpect(jsonPath("$.errorCode").value(101))
-                .andExpect(jsonPath("$.message").value("Correo o contraseña incorrectos"));
+                .andExpect(jsonPath("$.message").value("Correo/usuario o contraseña incorrectos"));
+    }
+
+    @Test
+    @DisplayName("POST /v1/auth/login - con 'usuario' (alias) llega al servicio tal cual")
+    void loginConUsuario() throws Exception {
+        AuthenticationResponse sesion = new AuthenticationResponse();
+        sesion.setToken("jwt");
+        sesion.setAlias("anderson");
+        when(authenticationService.authenticate(any(), any())).thenReturn(sesion);
+
+        mockMvc.perform(post("/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usuario\":\"anderson\",\"password\":\"clave-de-prueba\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.correct").value(true))
+                .andExpect(jsonPath("$.object.alias").value("anderson"));
+
+        org.mockito.ArgumentCaptor<AuthenticationRequest> pedido =
+                org.mockito.ArgumentCaptor.forClass(AuthenticationRequest.class);
+        verify(authenticationService).authenticate(pedido.capture(), any());
+        org.junit.jupiter.api.Assertions.assertEquals("anderson", pedido.getValue().getIdentificador());
+    }
+
+    @Test
+    @DisplayName("POST /v1/auth/login - un alias en 'email' (cliente viejo) ya no se rechaza por formato")
+    void loginAliasEnEmail() throws Exception {
+        when(authenticationService.authenticate(any(), any())).thenReturn(new AuthenticationResponse());
+
+        mockMvc.perform(post("/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"anderson\",\"password\":\"clave-de-prueba\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.correct").value(true));
+    }
+
+    @Test
+    @DisplayName("POST /v1/auth/login - sin usuario ni email: errorCode 400 con mensaje claro, sin llamar al servicio")
+    void loginSinUsuario() throws Exception {
+        mockMvc.perform(post("/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"usuario\":\"  \",\"password\":\"clave-de-prueba\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.correct").value(false))
+                .andExpect(jsonPath("$.errorCode").value(400))
+                .andExpect(jsonPath("$.message").value("Escribe tu correo o tu usuario."));
+        verify(authenticationService, never()).authenticate(any(), any());
     }
 
     @Test
     @DisplayName("POST /v1/auth/login - demasiados intentos: errorCode 429 con mensaje en espanol")
     void loginBloqueado() throws Exception {
-        when(authenticationService.authenticate(any()))
+        when(authenticationService.authenticate(any(), any()))
                 .thenThrow(new com.bibliotecaah.auth.security.DemasiadosIntentosException());
 
         mockMvc.perform(post("/v1/auth/login")
@@ -129,6 +176,7 @@ class AuthenticationControllerTest {
         UserRegisterDTO dto = new UserRegisterDTO();
         dto.setName("New User");
         dto.setEmail("new@biblioteca.ah");
+        dto.setAlias("nuevo");
         dto.setPassword("Password123!");
 
         when(userService.register(any())).thenReturn(new ResultDTO(true, "OK", 0));
@@ -138,7 +186,7 @@ class AuthenticationControllerTest {
         sesion.setEmail("new@biblioteca.ah");
         sesion.setName("New User");
         sesion.setUserId(7L);
-        when(authenticationService.authenticate(any())).thenReturn(sesion);
+        when(authenticationService.authenticate(any(), any())).thenReturn(sesion);
 
         mockMvc.perform(post("/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -166,11 +214,11 @@ class AuthenticationControllerTest {
         when(userService.register(any())).thenReturn(new ResultDTO(true, "OK", 0));
         AuthenticationResponse sesion = new AuthenticationResponse();
         sesion.setToken("t");
-        when(authenticationService.authenticate(any())).thenReturn(sesion);
+        when(authenticationService.authenticate(any(), any())).thenReturn(sesion);
 
         mockMvc.perform(post("/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"id\":1,\"name\":\"Intruso\",\"email\":\"intruso@evil.com\","
+                        .content("{\"id\":1,\"name\":\"Intruso\",\"email\":\"intruso@evil.com\",\"alias\":\"intruso\","
                                 + "\"password\":\"Password123!\"}"))
                 .andExpect(status().isOk());
 
@@ -216,5 +264,35 @@ class AuthenticationControllerTest {
                 .andExpect(jsonPath("$.correct").value(false))
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("'email'")));
+    }
+
+    @Test
+    @DisplayName("POST /v1/auth/register - sin alias: 200 con correct:false y el campo 'alias'")
+    void registerSinAlias() throws Exception {
+        mockMvc.perform(post("/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"N\",\"email\":\"n@biblioteca.ah\",\"password\":\"Clave12345x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.correct").value(false))
+                .andExpect(jsonPath("$.errorCode").value(400))
+                .andExpect(jsonPath("$.message").value(
+                        "Revisa los datos enviados: el campo 'alias' es obligatorio."));
+        verify(userService, never()).register(any());
+    }
+
+    @Test
+    @DisplayName("POST /v1/auth/register - el error de alias del servicio sale tal cual, sin intentar iniciar sesion")
+    void registerAliasRepetido() throws Exception {
+        when(userService.register(any())).thenReturn(
+                new ResultDTO(false, "Ese nombre de usuario ya está en uso. Prueba con otro.", 112));
+
+        mockMvc.perform(post("/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"N\",\"email\":\"n@biblioteca.ah\",\"alias\":\"samy\","
+                                + "\"password\":\"Clave12345x\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.correct").value(false))
+                .andExpect(jsonPath("$.errorCode").value(112));
+        verify(authenticationService, never()).authenticate(any(), any());
     }
 }

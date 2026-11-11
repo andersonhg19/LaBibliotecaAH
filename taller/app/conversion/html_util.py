@@ -178,17 +178,17 @@ def _copiar_hijos(
                 img = etree.SubElement(destino, "img")
                 img.set("src", nuevo_src)
                 img.set("alt", hijo.get("alt") or "")
+        elif _es_enlace_de_vuelta(hijo):
+            pass  # "↩︎" de vuelta desde una nota (pandoc/mammoth): ni se ve ni se lee
         elif nombre in BLOQUES_HOJA_O_CONTENEDOR or nombre in EN_LINEA:
             nuevo = etree.SubElement(destino, nombre)
+            marca = _marca_de_nota(hijo)
+            if marca:
+                nuevo.set("class", marca)
             for k_crudo, v_crudo in hijo.attrib.items():
                 k, v = str(k_crudo), str(v_crudo)
                 k_local = etree.QName(k).localname if k.startswith("{") else k
-                if k_local == "type" and ("idpf.org/2007/ops" in k or k.startswith("epub:")):
-                    tipos = set(v.split())
-                    if "noteref" in tipos:  # llamada a nota: no se lee en voz
-                        nuevo.set("class", (nuevo.get("class", "") + " bah-nota").strip())
-                    elif tipos & {"footnote", "endnote", "rearnote", "note", "footnotes", "endnotes", "rearnotes"}:
-                        nuevo.set("class", (nuevo.get("class", "") + " bah-nota-pie").strip())
+                if _es_epub_type(k):
                     continue
                 if k_local not in ATRIBUTOS:
                     continue
@@ -215,6 +215,46 @@ def _copiar_hijos(
             # desconocida: se desenvuelve
             _copiar_hijos(hijo, destino, r_img, r_enl)
         _anexar_texto(destino, tail)
+
+
+_TIPOS_NOTA_PIE = {"footnote", "endnote", "rearnote", "note", "footnotes", "endnotes", "rearnotes"}
+_ROLES_NOTA_PIE = {"doc-footnote", "doc-endnote", "doc-endnotes", "doc-footnotes"}
+_FLECHAS_VUELTA = {"↩", "↩︎", "↑", "^"}
+
+
+def _es_epub_type(k: str) -> bool:
+    """`epub:type` con espacio de nombres (parser XML) o literal (parser HTML, QA DA-10)."""
+    return k == "epub:type" or (k.startswith("{") and "idpf.org/2007/ops" in k and k.endswith("}type"))
+
+
+def _marca_de_nota(el: Elemento) -> str | None:
+    """Clase interna para notas: `bah-nota` (llamada) o `bah-nota-pie` (texto de la nota). Ninguna se lee en voz.
+
+    Reconoce EPUB (`epub:type`), pandoc (`role="doc-endnotes"`, `class="footnotes"`, `footnote-ref`) y DPUB-ARIA.
+    """
+    tipos: set[str] = set()
+    for k, v in el.attrib.items():
+        if _es_epub_type(str(k)):
+            tipos |= set(str(v).split())
+    rol = set((el.get("role") or "").split())
+    clases = set((el.get("class") or "").split())
+    if "noteref" in tipos or "doc-noteref" in rol or "footnote-ref" in clases:
+        return "bah-nota"
+    if tipos & _TIPOS_NOTA_PIE or rol & _ROLES_NOTA_PIE or "footnotes" in clases:
+        return "bah-nota-pie"
+    return None
+
+
+def _es_enlace_de_vuelta(el: Elemento) -> bool:
+    if nombre_local(el) != "a":
+        return False
+    rol = set((el.get("role") or "").split())
+    clases = set((el.get("class") or "").split())
+    href = el.get("href") or ""
+    if "doc-backlink" in rol or "footnote-back" in clases:
+        return True
+    # mammoth: <a href="#footnote-ref-1">↑</a>
+    return href.startswith("#footnote-ref-") and texto_de(el) in _FLECHAS_VUELTA
 
 
 def _anexar_texto(destino: Elemento, texto: str | None) -> None:
@@ -332,7 +372,7 @@ def texto_de(el: Elemento) -> str:
 def parsear_xhtml(datos: bytes) -> Elemento:
     """Parsea XHTML; si no es XML bien formado, cae a lxml.html. Devuelve el elemento raíz."""
     try:
-        parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=True, recover=False)
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)  # sin huge_tree (SE-01)
         return etree.fromstring(datos, parser)
     except etree.XMLSyntaxError:
         import lxml.html

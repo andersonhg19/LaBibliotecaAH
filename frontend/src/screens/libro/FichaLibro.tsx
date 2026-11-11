@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
@@ -18,31 +18,39 @@ import EstadoError from '@componentes/molecules/EstadoError'
 import { usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
+import { useAccionUnica } from '@hooks/useAccionUnica'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { nombreColor, nombreTipo, ordenarAnotaciones } from '@logica/anotaciones'
+import { numerarCapitulos } from '@logica/capitulos'
 import {
   ESTADOS,
   autoresTexto,
   duracion,
   fechaCorta,
   fechaRelativa,
+  seAplico,
   seEstaPreparando,
   sePuedeLeer,
 } from '@logica/formato'
 import { idDeFrase } from '@logica/tiempos'
 import type { Rutas } from '@navegacion/linking'
+import SubirLibros from '@pantallas/biblioteca/SubirLibros'
 import { anotacionesService, comentariosService, estantesService, librosService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes, spacing } from '@tema'
 import { luzLampara } from '@tema/madera'
+import { placaActiva } from '@tema/materiales'
 import { web } from '@tema/web'
 import type {
   AnotacionDTO,
   ComentarioDTO,
+  EjemplarDTO,
   EjemplarDetalleDTO,
   EstadoLectura,
   EstanteDTO,
+  FuenteMetadatos,
   GuardarEjemplarDTO,
 } from '@tipos'
+import { estadoElegible } from '@utils/aria'
 import { confirmarAccion } from '@utils/confirmar'
 import { escucharLibro } from '@utils/escuchar'
 import { MENSAJES, mensajeDelServidor } from '@utils/mensajes'
@@ -58,11 +66,31 @@ interface Props {
   onCerrar?: () => void
 }
 
+/** El tamaño del título según lo largo que sea (UX-10): un título de 200 letras no puede ocupar la pantalla. */
+export const tamanoTitulo = (titulo: string): number =>
+  titulo.length > 140 ? 24 : titulo.length > 80 ? 28 : titulo.length > 40 ? 34 : fontSize.title
+
+/** Dónde buscar un deseo: Google Libros por ISBN, o por título y autor. */
+export const urlDondeConseguirlo = (l: Pick<EjemplarDTO, 'isbn' | 'titulo' | 'autores'>): string => {
+  const q = l.isbn ? `isbn:${l.isbn.replace(/[^0-9Xx]/g, '')}` : [l.titulo, ...(l.autores ?? [])].join(' ')
+  return `https://www.google.com/search?tbm=bks&q=${encodeURIComponent(q)}`
+}
+
+/** De dónde salieron los datos, dicho como lo diría un bibliotecario (UX-29). */
+const ORIGEN: Record<FuenteMetadatos, string> = {
+  NOMBRE_ARCHIVO: 'Estos datos salen del nombre del archivo: corrígelos si hace falta.',
+  ARCHIVO: 'Estos datos vienen dentro del propio archivo.',
+  MANUAL: 'Estos datos los corregiste a mano.',
+  OPEN_LIBRARY: 'Estos datos vienen de Open Library.',
+  IA: 'Estos datos los sugirió el bibliotecario: revísalos.',
+}
+
 /*
  * LA FICHA DEL LIBRO (plan §8.3): portada grande con su luz, los datos, el
  * estado, las estrellas, el favorito, el avance, y "Leer" / "Escuchar".
  * Debajo, el índice con minutos, las notas y resaltados, el diario de lectura
- * y los datos para corregir a mano.
+ * y los datos para corregir a mano. Un deseo dice su nota y su ISBN, dónde
+ * conseguirlo y "Ya lo tengo".
  */
 const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar }) => {
   const { colors, isDark } = useTheme()
@@ -72,6 +100,10 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const { width } = useWindowDimensions()
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [pestana, setPestana] = useState<Pestana>('capitulos')
+  const [guardando, setGuardando] = useState(false)
+  const [tituloEntero, setTituloEntero] = useState(false)
+  const [yaLoTengo, setYaLoTengo] = useState(false)
+  const enCurso = useRef(false)
 
   const tarea = useCallback(async () => {
     setLibro(exigir(await librosService.detalle(ejemplarId)) ?? null)
@@ -88,19 +120,35 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
     return () => clearTimeout(t)
   }, [libro, cargar])
 
+  /*
+   * Guardar un cambio. Un cambio a la vez (BI-09: los toques repetidos en ♥
+   * daban error), y solo se dice "Guardado" si el servidor lo aplicó de verdad
+   * (BI-07/08: quitar la calificación o vaciar el año se ignoraban y la app
+   * decía "Guardado"). Con el contrato v1.2 el null explícito vacía el campo.
+   */
   const guardar = async (cambio: Omit<GuardarEjemplarDTO, 'id'>, aviso?: string) => {
-    if (!libro) return
+    if (!libro || enCurso.current) return
+    enCurso.current = true
+    setGuardando(true)
     const antes = libro
     setLibro({ ...libro, ...cambio } as EjemplarDetalleDTO)
     try {
       const r = await librosService.guardar({ id: libro.id, ...cambio })
-      if (!r.correct) throw new Error(r.message)
+      if (!r.correct) throw Object.assign(new Error(r.message), { codigo: r.errorCode })
       setLibro((l) => (l ? { ...l, ...r.object } : l))
-      if (aviso) showToast('success', aviso)
+      if (!seAplico(cambio, r.object)) showToast('warning', MENSAJES.noSeAplico)
+      else if (aviso) showToast('success', aviso)
       onCambio?.()
     } catch (e) {
       setLibro(antes)
-      showToast('error', MENSAJES.errorGuardar, mensajeDelServidor(e, MENSAJES.errorGuardar))
+      /* 101 conflictoConcurrente (v1.2): otro cambio llegó a la vez; se recarga lo que quedó. */
+      if ((e as { codigo?: number }).codigo === 101) {
+        showToast('warning', MENSAJES.conflicto)
+        cargar()
+      } else showToast('error', MENSAJES.errorGuardar, mensajeDelServidor(e, MENSAJES.errorGuardar))
+    } finally {
+      enCurso.current = false
+      setGuardando(false)
     }
   }
 
@@ -112,44 +160,79 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const portadaAncha = ancho >= 720
   const anchoPortada = portadaAncha ? 220 : Math.min(200, ancho * 0.52)
   const legible = sePuedeLeer(libro)
+  const esDeseo = libro.tipo === 'DESEO'
   const leer = (frase?: string) => navigation.navigate('Leer', { id: libro.id, ...(frase ? { frase } : {}) })
   const escuchar = (desdeFrase?: string) => {
     escucharLibro(libro, { vozId: prefs.vozId, velocidad: prefs.velocidad, desdeFrase: desdeFrase ?? null })
     navigation.navigate('Escuchar', { id: libro.id })
   }
+  const alinear = portadaAncha ? 'left' : 'center'
+  const tam = tamanoTitulo(libro.titulo)
+  const tituloLargo = libro.titulo.length > 90
+  const numeros = numerarCapitulos(libro.capitulos, libro.titulo)
 
-  const motivoNoLegible =
-    libro.tipo === 'DESEO'
-      ? 'Es un deseo: cuando tengas el archivo, tráelo a la biblioteca.'
-      : seEstaPreparando(libro)
-        ? MENSAJES.preparandoLibro
-        : libro.estadoConversion === 'ERROR'
-          ? MENSAJES.conversionFallo
-          : null
+  const motivoNoLegible = esDeseo
+    ? 'Es un deseo: cuando tengas el archivo, tráelo con «Ya lo tengo».'
+    : seEstaPreparando(libro)
+      ? MENSAJES.preparandoLibro
+      : libro.estadoConversion === 'ERROR'
+        ? MENSAJES.conversionFallo
+        : null
 
   const Contenido = (
     <View style={[styles.contenido, embebida && styles.contenidoEmbebido]}>
       <View style={[styles.cabecera, portadaAncha && styles.cabeceraAncha]}>
-        <View style={[styles.marcoPortada, web({ backgroundImage: luzLampara(isDark) })]}>
+        <View
+          style={[
+            styles.marcoPortada,
+            web({
+              backgroundImage: luzLampara(isDark),
+              animationName: 'bah-llega',
+              animationDuration: '420ms',
+              animationFillMode: 'both',
+            }),
+          ]}
+        >
           <Portada libro={libro} ancho={anchoPortada} />
         </View>
         <View style={[styles.datos, portadaAncha && styles.datosAncha]}>
-          <AppText variant="display" align={portadaAncha ? 'left' : 'center'} style={styles.titulo}>
+          <AppText
+            variant="display"
+            align={alinear}
+            style={[styles.titulo, { fontSize: tam, lineHeight: Math.round(tam * 1.12) }]}
+            numberOfLines={tituloEntero ? undefined : 4}
+          >
             {libro.titulo}
           </AppText>
+          {tituloLargo ? (
+            <Pressable
+              onPress={() => setTituloEntero((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={tituloEntero ? 'Ver el título recogido' : 'Ver el título completo'}
+              style={[styles.verTitulo, !portadaAncha && styles.centrado]}
+            >
+              <Text style={[styles.verTituloTexto, { color: colors.primary }]}>
+                {tituloEntero ? 'Recoger el título' : 'Ver el título completo'}
+              </Text>
+            </Pressable>
+          ) : null}
           {libro.subtitulo ? (
-            <AppText variant="subtitle" align={portadaAncha ? 'left' : 'center'} color={colors.textSecondary}>
+            <AppText variant="subtitle" align={alinear} color={colors.textSecondary} numberOfLines={3}>
               {libro.subtitulo}
             </AppText>
           ) : null}
-          <Text style={[styles.autores, { color: colors.primary, textAlign: portadaAncha ? 'left' : 'center' }]}>
+          <Text
+            style={[styles.autores, { color: colors.primary, textAlign: alinear }]}
+            numberOfLines={tituloEntero ? undefined : 3}
+          >
             {autoresTexto(libro.autores)}
           </Text>
-          <Text style={[styles.meta, { color: colors.textSecondary, textAlign: portadaAncha ? 'left' : 'center' }]}>
+          <Text style={[styles.meta, { color: colors.textSecondary, textAlign: alinear }]}>
             {[
               libro.anio,
               libro.editorial,
               libro.formatoOriginal,
+              libro.isbn ? `ISBN ${libro.isbn}` : null,
               libro.minutosEstimados ? `${duracion(libro.minutosEstimados)} de voz` : null,
             ]
               .filter(Boolean)
@@ -160,6 +243,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               icono="heart"
               etiqueta={libro.favorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
               activo={libro.favorito}
+              disabled={guardando}
               color={libro.favorito ? colors.danger : colors.text}
               onPress={() =>
                 guardar(
@@ -169,18 +253,48 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               }
               testID="favorito"
             />
-            <Estrellas valor={libro.calificacion} onCambiar={(v) => guardar({ calificacion: v })} />
+            <Estrellas
+              valor={libro.calificacion}
+              disabled={guardando}
+              onCambiar={(v) => guardar({ calificacion: v }, v === null ? MENSAJES.calificacionQuitada : undefined)}
+            />
           </View>
           {libro.tipo === 'LIBRO' ? (
-            <View style={[styles.estados, !portadaAncha && styles.centrado]} accessibilityLabel="Estado de lectura">
-              {ESTADOS.map((e) => (
-                <Chip
-                  key={e.clave}
-                  etiqueta={e.nombre}
-                  activo={libro.estado === e.clave}
-                  onPress={() => guardar({ estado: e.clave as EstadoLectura })}
-                />
-              ))}
+            <View
+              style={[styles.segmentado, { borderColor: colors.border, backgroundColor: colors.card }]}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Estado de lectura"
+            >
+              {ESTADOS.map((e) => {
+                const activo = libro.estado === e.clave
+                return (
+                  <Pressable
+                    key={e.clave}
+                    onPress={() => !activo && guardar({ estado: e.clave as EstadoLectura })}
+                    disabled={guardando}
+                    {...estadoElegible('radio', activo, guardando)}
+                    accessibilityLabel={e.nombre}
+                    testID={`estado-${e.clave}`}
+                    style={[
+                      styles.segmento,
+                      activo && { borderColor: colors.primaryLight },
+                      activo && web(placaActiva(isDark)),
+                      web({ cursor: 'pointer' }),
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.segmentoTexto,
+                        { color: activo ? colors.text : colors.textSecondary },
+                        activo && styles.segmentoActivo,
+                      ]}
+                    >
+                      {e.nombre}
+                    </Text>
+                  </Pressable>
+                )
+              })}
             </View>
           ) : null}
           {libro.porcentaje > 0 ? (
@@ -192,28 +306,65 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               </Text>
             </View>
           ) : null}
-          <View style={styles.botones}>
-            <Button
-              title={libro.porcentaje > 0 ? 'Seguir leyendo' : 'Leer'}
-              icono="libroAbierto"
-              onPress={() => leer()}
-              disabled={!legible}
-              size="large"
-              style={styles.flex}
-              testID="boton-leer"
-            />
-            <Button
-              title="Escuchar"
-              icono="auriculares"
-              variant="secondary"
-              onPress={() => escuchar()}
-              disabled={!legible}
-              size="large"
-              style={styles.flex}
-              testID="boton-escuchar"
-            />
-          </View>
-          {motivoNoLegible ? <Text style={[styles.aviso, { color: colors.warning }]}>⏳ {motivoNoLegible}</Text> : null}
+          {esDeseo ? (
+            <View style={styles.deseo}>
+              {libro.nota ? (
+                <View style={[styles.notaDeseo, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                  <Text style={[styles.notaDeseoRotulo, { color: colors.textMuted }]}>Tu nota</Text>
+                  <Text style={[styles.notaDeseoTexto, { color: colors.text }]}>{libro.nota}</Text>
+                </View>
+              ) : null}
+              <View style={styles.botones}>
+                <Button
+                  title="Ya lo tengo"
+                  icono="upload"
+                  onPress={() => setYaLoTengo(true)}
+                  style={styles.flex}
+                  testID="ya-lo-tengo"
+                />
+                <Button
+                  title="Dónde conseguirlo"
+                  icono="search"
+                  variant="secondary"
+                  onPress={() => {
+                    Linking.openURL(urlDondeConseguirlo(libro)).catch((e) =>
+                      console.warn('[ficha] no se pudo abrir la búsqueda', e),
+                    )
+                  }}
+                  style={styles.flex}
+                  testID="donde-conseguirlo"
+                />
+              </View>
+            </View>
+          ) : null}
+          {/* Un deseo no se lee ni se escucha todavía: sus botones son «Ya lo tengo» y «Dónde conseguirlo» (QA RW-07). */}
+          {!esDeseo ? (
+            <View style={styles.botones}>
+              <Button
+                title={libro.porcentaje > 0 ? 'Seguir' : 'Leer'}
+                accessibilityLabel={libro.porcentaje > 0 ? 'Seguir leyendo' : 'Leer'}
+                icono="libroAbierto"
+                onPress={() => leer()}
+                disabled={!legible}
+                size="large"
+                style={styles.flex}
+                testID="boton-leer"
+              />
+              <Button
+                title="Escuchar"
+                icono="auriculares"
+                variant="secondary"
+                onPress={() => escuchar()}
+                disabled={!legible}
+                size="large"
+                style={styles.flex}
+                testID="boton-escuchar"
+              />
+            </View>
+          ) : null}
+          {motivoNoLegible && !esDeseo ? (
+            <Text style={[styles.aviso, { color: colors.warning }]}>⏳ {motivoNoLegible}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -245,10 +396,10 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
           <Pressable
             key={k}
             onPress={() => setPestana(k)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: pestana === k }}
+            {...estadoElegible('tab', pestana === k)}
             accessibilityLabel={n}
-            style={[styles.pestana, pestana === k && { borderBottomColor: colors.primary }]}
+            testID={`ficha-pestana-${k}`}
+            style={[styles.pestana, pestana === k && { borderBottomColor: colors.primary }, web({ cursor: 'pointer' })]}
           >
             <Text style={[styles.pestanaTexto, { color: pestana === k ? colors.primary : colors.textSecondary }]}>
               {n}
@@ -260,21 +411,32 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       {pestana === 'capitulos' ? (
         <View>
           {libro.capitulos.length === 0 ? (
-            <AppText variant="caption">El índice aparece cuando el libro está preparado.</AppText>
+            <AppText variant="caption">
+              {esDeseo ? 'Un deseo aún no tiene índice.' : 'El índice aparece cuando el libro está preparado.'}
+            </AppText>
           ) : null}
-          {libro.capitulos.map((c) => {
+          {libro.capitulos.map((c, i) => {
             const actual = libro.progreso?.capitulo === c.indice
+            const numero = numeros[i]
+            const nombre = numero == null ? 'la portadilla' : `el capítulo ${numero}`
             return (
               <View key={c.indice} style={[styles.capitulo, { borderBottomColor: colors.border }]}>
                 <Pressable
                   style={styles.capituloTexto}
                   onPress={() => legible && leer(idDeFrase(c.indice, 0))}
                   accessibilityRole="button"
-                  accessibilityLabel={`Leer el capítulo ${c.indice + 1}: ${c.titulo}${actual ? ', vas por aquí' : ''}`}
+                  accessibilityLabel={`Leer ${nombre}: ${c.titulo}${actual ? ', vas por aquí' : ''}`}
                 >
-                  <Text style={[styles.capNum, { color: colors.primaryLight }]}>
-                    {String(c.indice + 1).padStart(2, '0')}
-                  </Text>
+                  {numero == null ? (
+                    // La portadilla no se numera (UX-30): un rombo de latón en su lugar.
+                    <View style={styles.capNum} accessible={false}>
+                      <View style={[styles.rombo, { backgroundColor: colors.primaryLight }]} />
+                    </View>
+                  ) : (
+                    <Text style={[styles.capNum, { color: colors.primaryLight }]} accessible={false}>
+                      {String(numero).padStart(2, '0')}
+                    </Text>
+                  )}
                   <Text style={[styles.capTitulo, { color: colors.text }]} numberOfLines={2}>
                     {c.titulo}
                     {actual ? '  ◂ vas aquí' : ''}
@@ -283,7 +445,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
                 </Pressable>
                 <BotonIcono
                   icono="play"
-                  etiqueta={`Escuchar el capítulo ${c.indice + 1}`}
+                  etiqueta={`Escuchar ${nombre}`}
                   onPress={() => legible && escuchar(idDeFrase(c.indice, 0))}
                 />
               </View>
@@ -307,11 +469,12 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       {pestana === 'datos' ? (
         <DatosLibro
           libro={libro}
+          guardando={guardando}
           onGuardar={(c) => guardar(c, MENSAJES.guardado)}
           onBorrar={() =>
             confirmarAccion({
               titulo: 'Retirar de la biblioteca',
-              mensaje: `«${libro.titulo}» saldrá de tu biblioteca. Tus notas se conservan en el servidor.`,
+              mensaje: MENSAJES.retirarAviso(libro.titulo),
               textoConfirmar: 'Sí, retirar',
               onConfirmar: async () => {
                 try {
@@ -327,6 +490,21 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               },
             })
           }
+        />
+      ) : null}
+      {esDeseo ? (
+        <SubirLibros
+          visible={yaLoTengo}
+          deseo={libro}
+          onCerrar={() => setYaLoTengo(false)}
+          onSubidos={(nuevos) => {
+            onCambio?.()
+            const nuevo = nuevos[0]
+            setYaLoTengo(false)
+            if (!nuevo || nuevo.id === libro.id) cargar()
+            else if (onCerrar) onCerrar()
+            else navigation.navigate('Libro', { id: nuevo.id })
+          }}
         />
       ) : null}
     </View>
@@ -396,6 +574,10 @@ const NotasDelLibro: React.FC<{ ejemplarId: string; onIr: (a: AnotacionDTO) => v
   )
 }
 
+/** El diario, de lo más nuevo a lo más viejo: el mismo orden al escribir y al recargar (BI-11). */
+export const ordenarDiario = (l: ComentarioDTO[]) =>
+  [...l].sort((a, b) => (b.creado ?? '').localeCompare(a.creado ?? ''))
+
 /** El diario de lectura: "lo empecé en el bus…". */
 const Diario: React.FC<{ ejemplarId: string }> = ({ ejemplarId }) => {
   const { colors } = useTheme()
@@ -404,26 +586,45 @@ const Diario: React.FC<{ ejemplarId: string }> = ({ ejemplarId }) => {
   const [texto, setTexto] = useState('')
   const [err, setErr] = useState<string | undefined>()
   const tarea = useCallback(
-    async () => setLista(exigir(await comentariosService.todos(ejemplarId)) ?? []),
+    async () => setLista(ordenarDiario(exigir(await comentariosService.todos(ejemplarId)) ?? [])),
     [ejemplarId],
   )
   const { cargando, error, cargar } = useCarga(tarea)
   useEffect(() => {
     cargar()
   }, [cargar])
-  const guardar = async () => {
+  /* Un doble clic no escribe dos veces la misma entrada (BI-10). */
+  const { ejecutar: anotar, ejecutando } = useAccionUnica(async () => {
     const v = validar(esquemaComentario, { texto })
     setErr(v.errores.texto)
     if (!v.ok) return
     try {
       const r = await comentariosService.guardar({ ejemplarId, texto: v.datos.texto })
       if (!r.correct) throw new Error(r.message)
-      setLista((l) => [r.object, ...l])
+      /* El servidor devuelve la misma entrada si llega dos veces en 10 s (v1.2): no se duplica. */
+      setLista((l) => ordenarDiario([r.object, ...l.filter((x) => x.id !== r.object.id)]))
       setTexto('')
     } catch (e) {
       showToast('error', MENSAJES.errorGuardar, mensajeDelServidor(e, MENSAJES.errorGuardar))
     }
-  }
+  })
+  /* Borrar una entrada pide confirmación y, si falla, lo dice (BI-20). */
+  const borrar = (c: ComentarioDTO) =>
+    confirmarAccion({
+      titulo: 'Borrar del diario',
+      mensaje: `¿Borrar la entrada del ${fechaCorta(c.creado)}? No se puede deshacer.`,
+      textoConfirmar: 'Sí, borrar',
+      onConfirmar: async () => {
+        try {
+          const r = await comentariosService.borrar(c.id as string)
+          if (!r.correct) throw new Error(r.message)
+          setLista((l) => l.filter((x) => x.id !== c.id))
+          showToast('success', MENSAJES.borrado)
+        } catch (e) {
+          showToast('error', MENSAJES.errorGuardar, mensajeDelServidor(e, MENSAJES.errorGuardar))
+        }
+      },
+    })
   return (
     <View style={styles.lista}>
       <Input
@@ -433,22 +634,23 @@ const Diario: React.FC<{ ejemplarId: string }> = ({ ejemplarId }) => {
         multiline
         placeholder="Dónde lo leíste, qué sentiste…"
         error={err}
+        testID="diario-texto"
       />
-      <Button title="Anotar en el diario" icono="lapiz" onPress={guardar} variant="secondary" />
+      <Button
+        title="Anotar en el diario"
+        icono="lapiz"
+        onPress={anotar}
+        loading={ejecutando}
+        variant="secondary"
+        testID="diario-anotar"
+      />
       {cargando ? <Spinner /> : null}
       {error ? <EstadoError mensaje={error} onReintentar={cargar} /> : null}
       {lista.map((c) => (
         <View key={c.id} style={[styles.entrada, { borderColor: colors.border, backgroundColor: colors.card }]}>
           <Text style={[styles.entradaFecha, { color: colors.textMuted }]}>{fechaCorta(c.creado)}</Text>
           <Text style={[styles.entradaTexto, { color: colors.text }]}>{c.texto}</Text>
-          <BotonIcono
-            icono="trash"
-            etiqueta="Borrar esta entrada del diario"
-            onPress={async () => {
-              const r = await comentariosService.borrar(c.id as string)
-              if (r.correct) setLista((l) => l.filter((x) => x.id !== c.id))
-            }}
-          />
+          <BotonIcono icono="trash" etiqueta="Borrar esta entrada del diario" onPress={() => borrar(c)} />
         </View>
       ))}
     </View>
@@ -468,10 +670,12 @@ type CamposDatos = {
 /** Corregir los datos a mano (y elegir colecciones). */
 const DatosLibro: React.FC<{
   libro: EjemplarDetalleDTO
+  guardando: boolean
   onGuardar: (c: Omit<GuardarEjemplarDTO, 'id'>) => void
   onBorrar: () => void
-}> = ({ libro, onGuardar, onBorrar }) => {
+}> = ({ libro, guardando, onGuardar, onBorrar }) => {
   const { colors } = useTheme()
+  const { showToast } = useToast()
   const [f, setF] = useState<CamposDatos>({
     titulo: libro.titulo,
     autores: libro.autores.join(', '),
@@ -483,6 +687,7 @@ const DatosLibro: React.FC<{
   })
   const [errores, setErrores] = useState<Partial<Record<keyof CamposDatos, string>>>({})
   const [estantes, setEstantes] = useState<{ e: EstanteDTO; tiene: boolean }[]>([])
+  const [ocupadas, setOcupadas] = useState<Record<string, boolean>>({})
   const campo = (k: keyof CamposDatos) => (v: string) => setF((x) => ({ ...x, [k]: v }))
 
   useEffect(() => {
@@ -513,32 +718,57 @@ const DatosLibro: React.FC<{
     if (v.ok) onGuardar(v.datos)
   }
 
+  /* Poner o quitar de una colección: un toque a la vez por colección (BI-09). */
+  const alternarColeccion = async (e: EstanteDTO, tiene: boolean) => {
+    if (ocupadas[e.id]) return
+    setOcupadas((o) => ({ ...o, [e.id]: true }))
+    try {
+      const r = tiene ? await estantesService.quitar(e.id, libro.id) : await estantesService.agregar(e.id, libro.id)
+      if (!r.correct) throw new Error(r.message)
+      setEstantes((l) => l.map((x) => (x.e.id === e.id ? { ...x, tiene: !tiene } : x)))
+    } catch (err) {
+      showToast('error', MENSAJES.errorGuardar, mensajeDelServidor(err, MENSAJES.errorGuardar))
+    } finally {
+      setOcupadas((o) => ({ ...o, [e.id]: false }))
+    }
+  }
+
   return (
     <View style={styles.lista}>
-      <AppText variant="caption">Origen de los datos: {libro.fuenteMetadatos.replace('_', ' ').toLowerCase()}</AppText>
+      <AppText variant="caption">{ORIGEN[libro.fuenteMetadatos] ?? ''}</AppText>
       <Input label="Título" value={f.titulo} onChangeText={campo('titulo')} error={errores.titulo} />
       <Input
-        label="Autores (separados por coma)"
+        label="Autores"
+        ayuda="Si son varios, sepáralos con comas."
         value={f.autores}
         onChangeText={campo('autores')}
         error={errores.autores}
       />
-      <Input label="Año" value={f.anio} onChangeText={campo('anio')} keyboardType="number-pad" error={errores.anio} />
+      <Input
+        label="Año"
+        ayuda="Déjalo vacío si no lo sabes."
+        value={f.anio}
+        onChangeText={campo('anio')}
+        keyboardType="number-pad"
+        error={errores.anio}
+      />
       <Input label="Editorial" value={f.editorial} onChangeText={campo('editorial')} error={errores.editorial} />
       <Input label="Sinopsis" value={f.sinopsis} onChangeText={campo('sinopsis')} multiline error={errores.sinopsis} />
       <Input
-        label="Géneros (separados por coma)"
+        label="Géneros"
+        ayuda="Separados por comas: novela, poesía…"
         value={f.generos}
         onChangeText={campo('generos')}
         error={errores.generos}
       />
       <Input
-        label="Etiquetas (separadas por coma)"
+        label="Etiquetas"
+        ayuda="Separadas por comas: verano, regalo…"
         value={f.etiquetas}
         onChangeText={campo('etiquetas')}
         error={errores.etiquetas}
       />
-      <Button title="Guardar datos" onPress={enviar} testID="guardar-datos" />
+      <Button title="Guardar datos" onPress={enviar} loading={guardando} testID="guardar-datos" />
       {estantes.length ? (
         <View style={styles.lista}>
           <AppText variant="label">Colecciones</AppText>
@@ -548,12 +778,8 @@ const DatosLibro: React.FC<{
                 key={e.id}
                 etiqueta={e.nombre}
                 activo={tiene}
-                onPress={async () => {
-                  const r = tiene
-                    ? await estantesService.quitar(e.id, libro.id)
-                    : await estantesService.agregar(e.id, libro.id)
-                  if (r.correct) setEstantes((l) => l.map((x) => (x.e.id === e.id ? { ...x, tiene: !tiene } : x)))
-                }}
+                disabled={!!ocupadas[e.id]}
+                onPress={() => alternarColeccion(e, tiene)}
               />
             ))}
           </View>
@@ -577,15 +803,37 @@ const styles = StyleSheet.create({
   marcoPortada: { padding: 24, alignItems: 'center', borderRadius: 999 },
   datos: { alignItems: 'stretch', gap: 8, width: '100%' },
   datosAncha: { flex: 1, paddingTop: 12 },
-  titulo: { lineHeight: 48 },
+  titulo: { fontVariant: ['lining-nums'] },
+  verTitulo: { minHeight: 44, justifyContent: 'center', flexDirection: 'row' },
+  verTituloTexto: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs, textDecorationLine: 'underline' },
   autores: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.xl },
   meta: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
-  fila: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fila: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   centrado: { justifyContent: 'center' },
   estados: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  segmentado: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 2, gap: 2 },
+  /* Cada estado ocupa lo que mide su palabra (QA UX-28: «Abandonado» se cortaba en 87 px). */
+  segmento: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingHorizontal: 6,
+  },
+  segmentoTexto: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs },
+  segmentoActivo: { fontFamily: fuentes.uiSemi },
   avance: { gap: 6, marginTop: 4 },
-  avanceTexto: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
+  avanceTexto: { fontFamily: fuentes.ui, fontSize: fontSize.xs, fontVariant: ['lining-nums', 'tabular-nums'] },
   botones: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  deseo: { gap: 4 },
+  notaDeseo: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 4, marginTop: 4 },
+  notaDeseoRotulo: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs },
+  notaDeseoTexto: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.md },
   aviso: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
   sinopsis: { fontFamily: fuentes.lectura, fontSize: fontSize.md, lineHeight: 28 },
   etiqueta: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
@@ -602,8 +850,14 @@ const styles = StyleSheet.create({
   pestanaTexto: { fontFamily: fuentes.uiSemi, fontSize: fontSize.sm },
   capitulo: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
   capituloTexto: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52 },
-  capNum: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, width: 30 },
-  capTitulo: { flex: 1, fontFamily: fuentes.titulo, fontSize: fontSize.md },
+  capNum: {
+    fontFamily: fuentes.tituloNegrita,
+    fontSize: fontSize.lg,
+    width: 34,
+    fontVariant: ['lining-nums', 'tabular-nums'],
+  },
+  rombo: { width: 8, height: 8, marginLeft: 6, transform: [{ rotate: '45deg' }] },
+  capTitulo: { flex: 1, fontFamily: fuentes.titulo, fontSize: fontSize.md, fontVariant: ['lining-nums'] },
   capMin: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
   lista: { gap: 10 },
   nota: { flexDirection: 'row', alignItems: 'center', borderLeftWidth: 4, borderRadius: 6, padding: 10, gap: 6 },

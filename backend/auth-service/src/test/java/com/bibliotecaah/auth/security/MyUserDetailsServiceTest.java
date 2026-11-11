@@ -7,101 +7,90 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("Carga de la cuenta para comprobar la clave")
 class MyUserDetailsServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
+    @Mock private UserRepository userRepository;
 
-    @InjectMocks
-    private MyUserDetailsService myUserDetailsService;
-
-    private User activeUser;
+    private MyUserDetailsService servicio;
+    private User ana;
 
     @BeforeEach
     void setUp() {
-        activeUser = User.builder()
-                .id(1L)
-                .name("Test User")
-                .email("test@biblioteca.ah")
-                .password("encoded-password")
-                
-                .active(true)
+        servicio = new MyUserDetailsService(new IdentidadDeLogin(userRepository));
+        ana = User.builder()
+                .id(1L).name("Ana").email("ana@biblioteca.ah").alias("ana")
+                .password("cifrada").active(true)
                 .build();
     }
 
     @Nested
     @DisplayName("loadUserByUsername")
-    class LoadUserByUsernameTests {
+    class Carga {
 
         @Test
-        @DisplayName("Should return UserDetails for valid active user")
-        void shouldReturnUserDetailsForValidActiveUser() {
-            when(userRepository.findByEmailAndActiveTrue("test@biblioteca.ah"))
-                    .thenReturn(Optional.of(activeUser));
+        @DisplayName("por alias: el UserDetails lleva el CORREO como nombre y la clave cifrada")
+        void porAlias() {
+            when(userRepository.findByAliasAndActiveTrue("ana")).thenReturn(Optional.of(ana));
 
-            UserDetails userDetails = myUserDetailsService.loadUserByUsername("test@biblioteca.ah");
+            UserDetails detalles = servicio.loadUserByUsername("Ana");
 
-            assertNotNull(userDetails);
-            assertEquals("test@biblioteca.ah", userDetails.getUsername());
-            assertEquals("encoded-password", userDetails.getPassword());
-            assertTrue(userDetails.isEnabled());
-            assertTrue(userDetails.isAccountNonExpired());
-            assertTrue(userDetails.isAccountNonLocked());
-            assertTrue(userDetails.isCredentialsNonExpired());
-            verify(userRepository).findByEmailAndActiveTrue("test@biblioteca.ah");
+            assertEquals("ana@biblioteca.ah", detalles.getUsername());
+            assertEquals("cifrada", detalles.getPassword());
+            assertTrue(detalles.isEnabled());
+            assertTrue(detalles.isAccountNonExpired());
+            assertTrue(detalles.isAccountNonLocked());
+            assertTrue(detalles.isCredentialsNonExpired());
+            assertTrue(detalles.getAuthorities().isEmpty());
         }
 
         @Test
-        @DisplayName("Should throw UsernameNotFoundException for non-existent email")
-        void shouldThrowExceptionForNonExistentEmail() {
-            when(userRepository.findByEmailAndActiveTrue("nonexistent@biblioteca.ah"))
-                    .thenReturn(Optional.empty());
+        @DisplayName("por correo exacto")
+        void porCorreo() {
+            when(userRepository.findByEmailAndActiveTrue("ana@biblioteca.ah")).thenReturn(Optional.of(ana));
 
-            UsernameNotFoundException exception = assertThrows(
-                    UsernameNotFoundException.class,
-                    () -> myUserDetailsService.loadUserByUsername("nonexistent@biblioteca.ah")
-            );
-
-            assertTrue(exception.getMessage().contains("nonexistent@biblioteca.ah"));
-            verify(userRepository).findByEmailAndActiveTrue("nonexistent@biblioteca.ah");
+            assertEquals("ana@biblioteca.ah", servicio.loadUserByUsername("ana@biblioteca.ah").getUsername());
         }
 
         @Test
-        @DisplayName("Should throw UsernameNotFoundException for inactive user")
-        void shouldThrowExceptionForInactiveUser() {
-            // findByEmailAndActiveTrue returns empty for inactive users
-            when(userRepository.findByEmailAndActiveTrue("inactive@biblioteca.ah"))
-                    .thenReturn(Optional.empty());
+        @DisplayName("inexistente: UsernameNotFoundException sin repetir lo escrito")
+        void inexistente() {
+            when(userRepository.findByAliasAndActiveTrue("nadie")).thenReturn(Optional.empty());
 
-            assertThrows(
-                    UsernameNotFoundException.class,
-                    () -> myUserDetailsService.loadUserByUsername("inactive@biblioteca.ah")
-            );
+            UsernameNotFoundException error = assertThrows(UsernameNotFoundException.class,
+                    () -> servicio.loadUserByUsername("nadie"));
 
-            verify(userRepository).findByEmailAndActiveTrue("inactive@biblioteca.ah");
+            assertEquals("No hay cuenta activa con ese correo o usuario", error.getMessage());
         }
 
         @Test
-        @DisplayName("Should return UserDetails with correct email as username")
-        void shouldReturnUserDetailsWithCorrectEmail() {
-            when(userRepository.findByEmailAndActiveTrue("test@biblioteca.ah"))
-                    .thenReturn(Optional.of(activeUser));
+        @DisplayName("desactivada: tampoco se encuentra (solo se buscan activas)")
+        void desactivada() {
+            when(userRepository.findByEmailAndActiveTrue("vieja@biblioteca.ah")).thenReturn(Optional.empty());
+            when(userRepository.buscarActivosPorCorreoSinMayusculas("vieja@biblioteca.ah")).thenReturn(List.of());
 
-            UserDetails userDetails = myUserDetailsService.loadUserByUsername("test@biblioteca.ah");
+            assertThrows(UsernameNotFoundException.class,
+                    () -> servicio.loadUserByUsername("vieja@biblioteca.ah"));
+        }
 
-            assertEquals(activeUser.getEmail(), userDetails.getUsername());
+        @Test
+        @DisplayName("vacio o nulo: no consulta la base")
+        void vacio() {
+            assertThrows(UsernameNotFoundException.class, () -> servicio.loadUserByUsername(null));
+            assertThrows(UsernameNotFoundException.class, () -> servicio.loadUserByUsername("   "));
+            verifyNoInteractions(userRepository);
         }
     }
 }

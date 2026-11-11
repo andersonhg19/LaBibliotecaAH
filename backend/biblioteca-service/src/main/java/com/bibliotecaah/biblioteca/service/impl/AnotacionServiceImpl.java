@@ -15,7 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import com.bibliotecaah.biblioteca.repository.Candados;
+
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Resaltados, notas y marcadores. Nunca se borran al reprocesar un libro. */
@@ -27,9 +31,11 @@ public class AnotacionServiceImpl implements AnotacionService {
     private final EjemplarRepository ejemplares;
     private final BibliotecaMapper mapper;
     private final ApplicationEventPublisher eventos;
+    private final Candados candados;
 
     public AnotacionServiceImpl(AnotacionRepository anotaciones, EjemplarRepository ejemplares,
-                                BibliotecaMapper mapper, ApplicationEventPublisher eventos) {
+                                BibliotecaMapper mapper, ApplicationEventPublisher eventos, Candados candados) {
+        this.candados = candados;
         this.anotaciones = anotaciones;
         this.ejemplares = ejemplares;
         this.mapper = mapper;
@@ -52,6 +58,14 @@ public class AnotacionServiceImpl implements AnotacionService {
         Anotacion a;
         EntityChangeEvent.Accion accion;
         if (dto.getId() == null) {
+            /* QA BI-10: la misma anotacion enviada dos veces seguidas no se duplica. */
+            candados.tomar("anotacion", yo, dto.getEjemplarId());
+            Optional<Anotacion> igual = anotaciones.findByUsuarioIdAndEjemplarIdAndTipoAndCreationAfter(yo,
+                            dto.getEjemplarId(), dto.getTipo(), Instant.now().minus(ComentarioServiceImpl.VENTANA_DUPLICADOS))
+                    .stream().filter(x -> mismaAnotacion(x, dto)).findFirst();
+            if (igual.isPresent()) {
+                return mapper.aAnotacionDTO(igual.get());
+            }
             a = Anotacion.builder().id(UUID.randomUUID()).usuarioId(yo).ejemplarId(dto.getEjemplarId()).build();
             accion = EntityChangeEvent.Accion.CREAR;
         } else {
@@ -75,6 +89,13 @@ public class AnotacionServiceImpl implements AnotacionService {
         anotaciones.delete(a);
         eventos.publishEvent(new EntityChangeEvent("Anotacion", id.toString(), EntityChangeEvent.Accion.BORRAR, yo, null));
         return true;
+    }
+
+    static boolean mismaAnotacion(Anotacion a, AnotacionDTO d) {
+        return Objects.equals(a.getCfi(), d.getCfi()) && Objects.equals(a.getFraseInicio(), d.getFraseInicio())
+                && Objects.equals(a.getOffsetInicio(), d.getOffsetInicio()) && Objects.equals(a.getFraseFin(), d.getFraseFin())
+                && Objects.equals(a.getOffsetFin(), d.getOffsetFin()) && Objects.equals(a.getNota(), d.getNota())
+                && Objects.equals(a.getColor(), d.getColor()) && Objects.equals(a.getCapitulo(), d.getCapitulo());
     }
 
     private void ejemplarPropio(Long yo, UUID ejemplarId) {

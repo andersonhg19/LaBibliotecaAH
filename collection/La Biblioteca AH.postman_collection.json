@@ -22,6 +22,14 @@
     {
       "key": "token",
       "value": ""
+    },
+    {
+      "key": "clave",
+      "value": ""
+    },
+    {
+      "key": "deseoId",
+      "value": ""
     }
   ],
   "item": [
@@ -825,7 +833,7 @@
           ]
         },
         {
-          "name": "Alta de una cuenta desde administracion",
+          "name": "Alta (sin id) o edicion (con id) de una cuenta desde administracion",
           "request": {
             "method": "POST",
             "header": [
@@ -848,10 +856,10 @@
                 "save"
               ]
             },
-            "description": "Alta de una cuenta desde administracion",
+            "description": "Alta: name, email, alias y password obligatorios. Edicion: name y email; el alias, si no llega, se conserva; la contrasena de otra cuenta no se cambia aqui.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "raw": "{\n  \"alias\": \"anderson\",\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -884,10 +892,10 @@
                     "save"
                   ]
                 },
-                "description": "Alta de una cuenta desde administracion",
+                "description": "Alta: name, email, alias y password obligatorios. Edicion: name y email; el alias, si no llega, se conserva; la contrasena de otra cuenta no se cambia aqui.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "raw": "{\n  \"alias\": \"anderson\",\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -1147,7 +1155,7 @@
           ]
         },
         {
-          "name": "POST /v1/auth/login",
+          "name": "Inicia sesion con correo o alias",
           "request": {
             "method": "POST",
             "header": [
@@ -1169,10 +1177,10 @@
                 "login"
               ]
             },
-            "description": "",
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}",
+              "raw": "{\n  \"email\": \"anderson@biblioteca.ah\",\n  \"password\": \"Clave1234\",\n  \"usuario\": \"anderson\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1207,10 +1215,186 @@
                     "login"
                   ]
                 },
-                "description": "",
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"\",\n  \"password\": \"\"\n}",
+                  "raw": "{\n  \"email\": \"anderson@biblioteca.ah\",\n  \"password\": \"Clave1234\",\n  \"usuario\": \"anderson\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login por alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"anderson\",\n  \"password\": \"{{clave}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"usuario\": \"anderson\",\n  \"password\": \"{{clave}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Login por correo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"anderson@biblioteca.ah\",\n  \"password\": \"{{clave}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/login",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "login"
+                  ]
+                },
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"usuario\": \"anderson@biblioteca.ah\",\n  \"password\": \"{{clave}}\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -1260,7 +1444,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "raw": "{\n  \"alias\": \"anderson\",\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1298,13 +1482,133 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "raw": "{\n  \"alias\": \"anderson\",\n  \"email\": \"\",\n  \"name\": \"\",\n  \"password\": \"\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
                 },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Renueva el token de la sesion actual",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/renovar",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "renovar"
+              ]
+            },
+            "description": "Devuelve lo mismo que /login con un token nuevo (misma version de sesion, caducidad contada desde ahora). La web lo llama al abrir y cada pocas horas: asi los tokens pueden ser cortos (EXP_TIME) sin pedir la clave a diario. Con la sesion revocada responde 401.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/renovar",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "renovar"
+                  ]
+                },
+                "description": "Devuelve lo mismo que /login con un token nuevo (misma version de sesion, caducidad contada desde ahora). La web lo llama al abrir y cada pocas horas: asi los tokens pueden ser cortos (EXP_TIME) sin pedir la clave a diario. Con la sesion revocada responde 401.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Comprueba que el token sigue vigente",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/sesion",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "AUTH-SERVICE",
+                "biblioteca",
+                "v1",
+                "auth",
+                "sesion"
+              ]
+            },
+            "description": "Uso interno de biblioteca-service (QA SE-02): si el token llega hasta aqui, la cuenta esta activa y su version de sesion coincide con la del token; si no, el filtro ya respondio 401.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/AUTH-SERVICE/biblioteca/v1/auth/sesion",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "AUTH-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "auth",
+                    "sesion"
+                  ]
+                },
+                "description": "Uso interno de biblioteca-service (QA SE-02): si el token llega hasta aqui, la cuenta esta activa y su version de sesion coincide con la del token; si no, el filtro ya respondio 401.",
                 "auth": {
                   "type": "noauth"
                 }
@@ -1674,7 +1978,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+              "raw": "{\n  \"alias\": \"anderson\",\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1709,7 +2013,7 @@
                 "description": "",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
+                  "raw": "{\n  \"alias\": \"anderson\",\n  \"currentPassword\": \"\",\n  \"email\": \"\",\n  \"id\": 0,\n  \"name\": \"\",\n  \"password\": \"\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -2214,6 +2518,99 @@
           ]
         },
         {
+          "name": "Range invalido: 416 sin cuerpo (v1.3.2)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Range",
+                "value": "bytes=10-5"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/original?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "original"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Un Range invalido o fuera del archivo da HTTP 416 con cuerpo vacio y Content-Range: bytes */<tamano> (QA SE-16)."
+          },
+          "response": [
+            {
+              "name": "416",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Range",
+                    "value": "bytes=10-5"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/original?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "original"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "Un Range invalido o fuera del archivo da HTTP 416 con cuerpo vacio y Content-Range: bytes */<tamano> (QA SE-16)."
+              },
+              "status": "Range Not Satisfiable",
+              "code": 416,
+              "header": [
+                {
+                  "key": "Content-Range",
+                  "value": "bytes */48213"
+                },
+                {
+                  "key": "Accept-Ranges",
+                  "value": "bytes"
+                }
+              ],
+              "body": ""
+            }
+          ]
+        },
+        {
           "name": "Portada (JPEG)",
           "request": {
             "method": "GET",
@@ -2319,7 +2716,7 @@
             "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+              "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"reintentar\": false,\n  \"vozId\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2354,7 +2751,89 @@
                 "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+                  "raw": "{\n  \"capitulo\": 0,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"reintentar\": false,\n  \"vozId\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reintentar un capitulo en ERROR",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/audio/estado",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "audio",
+                "estado"
+              ]
+            },
+            "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"edge.es-ES-AlvaroNeural\",\n  \"capitulo\": 0,\n  \"reintentar\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/audio/estado",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "audio",
+                    "estado"
+                  ]
+                },
+                "description": "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"edge.es-ES-AlvaroNeural\",\n  \"capitulo\": 0,\n  \"reintentar\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -3236,6 +3715,42 @@
           ]
         },
         {
+          "name": "Ordenar por autor (por apellido, v1.3.2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "all"
+              ]
+            },
+            "description": "orden AUTOR = apellido del primer autor sin tildes: «García Márquez» → marquez, «Tolkien, J. R. R.» → tolkien, «Miguel de Cervantes» → cervantes, «Ursula K. Le Guin» → le guin.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pestana\": \"TODO\",\n  \"orden\": \"AUTOR\",\n  \"page\": 0,\n  \"size\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Borra el libro de tu biblioteca (el archivo solo si nadie mas lo usa)",
           "request": {
             "method": "POST",
@@ -3389,7 +3904,12 @@
           "name": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": {
               "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
               "host": [
@@ -3403,14 +3923,28 @@
                 "facetas"
               ]
             },
-            "description": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta"
+            "description": "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anioDesde\": 0,\n  \"anioHasta\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacionMin\": 0,\n  \"conNotas\": false,\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"formatos\": [\n    \"\"\n  ],\n  \"generos\": [\n    \"\"\n  ],\n  \"orden\": \"RECIENTES\",\n  \"page\": 0,\n  \"pestana\": \"TODO\",\n  \"size\": 0,\n  \"texto\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": [
             {
               "name": "OK",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
                 "url": {
                   "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
                   "host": [
@@ -3424,7 +3958,98 @@
                     "facetas"
                   ]
                 },
-                "description": "Valores para los filtros: autores, generos, anios, formatos y etiquetas con su cuenta"
+                "description": "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"anioDesde\": 0,\n  \"anioHasta\": 0,\n  \"autores\": [\n    \"\"\n  ],\n  \"calificacionMin\": 0,\n  \"conNotas\": false,\n  \"etiquetas\": [\n    \"\"\n  ],\n  \"formatos\": [\n    \"\"\n  ],\n  \"generos\": [\n    \"\"\n  ],\n  \"orden\": \"RECIENTES\",\n  \"page\": 0,\n  \"pestana\": \"TODO\",\n  \"size\": 0,\n  \"texto\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Facetas de documentos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "facetas"
+              ]
+            },
+            "description": "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pestana\": \"DOCUMENTOS\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/facetas",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "facetas"
+                  ]
+                },
+                "description": "Cuerpo opcional {pestana}: las cuentas son las de ESA pestana (por defecto TODO = solo libros, sin deseos ni documentos). Generos y etiquetas sin distinguir mayusculas.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"pestana\": \"DOCUMENTOS\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
               },
               "status": "OK",
               "code": 200,
@@ -3590,6 +4215,88 @@
           ]
         },
         {
+          "name": "Quitar calificacion y vaciar anio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "save"
+              ]
+            },
+            "description": "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"calificacion\": null,\n  \"anio\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "save"
+                  ]
+                },
+                "description": "Edita datos, estado, calificacion, etiquetas o favorito (lo nulo no se toca)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"id\": \"00000000-0000-0000-0000-000000000000\",\n  \"calificacion\": null,\n  \"anio\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
           "name": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
           "request": {
             "method": "POST",
@@ -3620,6 +4327,13 @@
                   "key": "tipo",
                   "value": "LIBRO",
                   "type": "text"
+                },
+                {
+                  "key": "deseoId",
+                  "value": "{{deseoId}}",
+                  "type": "text",
+                  "disabled": true,
+                  "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
                 }
               ]
             }
@@ -3656,6 +4370,13 @@
                       "key": "tipo",
                       "value": "LIBRO",
                       "type": "text"
+                    },
+                    {
+                      "key": "deseoId",
+                      "value": "{{deseoId}}",
+                      "type": "text",
+                      "disabled": true,
+                      "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
                     }
                   ]
                 }
@@ -3670,6 +4391,154 @@
                 }
               ],
               "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Ya lo tengo: sube el archivo que cumple un deseo (v1.3.2)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "subir"
+              ]
+            },
+            "description": "Un deseo pasa a la biblioteca SOLO al subir su archivo. Con deseoId (un solo archivo) el ejemplar que llega hereda nota, etiquetas, estantes e ISBN del deseo, y el deseo se borra. libros/save ya no cambia el tipo de un DESEO (120 deseoSoloConArchivo).",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "archivos",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "tipo",
+                  "value": "LIBRO",
+                  "type": "text"
+                },
+                {
+                  "key": "deseoId",
+                  "value": "{{deseoId}}",
+                  "type": "text",
+                  "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Deseo cumplido",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "subir"
+                  ]
+                },
+                "description": "Un deseo pasa a la biblioteca SOLO al subir su archivo. Con deseoId (un solo archivo) el ejemplar que llega hereda nota, etiquetas, estantes e ISBN del deseo, y el deseo se borra. libros/save ya no cambia el tipo de un DESEO (120 deseoSoloConArchivo).",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "archivos",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "tipo",
+                      "value": "LIBRO",
+                      "type": "text"
+                    },
+                    {
+                      "key": "deseoId",
+                      "value": "{{deseoId}}",
+                      "type": "text",
+                      "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": [\n    {\n      \"id\": \"b6f1c0de-0000-4000-8000-000000000001\",\n      \"tipo\": \"LIBRO\",\n      \"titulo\": \"Ficciones\",\n      \"nota\": \"regalo de Samy\",\n      \"etiquetas\": [\n        \"borges\"\n      ],\n      \"isbn\": \"9788499089515\",\n      \"favorito\": true,\n      \"yaLoTenias\": false\n    }\n  ]\n}"
+            },
+            {
+              "name": "Dos archivos con deseoId",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "subir"
+                  ]
+                },
+                "description": "Un deseo pasa a la biblioteca SOLO al subir su archivo. Con deseoId (un solo archivo) el ejemplar que llega hereda nota, etiquetas, estantes e ISBN del deseo, y el deseo se borra. libros/save ya no cambia el tipo de un DESEO (120 deseoSoloConArchivo).",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "archivos",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "tipo",
+                      "value": "LIBRO",
+                      "type": "text"
+                    },
+                    {
+                      "key": "deseoId",
+                      "value": "{{deseoId}}",
+                      "type": "text",
+                      "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": false,\n  \"message\": \"Para cumplir un deseo sube un solo archivo (llegaron 2).\",\n  \"errorCode\": 120,\n  \"object\": null\n}"
             }
           ]
         },
@@ -3803,6 +4672,330 @@
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"actualizadoEn\": \"2026-11-10T20:15:00Z\",\n  \"capitulo\": 3,\n  \"cfi\": \"epubcfi(/6/8!/4/2/10)\",\n  \"dispositivo\": \"iPhone de Anderson\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"fraseId\": \"c003-s00123\",\n  \"modo\": \"VOZ\",\n  \"porcentaje\": 37.5,\n  \"posicionAudioSeg\": 512.4,\n  \"velocidad\": 1.5,\n  \"vozId\": \"edge.es-ES-AlvaroNeural\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "traducir"
+              ]
+            },
+            "description": "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destino\": \"es\",\n  \"origen\": \"auto\",\n  \"texto\": \"It was a bright cold day in April, and the clocks were striking thirteen.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "traducir"
+                  ]
+                },
+                "description": "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"destino\": \"es\",\n  \"origen\": \"auto\",\n  \"texto\": \"It was a bright cold day in April, and the clocks were striking thirteen.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Traducir desde ingles (origen fijo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "traducir"
+              ]
+            },
+            "description": "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"She folded the letter twice and walked out into the street.\",\n  \"origen\": \"en\",\n  \"destino\": \"es\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "traducir"
+                  ]
+                },
+                "description": "Traduce un texto de 1 a 5000 caracteres (origen en|auto, destino es); 503 si el traductor no responde, 429 si se traduce demasiado en poco tiempo",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"texto\": \"She folded the letter twice and walked out into the street.\",\n  \"origen\": \"en\",\n  \"destino\": \"es\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir/capitulo",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "traducir",
+                "capitulo"
+              ]
+            },
+            "description": "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capitulo\": 3,\n  \"destino\": \"es\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"reintentar\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir/capitulo",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "traducir",
+                    "capitulo"
+                  ]
+                },
+                "description": "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capitulo\": 3,\n  \"destino\": \"es\",\n  \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n  \"reintentar\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reintentar un capitulo traducido en ERROR",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir/capitulo",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "traducir",
+                "capitulo"
+              ]
+            },
+            "description": "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"capitulo\": 0,\n  \"destino\": \"es\",\n  \"reintentar\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/traducir/capitulo",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "traducir",
+                    "capitulo"
+                  ]
+                },
+                "description": "Capitulo traducido frase a frase con sus ids: LISTO con las frases, o PENDIENTE (se esta traduciendo: volver a preguntar) o ERROR con el motivo",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"capitulo\": 0,\n  \"destino\": \"es\",\n  \"reintentar\": true\n}",
                   "options": {
                     "raw": {
                       "language": "json"

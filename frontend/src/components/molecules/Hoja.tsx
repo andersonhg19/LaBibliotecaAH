@@ -5,6 +5,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } f
 import AppText from '@componentes/atoms/Text'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import { useTheme } from '@contextos/ThemeContext'
+import { hoja as materialHoja } from '@tema/materiales'
 import { web } from '@tema/web'
 
 interface Props {
@@ -22,7 +23,7 @@ interface Props {
  * PC. Papel sobre madera: el borde de arriba lleva un filete de latón.
  */
 const Hoja: React.FC<Props> = ({ visible, titulo, onCerrar, children, ancho = 560, testID }) => {
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
   const { width, height } = useWindowDimensions()
   const escritorio = width >= 820
   return (
@@ -50,7 +51,7 @@ const Hoja: React.FC<Props> = ({ visible, titulo, onCerrar, children, ancho = 56
               borderTopLeftRadius: 18,
               borderTopRightRadius: 18,
             },
-            web({ boxShadow: '0 -10px 40px rgba(0,0,0,0.45)' }),
+            web(materialHoja(isDark, colors)),
           ]}
         >
           <View style={styles.cabecera}>

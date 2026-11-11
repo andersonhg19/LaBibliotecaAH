@@ -8,6 +8,7 @@ import { adminService } from '@servicios/adminService'
 
 jest.mock('@servicios/adminService')
 jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn(), canGoBack: () => true }),
   useFocusEffect: (cb: () => unknown) => {
     const { useEffect } = require('react')
     useEffect(() => {
@@ -60,7 +61,7 @@ describe('AdminRolesScreen', () => {
 
     await waitFor(() => expect(getByText('AUDITOR')).toBeTruthy())
     expect(queryByTestId('retirar-AUDITOR')).toBeNull()
-    expect(getByText(/primero quitaselo a quien lo tenga/i)).toBeTruthy()
+    expect(getByText(/primero quítaselo a quien lo tenga/i)).toBeTruthy()
   })
 
   it('retira el que no lleva nadie', async () => {

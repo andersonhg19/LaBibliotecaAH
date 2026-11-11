@@ -1,6 +1,8 @@
 package com.bibliotecaah.biblioteca.service.impl;
 
+import com.bibliotecaah.biblioteca.config.Topes;
 import com.bibliotecaah.biblioteca.dto.filter.FiltroLibrosDTO;
+import com.bibliotecaah.biblioteca.exception.ValidationException;
 import com.bibliotecaah.biblioteca.dto.input.DeseoDTO;
 import com.bibliotecaah.biblioteca.dto.input.LibroSaveDTO;
 import com.bibliotecaah.biblioteca.dto.output.EjemplarDTO;
@@ -31,17 +33,20 @@ import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.Mensajes;
 import com.bibliotecaah.biblioteca.util.SecurityUtils;
 import com.bibliotecaah.biblioteca.util.ValidationUtils;
+import com.bibliotecaah.biblioteca.repository.EstanteItemRepository;
+import org.springframework.transaction.support.TransactionTemplate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -68,12 +73,19 @@ public class LibroServiceImpl implements LibroService {
     private final AlmacenDeArchivos almacen;
     private final Mensajes mensajes;
     private final ApplicationEventPublisher eventos;
+    private final Topes topes;
+    private final EstanteItemRepository estanteItems;
+    private final TransactionTemplate tx;
 
     public LibroServiceImpl(EjemplarRepository ejemplares, ObraRepository obras, ArchivoRepository archivos,
                             ProgresoRepository progresos, TrabajoRepository trabajos, IngestaService ingesta,
                             EstanteService estantes, EnsambladorDeEjemplares ensamblador,
                             LectorDeEstructura estructura, BibliotecaMapper mapper, AlmacenDeArchivos almacen,
-                            Mensajes mensajes, ApplicationEventPublisher eventos) {
+                            Mensajes mensajes, ApplicationEventPublisher eventos, Topes topes,
+                            EstanteItemRepository estanteItems, TransactionTemplate tx) {
+        this.topes = topes;
+        this.estanteItems = estanteItems;
+        this.tx = tx;
         this.ejemplares = ejemplares;
         this.obras = obras;
         this.archivos = archivos;
@@ -92,20 +104,47 @@ public class LibroServiceImpl implements LibroService {
     // ------------------------------------------------------------------ subir
 
     @Override
-    public ResultDTO subir(List<MultipartFile> ficheros, TipoEjemplar tipo) {
+    public ResultDTO subir(List<MultipartFile> ficheros, TipoEjemplar tipo, UUID deseoId) {
         Long yo = SecurityUtils.usuarioActual();
+        /* Los vacios tambien pasan: la ingesta los rechaza con "el archivo esta
+           vacio" (QA BI-21: antes se descartaban aqui y el mensaje era "no llego
+           ningun archivo"). */
         List<MultipartFile> validos = ficheros == null ? List.of()
-                : ficheros.stream().filter(f -> f != null && !f.isEmpty()).toList();
+                : ficheros.stream().filter(f -> f != null).toList();
         ValidationUtils.exigir(!validos.isEmpty(), Message.Msj.sinArchivos, CodigoError.DATO_INVALIDO);
+        if (deseoId != null) {
+            /* QA BI-15 ("Ya lo tengo"): antes de copiar nada, el deseo debe ser suyo y seguir siendo deseo. */
+            ValidationUtils.exigir(validos.size() == 1, Message.Msj.deseoUnSoloArchivo, CodigoError.DATO_INVALIDO,
+                    validos.size());
+            ValidationUtils.exigir(propio(yo, deseoId).getTipo() == TipoEjemplar.DESEO, Message.Msj.noEsUnDeseo,
+                    CodigoError.DATO_INVALIDO);
+        }
+        /* QA SE-07: topes por peticion y espacio en disco ANTES de copiar nada. */
+        ValidationUtils.exigir(validos.size() <= topes.getArchivosPorSubida(), Message.Msj.demasiadosArchivos,
+                CodigoError.DEMASIADO_GRANDE, String.valueOf(topes.getArchivosPorSubida()),
+                String.valueOf(validos.size()));
         almacen.exigirDisponible();
+        long necesario = validos.stream().mapToLong(MultipartFile::getSize).sum() + topes.getEspacioLibreMinimoBytes();
+        if (almacen.espacioLibre() < necesario) {
+            log.error("Subida rechazada por falta de espacio en /datos: libres {} bytes, hacen falta {}",
+                    almacen.espacioLibre(), necesario);
+            throw new ValidationException(Message.Msj.sinEspacio, CodigoError.SIN_ESPACIO);
+        }
 
         List<EjemplarDTO> aceptados = new ArrayList<>();
         List<String> rechazos = new ArrayList<>();
+        List<String> yaEstaban = new ArrayList<>();
         for (MultipartFile f : validos) {
             try (InputStream in = f.getInputStream()) {
                 IngestaService.Resultado r = ingesta.ingerir(yo, f.getOriginalFilename(), in, tipo);
-                if (r.aceptado()) aceptados.add(r.ejemplar());
-                else rechazos.add(r.rechazo());
+                if (r.aceptado()) {
+                    aceptados.add(r.ejemplar());
+                    if (Boolean.TRUE.equals(r.ejemplar().getYaLoTenias())) {
+                        yaEstaban.add("\"" + f.getOriginalFilename() + "\"");
+                    }
+                } else {
+                    rechazos.add(r.rechazo());
+                }
             } catch (IOException e) {
                 log.error("Fallo leyendo la subida {}: {}", f.getOriginalFilename(), e.getMessage(), e);
                 rechazos.add(mensajes.texto(Message.Msj.subidaIncompleta) + " (" + f.getOriginalFilename() + ")");
@@ -115,9 +154,58 @@ public class LibroServiceImpl implements LibroService {
             return new ResultDTO(false, mensajes.texto(Message.Msj.ningunArchivoAceptado, String.join(" ", rechazos)),
                     CodigoError.DATO_INVALIDO, aceptados);
         }
+        if (deseoId != null) {
+            EjemplarDTO llegado = aceptados.get(0);
+            aceptados.set(0, tx.execute(s -> cumplirDeseo(yo, deseoId, llegado)));
+        }
         String mensaje = rechazos.isEmpty() ? "OK"
                 : mensajes.texto(Message.Msj.algunosRechazados, aceptados.size(), String.join(" ", rechazos));
+        if (!yaEstaban.isEmpty()) {
+            /* QA BI-16: subir lo que ya tienes no es "agregado": se avisa. */
+            String aviso = mensajes.texto(Message.Msj.yaLoTenias, String.join(", ", yaEstaban));
+            mensaje = "OK".equals(mensaje) ? aviso : mensaje + " " + aviso;
+        }
         return new ResultDTO(true, mensaje, CodigoError.OK, aceptados);
+    }
+
+    /**
+     * QA BI-15: el deseo se convierte en el ejemplar que acaba de llegar (nuevo, el que ya tenia o uno
+     * retirado que reaparece): este hereda la nota (si no tenia; si tenia, se unen), las etiquetas y los
+     * estantes del deseo en su misma posicion, y el ISBN si su obra no lo tenia. Despues el deseo se borra.
+     */
+    private EjemplarDTO cumplirDeseo(Long yo, UUID deseoId, EjemplarDTO llegado) {
+        Ejemplar deseo = ejemplares.delUsuario(deseoId, yo).orElse(null);
+        Ejemplar ejemplar = propio(yo, llegado.getId());
+        if (deseo == null || deseo.getTipo() != TipoEjemplar.DESEO) {
+            /* Otra peticion lo cumplio o lo borro mientras se subia: el archivo ya esta, no hay nada que heredar. */
+            log.info("El deseo {} ya no estaba al terminar la subida de {}", deseoId, ejemplar.getId());
+            return llegado;
+        }
+        String nota = deseo.getNota();
+        if (nota != null && !nota.equals(ejemplar.getNota())) {
+            ejemplar.setNota(ejemplar.getNota() == null ? nota : ejemplar.getNota() + "\n\n" + nota);
+        }
+        List<String> etiquetas = new ArrayList<>(ejemplar.getEtiquetas() == null ? List.of() : ejemplar.getEtiquetas());
+        if (deseo.getEtiquetas() != null) etiquetas.addAll(deseo.getEtiquetas());
+        ejemplar.setEtiquetas(limpiar(etiquetas));
+        Obra obra = ejemplar.getObra();
+        if (obra.getIsbn() == null && deseo.getObra().getIsbn() != null) {
+            obra.setIsbn(deseo.getObra().getIsbn());
+            obras.save(obra);
+        }
+        ejemplares.saveAndFlush(ejemplar);
+        int heredados = estanteItems.heredarEstantes(deseo.getId(), ejemplar.getId(), yo);
+        Obra obraDeseo = deseo.getObra();
+        ejemplares.delete(deseo);
+        ejemplares.flush();
+        obras.delete(obraDeseo);
+        cambio(deseo, EntityChangeEvent.Accion.BORRAR, "Deseo cumplido por " + ejemplar.getId());
+        cambio(ejemplar, EntityChangeEvent.Accion.ACTUALIZAR, "Cumple el deseo " + deseo.getId());
+        log.info("Usuario {}: el deseo {} se cumplio con el ejemplar {} ({} estantes heredados)", yo, deseo.getId(),
+                ejemplar.getId(), heredados);
+        EjemplarDTO dto = ensamblador.uno(yo, ejemplar);
+        dto.setYaLoTenias(llegado.getYaLoTenias());
+        return dto;
     }
 
     // ------------------------------------------------------------------ deseo
@@ -177,8 +265,8 @@ public class LibroServiceImpl implements LibroService {
 
     @Override
     @Transactional(readOnly = true)
-    public FacetasDTO facetas() {
-        return ejemplares.facetas(SecurityUtils.usuarioActual());
+    public FacetasDTO facetas(FiltroLibrosDTO.Pestana pestana) {
+        return ejemplares.facetas(SecurityUtils.usuarioActual(), pestana);
     }
 
     // ------------------------------------------------------------------ detalle
@@ -204,28 +292,30 @@ public class LibroServiceImpl implements LibroService {
         Ejemplar e = propio(yo, dto.getId());
         Obra o = e.getObra();
 
+        /* v1.2 (QA BI-07, BI-08): campo ausente = no se toca; campo enviado
+           como null = se vacia. El titulo no se puede vaciar. */
         boolean datosDeObra = false;
         if (dto.getTitulo() != null && !dto.getTitulo().isBlank()) {
             o.setTitulo(dto.getTitulo().trim());
             datosDeObra = true;
         }
-        if (dto.getAutores() != null) {
+        if (dto.tocar("autores", dto.getAutores())) {
             o.setAutores(limpiar(dto.getAutores()));
             datosDeObra = true;
         }
-        if (dto.getAnio() != null) {
+        if (dto.tocar("anio", dto.getAnio())) {
             o.setAnio(dto.getAnio());
             datosDeObra = true;
         }
-        if (dto.getEditorial() != null) {
+        if (dto.tocar("editorial", dto.getEditorial())) {
             o.setEditorial(vacioComoNulo(dto.getEditorial()));
             datosDeObra = true;
         }
-        if (dto.getSinopsis() != null) {
+        if (dto.tocar("sinopsis", dto.getSinopsis())) {
             o.setSinopsis(vacioComoNulo(dto.getSinopsis()));
             datosDeObra = true;
         }
-        if (dto.getGeneros() != null) {
+        if (dto.tocar("generos", dto.getGeneros())) {
             o.setGeneros(limpiar(dto.getGeneros()));
             datosDeObra = true;
         }
@@ -235,8 +325,10 @@ public class LibroServiceImpl implements LibroService {
             obras.save(o);
         }
 
-        if (dto.getEtiquetas() != null) e.setEtiquetas(limpiar(dto.getEtiquetas()));
-        if (dto.getCalificacion() != null) e.setCalificacion(ValidationUtils.calificacion(dto.getCalificacion()));
+        if (dto.tocar("etiquetas", dto.getEtiquetas())) e.setEtiquetas(limpiar(dto.getEtiquetas()));
+        if (dto.tocar("calificacion", dto.getCalificacion())) {
+            e.setCalificacion(ValidationUtils.calificacion(dto.getCalificacion()));
+        }
         if (dto.getTipo() != null) cambiarTipo(e, dto.getTipo());
         if (dto.getEstado() != null) cambiarEstado(e, dto.getEstado());
         ejemplares.save(e);
@@ -249,6 +341,9 @@ public class LibroServiceImpl implements LibroService {
     private static void cambiarTipo(Ejemplar e, TipoEjemplar tipo) {
         ValidationUtils.exigir(tipo != TipoEjemplar.DESEO || e.getArchivo() == null,
                 Message.Msj.deseoConArchivo, CodigoError.DATO_INVALIDO);
+        /* QA BI-15: un deseo solo deja de serlo al subir su archivo (subir con deseoId). */
+        ValidationUtils.exigir(e.getTipo() != TipoEjemplar.DESEO || tipo == TipoEjemplar.DESEO,
+                Message.Msj.deseoSoloConArchivo, CodigoError.DATO_INVALIDO);
         e.setTipo(tipo);
     }
 
@@ -263,11 +358,30 @@ public class LibroServiceImpl implements LibroService {
             e.setFechaFin(ahora);
             e.setVecesLeido(e.getVecesLeido() == null ? 1 : e.getVecesLeido() + 1);
         }
+        if (antes == EstadoLectura.LEIDO && (nuevo == EstadoLectura.POR_LEER || nuevo == EstadoLectura.LEYENDO)) {
+            /* QA BI-27: si vuelve a estar por leer o en lectura, ya no esta
+               "terminado". Las lecturas completas siguen en veces_leido. */
+            e.setFechaFin(null);
+        }
         e.setEstado(nuevo);
     }
 
-    // ------------------------------------------------------------------ borrar
+    // ------------------------------------------------------------------ retirar
 
+    /**
+     * Retirar de la biblioteca (QA BI-01).
+     *
+     * Un DESEO se borra de verdad (no tiene archivo con el que reencontrarlo).
+     * Un LIBRO o DOCUMENTO se RETIRA: deja de verse en todas partes y suelta el
+     * archivo, pero su progreso, notas, resaltados, diario, calificacion,
+     * estantes y datos editados se conservan; si el mismo usuario vuelve a subir
+     * el mismo fichero (mismo sha256), reaparece con todo (IngestaServiceImpl).
+     *
+     * Si nadie mas usa el archivo: fuera su fila, su cola (trabajos PENDIENTE y
+     * EN_CURSO, QA DA-14/DA-28), sus filas de audio y, DESPUES del commit, sus
+     * ficheros. Lo que el taller escriba tarde (un trabajo que ya estaba en
+     * marcha) lo recoge TareaLimpieza.
+     */
     @Override
     @Transactional
     public boolean delete(UUID ejemplarId) {
@@ -275,18 +389,39 @@ public class LibroServiceImpl implements LibroService {
         Ejemplar e = propio(yo, ejemplarId);
         Archivo archivo = e.getArchivo();
         Obra obra = e.getObra();
-        ejemplares.delete(e);
-        ejemplares.flush();
-        obras.delete(obra);
+        if (e.getTipo() == TipoEjemplar.DESEO || archivo == null) {
+            ejemplares.delete(e);
+            ejemplares.flush();
+            obras.delete(obra);
+        } else {
+            e.setArchivoSha256(archivo.getSha256());
+            e.setArchivo(null);
+            e.setRetiradoEn(Instant.now());
+            ejemplares.saveAndFlush(e);
+        }
         if (archivo != null && ejemplares.countByArchivo_Id(archivo.getId()) == 0) {
-            /* Nadie mas lo usa: fuera la fila, su cola, su audio y sus ficheros. */
-            trabajos.olvidarArchivo(archivo.getId());
+            UUID archivoId = archivo.getId();
+            trabajos.olvidarArchivo(archivoId);
             archivos.delete(archivo);
-            almacen.borrarTodoDe(archivo.getId());
-            log.info("Archivo {} borrado: ya no lo usaba nadie", archivo.getId());
+            despuesDelCommit(() -> almacen.borrarTodoDe(archivoId));
+            log.info("Archivo {} borrado: ya no lo usaba nadie", archivoId);
         }
         cambio(e, EntityChangeEvent.Accion.BORRAR, obra.getTitulo());
         return true;
+    }
+
+    /** Ficheros fuera solo si la base confirmo el borrado; sin transaccion, ya. */
+    static void despuesDelCommit(Runnable accion) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            accion.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                accion.run();
+            }
+        });
     }
 
     // ------------------------------------------------------------------ ayudas
@@ -299,12 +434,14 @@ public class LibroServiceImpl implements LibroService {
         eventos.publishEvent(new EntityChangeEvent("Ejemplar", e.getId().toString(), accion, e.getUsuarioId(), detalle));
     }
 
+    /** Sin vacios ni repetidos (sin distinguir mayusculas, QA BI-23: gana la primera forma). null = lista vacia. */
     static List<String> limpiar(List<String> valores) {
-        LinkedHashSet<String> unicos = new LinkedHashSet<>();
+        java.util.LinkedHashMap<String, String> unicos = new java.util.LinkedHashMap<>();
+        if (valores == null) return new ArrayList<>();
         for (String v : valores) {
-            if (v != null && !v.isBlank()) unicos.add(v.trim());
+            if (v != null && !v.isBlank()) unicos.putIfAbsent(v.trim().toLowerCase(java.util.Locale.ROOT), v.trim());
         }
-        return new ArrayList<>(unicos);
+        return new ArrayList<>(unicos.values());
     }
 
     static String vacioComoNulo(String v) {

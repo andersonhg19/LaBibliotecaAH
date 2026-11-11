@@ -43,6 +43,17 @@ class UserServiceImplTest {
 
     @Mock
     private UserMapper userMapper;
+
+    /* Sin stub devuelve Optional.empty(): "el alias sirve". Las reglas del
+       alias se prueban en ElAliasEnAltasYEdicionesTest con la validacion real. */
+    @Mock
+    private com.bibliotecaah.auth.util.ValidacionDeAlias validacionDeAlias;
+
+    @Mock
+    private com.bibliotecaah.auth.security.EmisorDeTokens tokens;
+
+    @Mock
+    private com.bibliotecaah.auth.util.Mensajes mensajes;
     /* La identidad ya no llega por parametro: sale del token, y varias
        operaciones exigen ahora que sea TU cuenta. Estas pruebas son unitarias
        y no hay token, asi que se planta a mano para poder seguir probando la
@@ -122,7 +133,7 @@ class UserServiceImplTest {
             com.bibliotecaah.auth.entity.Role user = com.bibliotecaah.auth.entity.Role.builder()
                     .id(2L).name("USER").active(true).build();
             when(roleRepository.findByNameAndActiveTrue("USER")).thenReturn(Optional.of(user));
-            when(userRepository.existsByEmailAndActiveTrue("test@biblioteca.ah")).thenReturn(false);
+            when(userRepository.existeCorreo("test@biblioteca.ah")).thenReturn(false);
             when(passwordEncoder.encode("Password123!")).thenReturn("encoded-password");
             when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
@@ -135,7 +146,7 @@ class UserServiceImplTest {
         @DisplayName("si el rol USER no existe, la cuenta se crea igual (sin rol) y se avisa")
         void registroSinRolUser() {
             when(roleRepository.findByNameAndActiveTrue("USER")).thenReturn(Optional.empty());
-            when(userRepository.existsByEmailAndActiveTrue("test@biblioteca.ah")).thenReturn(false);
+            when(userRepository.existeCorreo("test@biblioteca.ah")).thenReturn(false);
             when(passwordEncoder.encode("Password123!")).thenReturn("encoded-password");
             when(userRepository.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
@@ -147,7 +158,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("Should create user successfully")
         void shouldCreateUserSuccessfully() {
-            when(userRepository.existsByEmailAndActiveTrue("test@biblioteca.ah")).thenReturn(false);
+            when(userRepository.existeCorreo("test@biblioteca.ah")).thenReturn(false);
             when(passwordEncoder.encode("Password123!")).thenReturn("encoded-password");
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
@@ -162,7 +173,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("Should fail when email already exists")
         void shouldFailWhenEmailExists() {
-            when(userRepository.existsByEmailAndActiveTrue("test@biblioteca.ah")).thenReturn(true);
+            when(userRepository.existeCorreo("test@biblioteca.ah")).thenReturn(true);
 
             ResultDTO result = registrar();
 
@@ -197,7 +208,7 @@ class UserServiceImplTest {
         @DisplayName("Should trim and save email with spaces correctly")
         void shouldCreateUserWithEmailContainingSpaces() {
             testSaveDTO.setEmail("  test@biblioteca.ah  ");
-            when(userRepository.existsByEmailAndActiveTrue("  test@biblioteca.ah  ")).thenReturn(false);
+            when(userRepository.existeCorreo("test@biblioteca.ah")).thenReturn(false);
             when(passwordEncoder.encode(anyString())).thenReturn("encoded");
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
@@ -223,7 +234,7 @@ class UserServiceImplTest {
         void shouldUpdateUserSuccessfully() {
             testSaveDTO.setPassword(null);
             when(userRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.existsByEmailAndActiveTrueAndIdNot("test@biblioteca.ah", 1L)).thenReturn(false);
+            when(userRepository.existeCorreoEnOtraCuenta("test@biblioteca.ah", 1L)).thenReturn(false);
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
 
@@ -248,7 +259,7 @@ class UserServiceImplTest {
         @DisplayName("Should fail when email taken by another user")
         void shouldFailWhenEmailTakenByAnother() {
             when(userRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.existsByEmailAndActiveTrueAndIdNot("test@biblioteca.ah", 1L)).thenReturn(true);
+            when(userRepository.existeCorreoEnOtraCuenta("test@biblioteca.ah", 1L)).thenReturn(true);
 
             ResultDTO result = userService.saveAndUpdate(testSaveDTO);
 
@@ -261,7 +272,7 @@ class UserServiceImplTest {
         void shouldNotChangePasswordWhenNull() {
             testSaveDTO.setPassword(null);
             when(userRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.existsByEmailAndActiveTrueAndIdNot(anyString(), anyLong())).thenReturn(false);
+            when(userRepository.existeCorreoEnOtraCuenta(anyString(), anyLong())).thenReturn(false);
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
 
@@ -277,7 +288,7 @@ class UserServiceImplTest {
             testSaveDTO.setCurrentPassword("Password123!");
             when(passwordEncoder.matches("Password123!", "encoded-password")).thenReturn(true);
             when(userRepository.findByIdAndActiveTrue(1L)).thenReturn(Optional.of(testUser));
-            when(userRepository.existsByEmailAndActiveTrueAndIdNot(anyString(), anyLong())).thenReturn(false);
+            when(userRepository.existeCorreoEnOtraCuenta(anyString(), anyLong())).thenReturn(false);
             when(passwordEncoder.encode("NewPass123!")).thenReturn("new-encoded");
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(userMapper.toResultDTO(any(User.class))).thenReturn(testResultDTO);
@@ -474,7 +485,7 @@ class UserServiceImplTest {
         @Test
         @DisplayName("Should handle exception in save gracefully")
         void shouldHandleExceptionInSave() {
-            when(userRepository.existsByEmailAndActiveTrue(anyString()))
+            when(userRepository.existeCorreo(anyString()))
                     .thenThrow(new RuntimeException("DB error"));
 
             com.bibliotecaah.auth.dto.input.UserRegisterDTO alta = new com.bibliotecaah.auth.dto.input.UserRegisterDTO();

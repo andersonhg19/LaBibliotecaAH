@@ -206,16 +206,119 @@ class LibrosTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("un deseo pasa a libro (ya lo tengo), pero un libro con archivo no vuelve a deseo")
+        @DisplayName("QA BI-15: un deseo NO pasa a LIBRO ni a DOCUMENTO sin archivo; un libro con archivo no vuelve a deseo")
         void cambiosDeTipo() throws Exception {
             JsonNode deseo = pedir(ANDERSON, "/v1/libros/deseo", Map.of("titulo", "Ficciones")).get("object");
-            JsonNode r = pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo.get("id").asText(), "tipo", "LIBRO"));
-            assertThat(r.get("object").get("tipo").asText()).isEqualTo("LIBRO");
+            for (String tipo : List.of("LIBRO", "DOCUMENTO")) {
+                JsonNode r = pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo.get("id").asText(), "tipo", tipo));
+                assertThat(r.get("errorCode").asInt()).isEqualTo(120);
+                assertThat(r.get("message").asText()).isEqualTo(
+                        "Un deseo pasa a tu biblioteca cuando subes su archivo: usa «Ya lo tengo» y elige el archivo.");
+            }
+            JsonNode sigue = pedir(ANDERSON, "/v1/libros/get/" + deseo.get("id").asText()).get("object");
+            assertThat(sigue.get("tipo").asText()).isEqualTo("DESEO");
+            assertThat(pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo.get("id").asText(), "tipo", "DESEO",
+                    "titulo", "Ficciones (Borges)")).get("correct").asBoolean()).as("DESEO -> DESEO si").isTrue();
 
             JsonNode libro = subirLibro(ANDERSON, "a.epub");
             JsonNode no = pedir(ANDERSON, "/v1/libros/save", Map.of("id", libro.get("id").asText(), "tipo", "DESEO"));
             assertThat(no.get("errorCode").asInt()).isEqualTo(120);
             assertThat(no.get("message").asText()).isEqualTo("Un libro con archivo no puede volver a la lista de deseos.");
+            assertThat(pedir(ANDERSON, "/v1/libros/save", Map.of("id", libro.get("id").asText(), "tipo", "DOCUMENTO"))
+                    .get("object").get("tipo").asText()).as("LIBRO -> DOCUMENTO con archivo si").isEqualTo("DOCUMENTO");
+        }
+
+        private JsonNode subirCumpliendo(long usuario, String deseoId, MockMultipartFile... ficheros) throws Exception {
+            var req = org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .multipart("/biblioteca/v1/libros/subir");
+            for (MockMultipartFile f : ficheros) req.file(f);
+            req.contextPath("/biblioteca").param("deseoId", deseoId).header("Authorization", bearer(usuario));
+            return json.readTree(mvc.perform(req).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8));
+        }
+
+        private MockMultipartFile archivo(String nombre) {
+            return new MockMultipartFile("archivos", nombre, "application/epub+zip", epub(nombre));
+        }
+
+        @Test
+        @DisplayName("QA BI-15: «Ya lo tengo» = subir con deseoId: hereda nota, etiquetas, estantes e ISBN y el deseo desaparece")
+        void yaLoTengo() throws Exception {
+            String deseo = pedir(ANDERSON, "/v1/libros/deseo", Map.of("titulo", "Ficciones", "nota", "regalo de Samy",
+                    "isbn", "9788499089515")).get("object").get("id").asText();
+            pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo, "etiquetas", List.of("borges", "cuentos")));
+            String estante = pedir(ANDERSON, "/v1/estantes/save", Map.of("nombre", "Pendientes", "colorMadera", "roble"))
+                    .get("object").get("id").asText();
+            pedir(ANDERSON, "/v1/estantes/" + estante + "/agregar", Map.of("ejemplarId", deseo));
+            pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo, "favorito", true));
+
+            JsonNode r = subirCumpliendo(ANDERSON, deseo, archivo("ficciones.epub"));
+
+            assertThat(r.get("correct").asBoolean()).isTrue();
+            JsonNode llegado = r.get("object").get(0);
+            String id = llegado.get("id").asText();
+            assertThat(id).isNotEqualTo(deseo);
+            assertThat(llegado.get("tipo").asText()).isEqualTo("LIBRO");
+            assertThat(llegado.get("archivoId").isNull()).isFalse();
+            assertThat(llegado.get("nota").asText()).isEqualTo("regalo de Samy");
+            assertThat(llegado.get("etiquetas")).extracting(JsonNode::asText).containsExactly("borges", "cuentos");
+            assertThat(llegado.get("isbn").asText()).isEqualTo("9788499089515");
+            assertThat(llegado.get("favorito").asBoolean()).isTrue();
+            assertThat(pedir(ANDERSON, "/v1/libros/get/" + deseo).get("errorCode").asInt()).as("el deseo ya no esta")
+                    .isEqualTo(102);
+            assertThat(pedir(ANDERSON, "/v1/estantes/" + estante + "/libros").get("object"))
+                    .extracting(n -> n.get("id").asText()).containsExactly(id);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_ejemplar WHERE tipo = 'DESEO'", Integer.class))
+                    .isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_obra", Integer.class)).as("sin obra huerfana")
+                    .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("QA BI-15: si ya tenia ese archivo, el deseo se funde con el que tenia (notas unidas, etiquetas sin repetir)")
+        void yaLoTeniaDeAntes() throws Exception {
+            JsonNode tenia = subirLibro(ANDERSON, "aleph.epub");
+            String suyo = tenia.get("id").asText();
+            pedir(ANDERSON, "/v1/libros/save", Map.of("id", suyo, "etiquetas", List.of("Borges")));
+            jdbc.update("UPDATE bah_lib_ejemplar SET nota = 'mio' WHERE id = ?", UUID.fromString(suyo));
+            String deseo = pedir(ANDERSON, "/v1/libros/deseo", Map.of("titulo", "El Aleph", "nota", "del deseo"))
+                    .get("object").get("id").asText();
+            pedir(ANDERSON, "/v1/libros/save", Map.of("id", deseo, "etiquetas", List.of("borges", "favoritos")));
+
+            JsonNode r = subirCumpliendo(ANDERSON, deseo, archivo("aleph.epub"));
+
+            JsonNode llegado = r.get("object").get(0);
+            assertThat(llegado.get("id").asText()).isEqualTo(suyo);
+            assertThat(llegado.get("yaLoTenias").asBoolean()).isTrue();
+            assertThat(llegado.get("nota").asText()).isEqualTo("mio\n\ndel deseo");
+            assertThat(llegado.get("etiquetas")).extracting(JsonNode::asText).containsExactly("Borges", "favoritos");
+            assertThat(pedir(ANDERSON, "/v1/libros/get/" + deseo).get("errorCode").asInt()).isEqualTo(102);
+        }
+
+        @Test
+        @DisplayName("QA BI-15: deseoId ajeno, inexistente, que no es deseo, o con dos archivos: error claro y nada cambia")
+        void yaLoTengoConErrores() throws Exception {
+            String deseoDeSamy = pedir(SAMY, "/v1/libros/deseo", Map.of("titulo", "De Samy")).get("object").get("id").asText();
+            assertThat(subirCumpliendo(ANDERSON, deseoDeSamy, archivo("x.epub")).get("errorCode").asInt()).isEqualTo(102);
+            assertThat(subirCumpliendo(ANDERSON, UUID.randomUUID().toString(), archivo("x.epub")).get("errorCode").asInt())
+                    .isEqualTo(102);
+
+            String libro = subirLibro(ANDERSON, "y.epub").get("id").asText();
+            JsonNode noDeseo = subirCumpliendo(ANDERSON, libro, archivo("x.epub"));
+            assertThat(noDeseo.get("errorCode").asInt()).isEqualTo(120);
+            assertThat(noDeseo.get("message").asText()).isEqualTo("Ese libro ya no está en tu lista de deseos.");
+
+            String deseo = pedir(ANDERSON, "/v1/libros/deseo", Map.of("titulo", "Uno")).get("object").get("id").asText();
+            JsonNode dos = subirCumpliendo(ANDERSON, deseo, archivo("x.epub"), archivo("z.epub"));
+            assertThat(dos.get("errorCode").asInt()).isEqualTo(120);
+            assertThat(dos.get("message").asText()).isEqualTo("Para cumplir un deseo sube un solo archivo (llegaron 2).");
+
+            JsonNode noValido = subirCumpliendo(ANDERSON, deseo,
+                    new MockMultipartFile("archivos", "malo.exe", "application/octet-stream", new byte[]{1}));
+            assertThat(noValido.get("correct").asBoolean()).isFalse();
+            assertThat(pedir(ANDERSON, "/v1/libros/get/" + deseo).get("object").get("tipo").asText())
+                    .as("si el archivo se rechaza, el deseo sigue").isEqualTo("DESEO");
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_ejemplar", Integer.class))
+                    .as("el libro y los dos deseos").isEqualTo(3);
         }
     }
 
@@ -341,7 +444,7 @@ class LibrosTest extends PostgresDeVerdad {
     class Borrar {
 
         @Test
-        @DisplayName("el ultimo ejemplar de un archivo se lleva el archivo, su cola, su audio y sus ficheros")
+        @DisplayName("el ultimo ejemplar de un archivo se lleva el archivo, su cola, su audio y sus ficheros; la obra se queda con el retirado (BI-01)")
         void ultimoEjemplar() throws Exception {
             JsonNode e = subirLibro(ANDERSON, "a.epub");
             UUID archivo = uuid(e.get("archivoId"));
@@ -354,7 +457,9 @@ class LibrosTest extends PostgresDeVerdad {
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_archivo", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_trabajo", Integer.class)).isZero();
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_audio", Integer.class)).isZero();
-            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_obra", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_obra", Integer.class)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_ejemplar WHERE retirado_en IS NOT NULL AND archivo_id IS NULL",
+                    Integer.class)).isEqualTo(1);
             assertThat(Files.exists(normalizado)).isFalse();
             assertThat(Files.exists(DATOS.resolve("originales/" + archivo))).isFalse();
         }

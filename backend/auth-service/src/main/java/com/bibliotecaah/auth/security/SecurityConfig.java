@@ -1,5 +1,6 @@
 package com.bibliotecaah.auth.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -8,6 +9,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.io.IOException;
 
 @Configuration
 @EnableWebSecurity
@@ -38,6 +41,8 @@ public class SecurityConfig {
                            llamar a nada. Estos tres servicios ademas solo se
                            publican en 127.0.0.1; la unica puerta desde la red es
                            el gateway. */
+                        /* QA SE-15: el gateway ya no las deja pasar; aqui siguen abiertas para
+                           quien llegue al puerto local (127.0.0.1). */
                         .requestMatchers("/v3/api-docs", "/v3/api-docs/**",
                                 "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         .requestMatchers("/v1/auth/login").permitAll()
@@ -49,8 +54,24 @@ public class SecurityConfig {
                            puerto del microservicio, esto sigue puesto. */
                         .requestMatchers("/v1/admin/**").hasAuthority(ADMIN)
                         .anyRequest().authenticated())
+                /* QA SE-11: sin token, 401; sin rol, 403; los dos con el ResultDTO del
+                   contrato (antes: 403 con el cuerpo vacio en ambos casos y la web no
+                   distinguia "inicia sesion" de "no puedes"). */
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint((req, res, ex) -> escribir(res, 401, SIN_SESION))
+                        .accessDeniedHandler((req, res, ex) -> escribir(res, 403, SIN_PERMISO)))
                 .addFilterBefore(authorizationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    static final String SIN_SESION = "{\"correct\":false,\"message\":\"Necesitas iniciar sesión.\",\"errorCode\":401}";
+    static final String SIN_PERMISO = "{\"correct\":false,\"message\":\"No tienes permiso para hacer esto.\",\"errorCode\":403}";
+
+    static void escribir(HttpServletResponse res, int estado, String cuerpo) throws IOException {
+        res.setStatus(estado);
+        res.setContentType("application/json;charset=UTF-8");
+        res.setCharacterEncoding("UTF-8");
+        res.getWriter().write(cuerpo);
     }
 }

@@ -7,34 +7,30 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import Button from '@componentes/atoms/Button'
 import Chip from '@componentes/atoms/Chip'
 import Deslizador from '@componentes/atoms/Deslizador'
-import Icono from '@componentes/atoms/Icono'
 import Spinner from '@componentes/atoms/Spinner'
 import AppText from '@componentes/atoms/Text'
 import Portada from '@componentes/estanteria/Portada'
+import { SALA_ESCUCHA } from '@componentes/lector/disenoLector'
 import Encabezado, { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import Sala from '@componentes/molecules/Sala'
+import { BotonLaton, OndaVoz, SelectorVelocidad } from '@componentes/reproductor/ControlesVoz'
+import { avisoDeVoz, duracionHumana, restanteLibro, textoRestante } from '@componentes/reproductor/estadoVoz'
+import { useAhora } from '@componentes/reproductor/useAhora'
 import { usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { motor, useVoz } from '@contextos/VozContext'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { autoresTexto, reloj } from '@logica/formato'
-import {
-  PASOS_VELOCIDAD,
-  PASO_FINO,
-  VELOCIDAD_MAX,
-  VELOCIDAD_MIN,
-  resaltaPalabra,
-  textoVelocidad,
-} from '@logica/velocidad'
+import { resaltaPalabra, textoVelocidad } from '@logica/velocidad'
 import type { Rutas } from '@navegacion/linking'
 import { urlMuestraVoz } from '@servicios/archivos'
 import { librosService, vocesService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes } from '@tema'
-import { textoLegibleSobre } from '@tema/contraste'
 import { luzLampara } from '@tema/madera'
 import { web } from '@tema/web'
 import type { EjemplarDetalleDTO, VozDTO } from '@tipos'
+import { estadoElegible } from '@utils/aria'
 import { escucharLibro } from '@utils/escuchar'
 
 type Props = NativeStackScreenProps<Rutas, 'Escuchar'>
@@ -54,7 +50,6 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const { width } = useWindowDimensions()
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [voces, setVoces] = useState<VozDTO[]>([])
-  const [ahora, setAhora] = useState(Date.now())
   const muestra = useRef<HTMLAudioElement | null>(null)
 
   const { cargando, error, cargar } = useCarga(async () => {
@@ -66,11 +61,7 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
     cargar()
   }, [cargar])
 
-  useEffect(() => {
-    if (!v.temporizador) return
-    const t = setInterval(() => setAhora(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [v.temporizador])
+  const ahora = useAhora(!!v.temporizador || v.fase === 'preparando' || !!v.vozPendiente)
 
   useEffect(() => () => muestra.current?.pause(), [])
 
@@ -86,10 +77,18 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const empezar = () => escucharLibro(libro, { vozId: prefs.vozId, velocidad: prefs.velocidad })
   const alternar = () => (esteLibro ? motor.alternar() : empezar())
+  /* Si suena OTRO libro, los controles de esta pantalla no lo tocan (QA LV-P3). */
+  const siEste = (fn: () => void) => () => {
+    if (esteLibro) fn()
+  }
   const ponerVelocidad = (x: number) => {
-    motor.setVelocidad(x)
+    if (esteLibro) motor.setVelocidad(x)
     cambiar({ velocidad: x })
   }
+  const aviso = esteLibro ? avisoDeVoz(v, ahora) : null
+  const enError = esteLibro && v.fase === 'error'
+  const quedaLibro = esteLibro ? restanteLibro(libro.capitulos, v.capitulo, v.posicion, v.duracion, v.velocidad) : null
+  const conAudio = esteLibro && v.duracion > 0
   const restante =
     v.temporizador?.tipo === 'minutos' ? Math.max(0, Math.round((v.temporizador.finEn - ahora) / 1000)) : null
 
@@ -111,97 +110,109 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={[styles.portada, web({ backgroundImage: luzLampara(isDark) })]}>
           <Portada libro={libro} ancho={anchoPortada} />
         </View>
-        <Text style={[styles.capitulo, { color: colors.text }]} accessibilityRole="header">
-          {cap?.titulo ?? `Capítulo ${(esteLibro ? v.capitulo : 0) + 1}`}
-        </Text>
+        <View style={styles.capituloFila}>
+          <OndaVoz activa={sonando} />
+          <Text style={[styles.capitulo, { color: colors.text }]} accessibilityRole="header">
+            {cap?.titulo ?? `Capítulo ${(esteLibro ? v.capitulo : 0) + 1}`}
+          </Text>
+          <OndaVoz activa={sonando} />
+        </View>
         <Text style={[styles.autor, { color: colors.primary }]}>{autoresTexto(libro.autores)}</Text>
 
-        {esteLibro && v.mensaje ? (
-          <View style={styles.estado} accessibilityLiveRegion="polite">
-            {v.fase === 'preparando' ? <ActivityIndicator color={colors.primary} /> : null}
-            <Text style={[styles.mensaje, { color: v.fase === 'error' ? colors.danger : colors.textSecondary }]}>
-              {v.fase === 'error' ? '⚠ ' : ''}
-              {v.mensaje}
-            </Text>
+        {aviso ? (
+          <View
+            style={[
+              styles.estado,
+              { borderColor: aviso.tono === 'error' ? colors.danger : 'rgba(201,162,39,0.55)' },
+              web({ backgroundImage: 'linear-gradient(180deg, rgba(243,233,210,0.06), rgba(0,0,0,0.12))' }),
+            ]}
+            accessibilityLiveRegion="polite"
+            testID="aviso-voz"
+          >
+            <View style={styles.estadoFila}>
+              {aviso.tono === 'espera' ? <ActivityIndicator color={SALA_ESCUCHA.laton} /> : null}
+              <Text style={[styles.mensaje, { color: aviso.tono === 'error' ? colors.danger : colors.text }]}>
+                {aviso.tono === 'error' ? '⚠ ' : ''}
+                {aviso.texto}
+              </Text>
+            </View>
+            {aviso.reintentar ? (
+              <Button
+                title="Reintentar"
+                icono="volver"
+                size="small"
+                onPress={() => motor.reintentar()}
+                testID="reintentar-voz"
+              />
+            ) : null}
+            {v.vozPendiente ? (
+              <Button
+                title={`Seguir con ${v.nombreVoz}`}
+                size="small"
+                variant="ghost"
+                onPress={() => motor.setVoz(v.vozId, v.nombreVoz)}
+              />
+            ) : null}
           </View>
         ) : null}
 
         <View style={styles.avance}>
-          <Deslizador
-            valor={esteLibro ? v.posicion : 0}
-            min={0}
-            max={Math.max(1, esteLibro ? v.duracion : 1)}
-            paso={1}
-            etiqueta="Posición en el capítulo"
-            textoValor={(x) => `${reloj(x)} de ${reloj(v.duracion)}`}
-            onSoltar={(x) => esteLibro && motor.buscar(x)}
-            testID="deslizador-posicion"
-          />
+          {conAudio ? (
+            <Deslizador
+              valor={v.posicion}
+              min={0}
+              max={Math.max(1, v.duracion)}
+              paso={1}
+              etiqueta="Posición en el capítulo"
+              textoValor={(x) => `${reloj(x)} de ${reloj(v.duracion)}`}
+              onSoltar={(x) => motor.buscar(x)}
+              testID="deslizador-posicion"
+            />
+          ) : (
+            // Sin audio aún no hay nada que arrastrar: un riel quieto, no una barra que engaña (UX-11).
+            <View style={styles.rielQuieto} accessibilityLabel="Posición en el capítulo: aún sin audio">
+              <View style={[styles.riel, { backgroundColor: 'rgba(201,162,39,0.25)' }]} />
+            </View>
+          )}
           <View style={styles.tiempos}>
-            <Text style={[styles.tiempo, { color: colors.textSecondary }]}>{reloj(esteLibro ? v.posicion : 0)}</Text>
-            <Text style={[styles.tiempo, { color: colors.textSecondary }]}>
-              -{reloj(Math.max(0, (v.duracion - v.posicion) / (v.velocidad || 1)))} a {textoVelocidad(v.velocidad)}
+            <Text style={[styles.tiempo, { color: colors.textSecondary }]}>{conAudio ? reloj(v.posicion) : '—:—'}</Text>
+            <Text style={[styles.tiempo, { color: colors.textSecondary }]} testID="tiempo-restante">
+              {esteLibro ? textoRestante(v) : '—:—'}
             </Text>
           </View>
+          {quedaLibro != null ? (
+            <Text style={[styles.tiempo, styles.centro, { color: colors.textMuted }]}>
+              Del libro quedan {duracionHumana(quedaLibro)} a {textoVelocidad(v.velocidad)}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.controles}>
-          <BotonIcono icono="anterior" etiqueta="Capítulo anterior" onPress={() => motor.capituloAnterior()} />
-          <BotonIcono icono="fraseAnterior" etiqueta="Frase anterior" onPress={() => motor.fraseAnterior()} />
-          <BotonIcono icono="atras15" etiqueta="Retroceder 15 segundos" onPress={motor.atras15} tamano={26} />
-          <Pressable
-            onPress={alternar}
-            accessibilityRole="button"
-            accessibilityLabel={sonando ? 'Pausar' : 'Reproducir'}
-            testID="boton-play"
-            style={({ pressed }) => [
-              styles.play,
-              { backgroundColor: colors.primary },
-              web({
-                backgroundImage: 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45), rgba(0,0,0,0.15))',
-                boxShadow: '0 10px 26px rgba(0,0,0,0.45)',
-                cursor: 'pointer',
-              }),
-              pressed && { transform: [{ scale: 0.97 }] },
-            ]}
-          >
-            {ocupado ? (
-              <ActivityIndicator color={textoLegibleSobre(colors.primary)} />
-            ) : (
-              <Icono
-                nombre={sonando ? 'pause' : 'play'}
-                color={textoLegibleSobre(colors.primary)}
-                tamano={34}
-                relleno
-              />
-            )}
-          </Pressable>
-          <BotonIcono icono="adelante15" etiqueta="Adelantar 15 segundos" onPress={motor.adelante15} tamano={26} />
-          <BotonIcono icono="fraseSiguiente" etiqueta="Frase siguiente" onPress={() => motor.fraseSiguiente()} />
-          <BotonIcono icono="siguiente" etiqueta="Capítulo siguiente" onPress={() => motor.capituloSiguiente()} />
+          <BotonIcono icono="anterior" etiqueta="Capítulo anterior" onPress={siEste(() => motor.capituloAnterior())} />
+          <BotonIcono icono="fraseAnterior" etiqueta="Frase anterior" onPress={siEste(() => motor.fraseAnterior())} />
+          <BotonIcono icono="atras15" etiqueta="Retroceder 15 segundos" onPress={siEste(motor.atras15)} tamano={26} />
+          <BotonLaton sonando={sonando} ocupado={ocupado} enError={enError} onPress={alternar} testID="boton-play" />
+          <BotonIcono
+            icono="adelante15"
+            etiqueta="Adelantar 15 segundos"
+            onPress={siEste(motor.adelante15)}
+            tamano={26}
+          />
+          <BotonIcono
+            icono="fraseSiguiente"
+            etiqueta="Frase siguiente"
+            onPress={siEste(() => motor.fraseSiguiente())}
+          />
+          <BotonIcono
+            icono="siguiente"
+            etiqueta="Capítulo siguiente"
+            onPress={siEste(() => motor.capituloSiguiente())}
+          />
         </View>
 
         <View style={[styles.tarjeta, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <AppText variant="label">Velocidad: {textoVelocidad(v.velocidad)}</AppText>
-          <View style={styles.chips}>
-            {PASOS_VELOCIDAD.map((p) => (
-              <Chip
-                key={p}
-                etiqueta={textoVelocidad(p)}
-                activo={Math.abs(v.velocidad - p) < 0.001}
-                onPress={() => ponerVelocidad(p)}
-              />
-            ))}
-          </View>
-          <Deslizador
-            valor={v.velocidad}
-            min={VELOCIDAD_MIN}
-            max={VELOCIDAD_MAX}
-            paso={PASO_FINO}
-            etiqueta="Velocidad fina"
-            textoValor={textoVelocidad}
-            onSoltar={ponerVelocidad}
-          />
+          <AppText variant="label">Velocidad</AppText>
+          <SelectorVelocidad valor={esteLibro ? v.velocidad : prefs.velocidad} onCambio={ponerVelocidad} />
           <AppText variant="caption">
             {resaltaPalabra(v.velocidad)
               ? 'Se resalta la frase y la palabra.'
@@ -218,13 +229,13 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
                 etiqueta={`${m} min`}
                 icono="temporizador"
                 activo={v.temporizador?.tipo === 'minutos' && v.temporizador.minutos === m}
-                onPress={() => motor.setTemporizador({ minutos: m })}
+                onPress={siEste(() => motor.setTemporizador({ minutos: m }))}
               />
             ))}
             <Chip
               etiqueta="Al final del capítulo"
               activo={v.temporizador?.tipo === 'capitulo'}
-              onPress={() => motor.setTemporizador('capitulo')}
+              onPress={siEste(() => motor.setTemporizador('capitulo'))}
             />
             {v.temporizador ? (
               <Chip
@@ -244,21 +255,22 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
           <AppText variant="label">La voz</AppText>
           {voces.map((vz) => {
             const activa = (esteLibro ? v.vozId : prefs.vozId) === vz.id
+            const preparandose = esteLibro && v.vozPendiente?.id === vz.id
             return (
               <View key={vz.id} style={[styles.voz, { borderBottomColor: colors.border }]}>
                 <Pressable
                   style={styles.vozNombre}
                   onPress={() => {
-                    motor.setVoz(vz.id, vz.nombre)
+                    if (esteLibro) motor.setVoz(vz.id, vz.nombre)
                     cambiar({ vozId: vz.id })
                   }}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: activa }}
+                  {...estadoElegible('radio', activa)}
                   accessibilityLabel={`${vz.nombre}, ${vz.pais}${vz.porDefecto ? ', voz de la casa' : ''}`}
                 >
                   <Text style={[styles.vozTexto, { color: activa ? colors.primary : colors.text }]}>
-                    {activa ? '● ' : '○ '}
+                    {activa ? '● ' : preparandose ? '◌ ' : '○ '}
                     {vz.nombre}
+                    {preparandose ? ' · preparándose…' : ''}
                   </Text>
                   <Text style={[styles.tiempo, { color: colors.textMuted }]}>
                     {vz.pais}
@@ -297,13 +309,31 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   portada: { alignItems: 'center', padding: 28 },
+  capituloFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   capitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.xl, textAlign: 'center' },
   autor: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.lg, textAlign: 'center' },
-  estado: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
-  mensaje: { fontFamily: fuentes.ui, fontSize: fontSize.sm, textAlign: 'center' },
+  estado: {
+    gap: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  estadoFila: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  mensaje: {
+    fontFamily: fuentes.ui,
+    fontSize: fontSize.sm,
+    textAlign: 'center',
+    flexShrink: 1,
+    fontVariant: ['lining-nums'],
+  },
+  rielQuieto: { height: 44, justifyContent: 'center' },
+  riel: { height: 6, borderRadius: 3 },
+  centro: { textAlign: 'center' },
   avance: { gap: 2 },
   tiempos: { flexDirection: 'row', justifyContent: 'space-between' },
-  tiempo: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
+  tiempo: { fontFamily: fuentes.ui, fontSize: fontSize.xs, fontVariant: ['lining-nums', 'tabular-nums'] },
   controles: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 0 },
   play: {
     width: 72,
@@ -312,6 +342,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 2,
+    borderWidth: 1,
   },
   tarjeta: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

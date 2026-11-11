@@ -31,6 +31,7 @@ public class ResultAdminUserDTO {
     private Long id;
     private String name;
     private String email;
+    private String alias;
     private Boolean active;
     private List<String> roles = new ArrayList<>();
     private LocalDateTime createdAt;

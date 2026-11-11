@@ -1,5 +1,6 @@
 package com.bibliotecaah.biblioteca.service.impl;
 
+import com.bibliotecaah.biblioteca.config.Topes;
 import com.bibliotecaah.biblioteca.dto.input.EstanteEjemplarDTO;
 import com.bibliotecaah.biblioteca.dto.input.EstanteSaveDTO;
 import com.bibliotecaah.biblioteca.dto.output.EjemplarDTO;
@@ -52,9 +53,11 @@ public class EstanteServiceImpl implements EstanteService {
     private final EjemplarRepository ejemplares;
     private final EnsambladorDeEjemplares ensamblador;
     private final ApplicationEventPublisher eventos;
+    private final Topes topes;
 
     public EstanteServiceImpl(EstanteRepository estantes, EstanteItemRepository items, EjemplarRepository ejemplares,
-                              EnsambladorDeEjemplares ensamblador, ApplicationEventPublisher eventos) {
+                              EnsambladorDeEjemplares ensamblador, ApplicationEventPublisher eventos, Topes topes) {
+        this.topes = topes;
         this.estantes = estantes;
         this.items = items;
         this.ejemplares = ejemplares;
@@ -63,14 +66,11 @@ public class EstanteServiceImpl implements EstanteService {
     }
 
     Estante favoritosDe(Long usuarioId) {
-        return estantes.findByUsuarioIdAndTipo(usuarioId, TipoEstante.FAVORITOS)
-                .orElseGet(() -> estantes.save(Estante.builder()
-                        .id(UUID.randomUUID())
-                        .usuarioId(usuarioId)
-                        .nombre(NOMBRE_FAVORITOS)
-                        .tipo(TipoEstante.FAVORITOS)
-                        .orden(0)
-                        .build()));
+        return estantes.findByUsuarioIdAndTipo(usuarioId, TipoEstante.FAVORITOS).orElseGet(() -> {
+            /* Sin chocar si dos peticiones lo crean a la vez (QA BI-09). */
+            estantes.crearFavoritosSiFalta(UUID.randomUUID(), usuarioId, NOMBRE_FAVORITOS);
+            return estantes.findByUsuarioIdAndTipo(usuarioId, TipoEstante.FAVORITOS).orElseThrow();
+        });
     }
 
     @Override
@@ -93,6 +93,9 @@ public class EstanteServiceImpl implements EstanteService {
                 });
         Estante estante;
         if (dto.getId() == null) {
+            /* QA SE-07: tope de colecciones por usuario. */
+            ValidationUtils.exigir(estantes.countByUsuarioIdAndTipo(yo, TipoEstante.COLECCION) < topes.getEstantesPorUsuario(),
+                    Message.Msj.demasiadosEstantes, CodigoError.DATO_INVALIDO, String.valueOf(topes.getEstantesPorUsuario()));
             estante = Estante.builder()
                     .id(UUID.randomUUID())
                     .usuarioId(yo)
@@ -130,7 +133,8 @@ public class EstanteServiceImpl implements EstanteService {
         if (orden.isEmpty()) return new ArrayList<>();
         Map<UUID, Ejemplar> porId = ejemplares.conObraYArchivo(orden.stream().map(EstanteItem::getEjemplarId).toList())
                 .stream().collect(Collectors.toMap(Ejemplar::getId, Function.identity()));
-        List<Ejemplar> enOrden = orden.stream().map(i -> porId.get(i.getEjemplarId())).toList();
+        /* Los retirados (QA BI-01) siguen en el estante para cuando vuelvan, pero no se ven. */
+        List<Ejemplar> enOrden = orden.stream().map(i -> porId.get(i.getEjemplarId())).filter(java.util.Objects::nonNull).toList();
         return ensamblador.ensamblar(yo, enOrden);
     }
 
@@ -142,17 +146,15 @@ public class EstanteServiceImpl implements EstanteService {
         return true;
     }
 
+    /** Idempotente y sin carreras (QA BI-09): INSERT ... ON CONFLICT DO NOTHING. */
     private void agregarA(Estante estante, UUID ejemplarId) {
-        if (items.findByEstanteIdAndEjemplarId(estante.getId(), ejemplarId).isPresent()) return;
-        Double maximo = items.maximoOrden(estante.getId());
-        items.save(EstanteItem.builder().estanteId(estante.getId()).ejemplarId(ejemplarId)
-                .orden(maximo == null ? 1.0 : Math.floor(maximo) + 1.0).build());
+        items.agregarSiFalta(estante.getId(), ejemplarId, SecurityUtils.getAuthenticatedUserId());
     }
 
     @Override
     public boolean quitar(UUID estanteId, UUID ejemplarId) {
         Estante estante = propio(SecurityUtils.usuarioActual(), estanteId);
-        items.findByEstanteIdAndEjemplarId(estante.getId(), ejemplarId).ifPresent(items::delete);
+        items.quitar(estante.getId(), ejemplarId);
         return true;
     }
 
@@ -160,7 +162,7 @@ public class EstanteServiceImpl implements EstanteService {
     public void marcarFavorito(Long usuarioId, UUID ejemplarId, boolean favorito) {
         Estante fav = favoritosDe(usuarioId);
         if (favorito) agregarA(fav, ejemplarId);
-        else items.findByEstanteIdAndEjemplarId(fav.getId(), ejemplarId).ifPresent(items::delete);
+        else items.quitar(fav.getId(), ejemplarId);
     }
 
     @Override
@@ -233,6 +235,6 @@ public class EstanteServiceImpl implements EstanteService {
     }
 
     private EstanteDTO aDTO(Estante e) {
-        return new EstanteDTO(e.getId(), e.getNombre(), e.getTipo(), e.getColorMadera(), items.countByEstanteId(e.getId()));
+        return new EstanteDTO(e.getId(), e.getNombre(), e.getTipo(), e.getColorMadera(), items.contarVisibles(e.getId()));
     }
 }

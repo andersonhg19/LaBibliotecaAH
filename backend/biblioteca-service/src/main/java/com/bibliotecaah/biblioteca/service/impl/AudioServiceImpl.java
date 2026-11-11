@@ -8,6 +8,7 @@ import com.bibliotecaah.biblioteca.enums.Message;
 import com.bibliotecaah.biblioteca.repository.EjemplarRepository;
 import com.bibliotecaah.biblioteca.repository.TrabajoRepository;
 import com.bibliotecaah.biblioteca.service.AudioService;
+import com.bibliotecaah.biblioteca.service.VozService;
 import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.SecurityUtils;
 import com.bibliotecaah.biblioteca.util.ValidationUtils;
@@ -36,12 +37,14 @@ public class AudioServiceImpl implements AudioService {
     private final EjemplarRepository ejemplares;
     private final TrabajoRepository trabajos;
     private final String prefijo;
+    private final VozService voces;
 
-    public AudioServiceImpl(EjemplarRepository ejemplares, TrabajoRepository trabajos,
+    public AudioServiceImpl(EjemplarRepository ejemplares, TrabajoRepository trabajos, VozService voces,
                             @Value("${biblioteca.prefijo-publico}") String prefijo) {
         this.ejemplares = ejemplares;
         this.trabajos = trabajos;
         this.prefijo = prefijo;
+        this.voces = voces;
     }
 
     @Override
@@ -53,6 +56,10 @@ public class AudioServiceImpl implements AudioService {
         Archivo a = e.getArchivo();
         ValidationUtils.exigir(a != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
         String voz = ValidationUtils.vozId(peticion.getVozId());
+        /* QA SE-06 / DA-12: solo voces del catalogo. Antes se encolaban voces y
+           motores inventados y el taller los reintentaba como si fuera una caida. */
+        ValidationUtils.exigir(voces.getAll().stream().anyMatch(v -> voz.equals(v.getId())),
+                Message.Msj.vozNoDisponible, CodigoError.DATO_INVALIDO, voz);
         if (!Archivo.LISTO.equals(a.getEstadoConversion())) {
             /* Contrato v1.1: la voz SOLO se encola con el archivo LISTO. Mientras
                tanto se informa y no se encola nada. */
@@ -69,9 +76,17 @@ public class AudioServiceImpl implements AudioService {
 
         Map<String, Object> fila = trabajos.estadoDelAudio(a.getId(), voz, capitulo);
         String estado = fila == null ? null : String.valueOf(fila.get("estado"));
-        if (estado == null || ERROR.equals(estado)) {
-            trabajos.encolarVozSiFalta(a.getId(), voz, capitulo, TrabajoRepository.PRIORIDAD_CAPITULO_PEDIDO);
+        String error = null;
+        if (ERROR.equals(estado) && Boolean.TRUE.equals(peticion.getReintentar())) {
+            /* QA DA-02: un ERROR solo se reintenta cuando se pide. */
+            trabajos.reintentarVoz(a.getId(), voz, capitulo, TrabajoRepository.PRIORIDAD_CAPITULO_PEDIDO);
             estado = PENDIENTE;
+        } else if (ERROR.equals(estado)) {
+            error = fila.get("error") == null ? null : String.valueOf(fila.get("error"));
+        } else {
+            boolean encolado = trabajos.encolarVozSiFalta(a.getId(), voz, capitulo,
+                    TrabajoRepository.PRIORIDAD_CAPITULO_PEDIDO);
+            if (estado == null || encolado) estado = PENDIENTE;
         }
         for (int s = 1; s <= SIGUIENTES; s++) {
             int siguiente = capitulo + s;
@@ -80,7 +95,7 @@ public class AudioServiceImpl implements AudioService {
             }
         }
 
-        AudioEstadoDTO dto = AudioEstadoDTO.builder().estado(estado).build();
+        AudioEstadoDTO dto = AudioEstadoDTO.builder().estado(estado).error(error).build();
         if (LISTO.equals(estado)) {
             Object duracion = fila.get("duracion_seg");
             dto.setDuracionSeg(duracion == null ? null : ((Number) duracion).doubleValue());

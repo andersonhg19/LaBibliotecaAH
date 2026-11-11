@@ -42,7 +42,8 @@ class ElEsquemaCuadraConElCodigoTest {
 
     private User usuario(String correo) {
         return User.builder()
-                .name("Prueba").email(correo).password("$2a$10$hashfalsoperoconpinta")
+                .name("Prueba").email(correo).alias(correo.substring(0, correo.indexOf('@')))
+                .password("$2a$10$hashfalsoperoconpinta")
                 .active(true)
                 .build();
     }
@@ -60,6 +61,23 @@ class ElEsquemaCuadraConElCodigoTest {
            cada migracion nueva en un fallo de esta prueba, y con validate
            anadir un campo YA obliga a escribir una migracion. */
         assertThat(ultima).isGreaterThanOrEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("QA UX-14 (V6): los nombres visibles de la semilla llevan tilde; codigos y rutas no cambian")
+    void nombresVisiblesConTildes() {
+        assertThat(jdbc.queryForObject("SELECT name FROM bah_auth_module WHERE code = 'administracion'", String.class))
+                .isEqualTo("Administración");
+        assertThat(jdbc.queryForList("SELECT name || '|' || route FROM bah_auth_page WHERE code IN "
+                + "('admin-modulos', 'admin-auditoria', 'admin-usuarios') ORDER BY sort_order", String.class))
+                .containsExactly("Usuarios|AdminUsers", "Módulos|AdminModules", "Auditoría|AdminAudit");
+        assertThat(jdbc.queryForObject("SELECT description FROM bah_auth_role WHERE name = 'ADMIN'", String.class))
+                .isEqualTo("Administra usuarios, roles y módulos de la plataforma");
+        assertThat(jdbc.queryForObject("SELECT description FROM bah_auth_app_config WHERE config_key = 'app.locale'",
+                String.class)).isEqualTo("Cómo se muestran fechas y números");
+        assertThat(jdbc.queryForList("SELECT name FROM bah_auth_page UNION ALL SELECT name FROM bah_auth_module",
+                String.class)).as("ningun nombre visible sin tilde de los conocidos")
+                .doesNotContain("Modulos", "Auditoria", "Administracion");
     }
 
     @Test

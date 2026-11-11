@@ -1,10 +1,13 @@
 import React, { useEffect, useRef } from 'react'
 
-import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 
-import AppText from '@componentes/atoms/Text'
-import { useTheme } from '@contextos/ThemeContext'
 import type { ToastType } from '@contextos/ToastContext'
+import { fontSize, fuentes } from '@tema'
+import { paleta } from '@tema/colors'
+import { fibraPapel } from '@tema/madera'
+import { SOMBRA } from '@tema/materiales'
+import { reducirMovimiento, web } from '@tema/web'
 
 interface ToastProps {
   type: ToastType
@@ -13,113 +16,91 @@ interface ToastProps {
   onDismiss: () => void
 }
 
-const ICONS: Record<ToastType, string> = {
-  success: '\u2713',
-  error: '\u2717',
-  warning: '!',
-  info: 'i',
+/*
+ * EL AVISO DE LA CASA (QA RW-04 y diseño 5): una tira de pergamino con filete
+ * de latón que sube desde abajo, con un sello a la izquierda. Ya no es la
+ * píldora verde menta genérica de arriba que tapaba la cabecera y el Volver.
+ * El sello cambia según lo que pasó (latón: hecho; burdeos: error; miel:
+ * cuidado; nogal: información) y lleva su marca, para no depender del color.
+ */
+const SELLO: Record<ToastType, { fondo: string; tinta: string; marca: string }> = {
+  success: { fondo: paleta.laton, tinta: paleta.robleOscuro, marca: '✓' },
+  error: { fondo: paleta.burdeos, tinta: paleta.pergamino, marca: '✗' },
+  warning: { fondo: paleta.miel, tinta: paleta.robleOscuro, marca: '!' },
+  info: { fondo: paleta.nogal, tinta: paleta.pergamino, marca: 'i' },
 }
 
 export const Toast: React.FC<ToastProps> = ({ type, title, message, onDismiss }) => {
-  const { colors } = useTheme()
-  const translateY = useRef(new Animated.Value(-100)).current
+  const sube = useRef(new Animated.Value(reducirMovimiento() ? 0 : 28)).current
   const opacity = useRef(new Animated.Value(0)).current
-
-  const accentColors: Record<ToastType, string> = {
-    success: colors.success,
-    error: colors.danger,
-    warning: colors.warning,
-    info: colors.primary,
-  }
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 80,
-        friction: 10,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.spring(sube, { toValue: 0, useNativeDriver: false, tension: 90, friction: 11 }),
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: false }),
     ]).start()
-  }, [opacity, translateY])
+  }, [opacity, sube])
 
-  const accent = accentColors[type]
+  const sello = SELLO[type]
 
   return (
-    <Animated.View style={[styles.container, { transform: [{ translateY }], opacity }]}>
-      {/* El aviso desaparece solo, asi que si no se ANUNCIA al aparecer, quien
-        no mira la pantalla en ese momento se lo pierde entero. `alert` hace
-        que el lector lo lea en cuanto sale, sin esperar turno. */}
-      <TouchableOpacity
+    <Animated.View style={[styles.contenedor, { transform: [{ translateY: sube }], opacity }]} pointerEvents="box-none">
+      {/* El aviso desaparece solo, así que se ANUNCIA al aparecer (`alert`): quien no
+        mira la pantalla en ese momento no se lo pierde. Tocarlo lo cierra. */}
+      <Pressable
         accessibilityRole="alert"
         accessibilityLabel={`${title}${message ? '. ' + message : ''}`}
-        activeOpacity={0.9}
+        accessibilityHint="Toca para cerrar el aviso"
         onPress={onDismiss}
-        style={[
-          styles.toast,
-          {
-            backgroundColor: colors.surface,
-            borderLeftColor: accent,
-            shadowColor: '#000',
-            minHeight: 48,
-          },
+        testID={`aviso-${type}`}
+        style={({ pressed }) => [
+          styles.tira,
+          { backgroundColor: paleta.pergamino, borderColor: paleta.laton },
+          web({
+            backgroundImage: `${fibraPapel}, linear-gradient(180deg, ${paleta.marfil}, ${paleta.pergamino})`,
+            boxShadow: `${SOMBRA[2]}, inset 0 0 0 3px rgba(201,162,39,0.18)`,
+            cursor: 'pointer',
+          }),
+          pressed && { opacity: 0.9 },
         ]}
       >
-        <View style={[styles.iconCircle, { backgroundColor: accent }]}>
-          <AppText style={styles.iconText}>{ICONS[type]}</AppText>
+        <View
+          style={[
+            styles.sello,
+            { backgroundColor: sello.fondo },
+            web({
+              backgroundImage: 'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35), rgba(0,0,0,0.18))',
+              boxShadow: 'inset 0 -1px 2px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.3)',
+            }),
+          ]}
+        >
+          <Text style={[styles.marca, { color: sello.tinta }]}>{sello.marca}</Text>
         </View>
-        <View style={styles.textContainer}>
-          <AppText variant="label" style={{ color: colors.text }}>
-            {title}
-          </AppText>
-          {message ? (
-            <AppText variant="caption" style={{ color: colors.textSecondary }}>
-              {message}
-            </AppText>
-          ) : null}
+        <View style={styles.textos}>
+          <Text style={styles.titulo}>{title}</Text>
+          {message ? <Text style={styles.mensaje}>{message}</Text> : null}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     </Animated.View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 8,
-    paddingHorizontal: 16,
-  },
-  toast: {
+  contenedor: { width: '100%', maxWidth: 460, alignSelf: 'center', paddingHorizontal: 16, marginTop: 8 },
+  tira: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    gap: 12,
     minHeight: 48,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: 16,
+    borderRadius: 24,
+    borderWidth: 1,
   },
-  iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  iconText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  textContainer: {
-    flex: 1,
-  },
+  sello: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  marca: { fontFamily: fuentes.uiSemi, fontSize: 14, lineHeight: 16 },
+  textos: { flex: 1, gap: 1 },
+  titulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.md, color: paleta.robleOscuro, lineHeight: 20 },
+  mensaje: { fontFamily: fuentes.ui, fontSize: fontSize.xs, color: paleta.nogal, lineHeight: 17 },
 })

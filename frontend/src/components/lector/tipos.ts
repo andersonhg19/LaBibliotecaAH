@@ -1,3 +1,4 @@
+import type { ModoTraduccion } from '@componentes/lector/traduccion'
 import type { Preferencias } from '@contextos/PreferenciasContext'
 import type { AnotacionDTO } from '@tipos'
 
@@ -11,6 +12,21 @@ export interface Ubicacion {
   etiqueta: string
   /** Por qué se movió: 'page' | 'snap' | 'scroll' (el usuario), 'anchor' | 'navigation' | 'selection'. */
   motivo: string
+  /**
+   * Si el movimiento lo hizo la persona (pasar página, desplazarse, índice,
+   * buscar, ir a %…) y no el libro solo (abrir, seguir a la voz). Solo
+   * entonces se guarda la posición (QA LV-04).
+   */
+  porUsuario: boolean
+  /** Página impresa estimada y total (folio), si se sabe. */
+  pagina: number | null
+  paginas: number | null
+  /** Minutos que quedan del capítulo (a 1x), si se sabe. */
+  minutosRestantes: number | null
+  /** Ids de las frases a la vista (para saber si hay marcador en esta página). */
+  frases: string[]
+  /** El texto de la primera frase a la vista (la cita de un marcador). */
+  textoInicio: string | null
 }
 
 export interface Seleccion {
@@ -38,6 +54,8 @@ export interface ItemIndice {
 
 export interface InfoLibro {
   indice: ItemIndice[]
+  /** El idioma que declara el EPUB (o el del texto), para ofrecer «Ver en español». */
+  idioma?: string | null
   /** Dónde empieza cada sección (0..1) y cómo se llama, para la vista previa del deslizador. */
   secciones: { fraccion: number; titulo: string }[]
 }
@@ -66,6 +84,8 @@ export interface ControlLector {
   volverAtras: () => void
   pintarAnotacion: (a: AnotacionDTO) => void
   borrarAnotacion: (a: AnotacionDTO) => void
+  /** Repinta una nota editada (color o texto) donde ya estaba anclada. */
+  actualizarAnotacion: (a: AnotacionDTO) => void
   limpiarSeleccion: () => void
   /** Volver a seguir a la voz (y saltar a la frase que suena). */
   seguirVoz: () => void
@@ -85,4 +105,12 @@ export interface PropsLector {
   onPuedeVolver: (puede: boolean) => void
   onError: (mensaje: string) => void
   onToqueCentro?: () => void
+  /** Idioma del libro según la ficha (para la partición silábica si el EPUB no lo declara). */
+  idioma?: string | null
+  /** Título del libro (cabecera de la página izquierda en el libro abierto del PC). */
+  titulo?: string
+  /** «Ver en español»: el modo y las frases traducidas que hay (id → texto). */
+  traduccion?: { modo: ModoTraduccion; frases: Record<string, string> }
+  /** Minutos de voz a 1x de un capítulo, para «quedan 12 min» en el folio. */
+  minutosDe?: (capitulo: number) => number | null
 }

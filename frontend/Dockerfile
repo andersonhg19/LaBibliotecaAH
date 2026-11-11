@@ -16,7 +16,8 @@ ENV EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL \
 RUN npx expo export --platform web \
  && test -f dist/foliate/view.js \
  && test -f dist/fuentes/Literata-Regular.ttf \
- && test -f dist/serve.json
+ && test -f dist/serve.json \
+ && node scripts/csp.mjs dist/serve.json
 
 FROM node:${NODE_VERSION} AS servidor
 ENV NODE_ENV=production TZ=America/Bogota

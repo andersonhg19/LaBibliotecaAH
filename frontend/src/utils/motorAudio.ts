@@ -14,6 +14,19 @@ import { MENSAJES } from '@utils/mensajes'
  *
  * Línea de tiempo: todo se piensa en segundos del capítulo a 1x (la de
  * tiempos.json). Si suena el archivo 2x, currentTime = pos1x / 2.
+ *
+ * LOS FALLOS NO DEJAN LA VOZ MUERTA (QA LV-02). Se recuerda qué capítulo se
+ * quería oír y si se quería oír sonando (`quiereSonar`):
+ *   · sin red  → se reintenta solo (con espera creciente y al volver la red),
+ *                y ▶ (también el de la pantalla de bloqueo) reintenta ya;
+ *   · capítulo en ERROR (contrato v1.2) → se dice el porqué y solo se vuelve
+ *                a pedir con un gesto: «Reintentar» o ▶ (petición explícita);
+ *   · el archivo no carga → ▶ vuelve a pedirlo desde donde iba.
+ * «Capítulo siguiente» con el capítulo sin oír por falta de red lo reintenta en
+ * vez de saltárselo.
+ *
+ * CAMBIAR DE VOZ NO CALLA (QA LV-07): si suena, la voz actual sigue hasta que
+ * la nueva está LISTA; entonces se cambia en la misma frase.
  */
 
 type AudioExtendido = HTMLAudioElement & {
@@ -28,6 +41,9 @@ const sesion = (): MediaSession | undefined =>
 
 export type Fase = 'inactivo' | 'preparando' | 'cargando' | 'reproduciendo' | 'pausado' | 'error'
 
+/** Por qué está en error: decide si se reintenta solo, con un gesto o nunca. */
+export type TipoError = 'red' | 'capitulo' | 'audio' | 'servidor' | 'conversion'
+
 export interface LibroEnVoz {
   ejemplarId: string
   titulo: string
@@ -37,6 +53,12 @@ export interface LibroEnVoz {
 }
 
 export type Temporizador = { tipo: 'minutos'; minutos: number; finEn: number } | { tipo: 'capitulo' } | null
+
+/** Una espera del taller: desde cuándo y cuánto se calcula que tardará. */
+export interface Espera {
+  desde: number
+  estimadoSeg: number
+}
 
 export interface EstadoVoz {
   libro: LibroEnVoz | null
@@ -50,6 +72,12 @@ export interface EstadoVoz {
   duracion: number
   fraseId: string | null
   temporizador: Temporizador
+  /** En fase 'error': de qué tipo (y por tanto si tiene sentido «Reintentar»). */
+  tipoError: TipoError | null
+  /** En fase 'preparando': la espera del capítulo, para «Preparando… (≈ 20 s)». */
+  preparacion: Espera | null
+  /** Una voz nueva que se prepara mientras sigue sonando la actual. */
+  vozPendiente: ({ id: string; nombre: string } & Espera) | null
 }
 
 export interface EventoFrase {
@@ -61,17 +89,35 @@ export interface EventoFrase {
 
 export interface DependenciasMotor {
   crearAudio: () => HTMLAudioElement | null
-  pedirEstado: (d: { ejemplarId: string; vozId: string; capitulo: number }) => Promise<ResultDTO<EstadoAudioDTO>>
+  pedirEstado: (
+    d: { ejemplarId: string; vozId: string; capitulo: number },
+    o?: { reintentar?: boolean },
+  ) => Promise<ResultDTO<EstadoAudioDTO>>
   cargarTiempos: (url: string) => Promise<TiemposCapitulo | null>
   guardarServidor: (p: ProgresoDTO) => Promise<unknown>
   guardarLocal: (p: ProgresoDTO) => Promise<unknown>
   resolverUrl: (ruta: string | null) => string | null
   dispositivo: () => string
   ahora: () => number
+  /** Avisa cuando vuelve la red (window 'online'); devuelve cómo dejar de escuchar. */
+  alVolverLaRed?: (fn: () => void) => () => void
 }
 
 /** Silencio WAV de 0,1 s: lo que suena en el primer toque para "desbloquear" el <audio> en iOS. */
 export const SILENCIO = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
+/*
+ * Textos propios de la voz. Viven aquí y no en utils/mensajes.ts para no tocar
+ * archivos compartidos: el integrador puede moverlos cuando quiera.
+ */
+export const TEXTOS_VOZ = {
+  sinRedReintentando: 'Sin conexión con la biblioteca. Se reintentará sola; o toca ▶ para probar ya.',
+  capituloFallo: 'La voz de este capítulo no se pudo generar.',
+  audioFallo: 'No se pudo cargar el audio de este capítulo. Toca ▶ o «Reintentar».',
+  vozNueva: (nueva: string, actual: string) => `Sigue sonando ${actual} mientras se prepara la voz de ${nueva}`,
+  vozNuevaNoLista: (nueva: string, actual: string) => `La voz de ${nueva} no se pudo preparar; sigue ${actual}.`,
+  tardaMas: 'tarda más de lo normal: puede haber otros libros en la cola',
+}
 
 const SALTO_SEG = 15
 const PAUSA_LARGA_MS = 5 * 60 * 1000
@@ -79,6 +125,43 @@ const FUNDIDO_MS = 10_000
 const CADA_LOCAL_MS = 5_000
 const CADA_SERVIDOR_MS = 15_000
 const SONDEO_MS = 3_000
+/** Esperas entre reintentos automáticos sin red (después se queda en la última). */
+const REINTENTOS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
+
+/**
+ * Cuánto tarda el taller en generar un capítulo (medido en QA: un capítulo de
+ * ~3 min de voz, ~20 s con la cola vacía). Si el servidor da su estimación, se
+ * usa la suya.
+ */
+export function estimarPreparacion(minutosCapitulo: number | null | undefined, delServidor?: number | null): number {
+  if (delServidor != null && Number.isFinite(delServidor) && delServidor > 0) return Math.round(delServidor)
+  const m = Math.max(0, minutosCapitulo ?? 0)
+  return Math.round(10 + m * 4)
+}
+
+/** «≈ 20 s», «≈ 2 min» o null cuando ya pasó la estimación. */
+export function faltaParaEstar(espera: Espera, ahora: number): string | null {
+  const falta = espera.estimadoSeg - (ahora - espera.desde) / 1000
+  if (falta <= 0) return null
+  if (falta < 60) return `≈ ${Math.max(5, Math.ceil(falta / 5) * 5)} s`
+  return `≈ ${Math.ceil(falta / 60)} min`
+}
+
+/** «Preparando la voz de Álvaro… (≈ 20 s)» o «…: tarda más de lo normal…». */
+export function textoEspera(base: string, espera: Espera | null, ahora: number): string {
+  if (!espera) return base
+  const f = faltaParaEstar(espera, ahora)
+  const limpio = base.replace(/…$/, '')
+  return f ? `${limpio}… (${f})` : `${limpio}… ${TEXTOS_VOZ.tardaMas}.`
+}
+
+/** Lo que acepta /progreso/save (contrato v1.2) para la velocidad. */
+export const VELOCIDAD_PROGRESO = { min: 0.25, max: 5 }
+
+/** Un número finito dentro de [min, max] (si no es finito, el valor por defecto). */
+export function acotar(n: number, min: number, max: number, siNo: number): number {
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : siNo
+}
 
 const inicial: EstadoVoz = {
   libro: null,
@@ -92,6 +175,9 @@ const inicial: EstadoVoz = {
   duracion: 0,
   fraseId: null,
   temporizador: null,
+  tipoError: null,
+  preparacion: null,
+  vozPendiente: null,
 }
 
 export class MotorAudio {
@@ -105,7 +191,11 @@ export class MotorAudio {
   private factor: 1 | 2 = 1
   private rate = 1
   private turno = 0
+  private turnoVoz = 0
   private sondeo: ReturnType<typeof setTimeout> | null = null
+  private sondeoVoz: ReturnType<typeof setTimeout> | null = null
+  private reintento: ReturnType<typeof setTimeout> | null = null
+  private intentosRed = 0
   private ultimaPausa = 0
   private ultimoLocal = 0
   private ultimoServidor = 0
@@ -114,8 +204,16 @@ export class MotorAudio {
   private raf: number | null = null
   private fraseObjetivo: string | null = null
   private posPendiente: number | null = null
+  /** Lo que el usuario quiere: que suene (▶) o no (⏸). Sobrevive a cargas y fallos. */
+  private quiereSonar = false
+  /** El capítulo que se pidió cargar por última vez, para reintentarlo igual. */
+  private pedido: { capitulo: number; posicion: number; fraseId: string | null } | null = null
 
-  constructor(private deps: DependenciasMotor) {}
+  constructor(private deps: DependenciasMotor) {
+    deps.alVolverLaRed?.(() => {
+      if (this.estado.fase === 'error' && this.estado.tipoError === 'red') this.reintentar()
+    })
+  }
 
   // ------------------------------------------------------------ suscripción
   obtener = () => this.estado
@@ -142,6 +240,9 @@ export class MotorAudio {
     const ev = { ejemplarId: l.ejemplarId, fraseId: this.estado.fraseId, palabra: this.palabraActual }
     this.oyentesFrase.forEach((f) => f(ev))
   }
+  private fallar(tipo: TipoError, mensaje: string) {
+    this.poner({ fase: 'error', tipoError: tipo, mensaje, preparacion: null })
+  }
 
   /** El tiempo de la frase pedida en el capítulo cargado (para "escuchar desde aquí"). */
   inicioDeFrase(fraseId: string): number | null {
@@ -164,11 +265,14 @@ export class MotorAudio {
     el.addEventListener('timeupdate', this.alAvanzar)
     el.addEventListener('ended', this.alTerminar)
     el.addEventListener('play', () => {
-      this.poner({ fase: 'reproduciendo', mensaje: null })
+      // El silencio de desbloqueo no es "sonar": no debe tapar el «Preparando…».
+      if (!this.estado.libro || el.src === SILENCIO) return
+      this.poner({ fase: 'reproduciendo', mensaje: null, tipoError: null, preparacion: null })
       this.arrancarRaf()
       this.sesionMedios()
     })
     el.addEventListener('pause', () => {
+      if (el.src === SILENCIO) return
       if (this.estado.fase === 'reproduciendo') this.poner({ fase: 'pausado' })
       this.ultimaPausa = this.deps.ahora()
       this.guardar(true)
@@ -176,8 +280,8 @@ export class MotorAudio {
     })
     el.addEventListener('loadedmetadata', this.alCargarMetadatos)
     el.addEventListener('error', () => {
-      if (el.src && el.src !== SILENCIO && this.estado.libro) {
-        this.poner({ fase: 'error', mensaje: MENSAJES.vozAudioFallo })
+      if (el.src && el.src !== SILENCIO && this.estado.libro && this.urls.u1) {
+        this.fallar('audio', TEXTOS_VOZ.audioFallo)
       }
     })
     this.el = el
@@ -223,32 +327,46 @@ export class MotorAudio {
       this.estado.libro?.ejemplarId === libro.ejemplarId &&
       this.estado.capitulo === o.capitulo &&
       this.estado.vozId === o.vozId &&
-      this.urls.u1
+      this.urls.u1 &&
+      this.estado.fase !== 'error'
+    this.cancelarVozPendiente()
     this.poner({
       libro,
       vozId: o.vozId,
       nombreVoz: o.nombreVoz ?? this.estado.nombreVoz,
       velocidad: normalizarVelocidad(o.velocidad),
+      vozPendiente: null,
     })
+    const reproducir = o.reproducir ?? true
     if (mismo) {
-      if (o.fraseId) this.irAFrase(o.fraseId, o.reproducir ?? true)
+      if (o.fraseId) this.irAFrase(o.fraseId, reproducir)
       else if (o.posicion != null) this.buscar(o.posicion)
-      if (o.reproducir ?? true) this.reproducir()
+      if (reproducir) this.reproducir()
       return
     }
-    this.cargar(o.capitulo, o.posicion ?? 0, o.reproducir ?? true, o.fraseId ?? null)
+    this.cargar(o.capitulo, o.posicion ?? 0, reproducir, o.fraseId ?? null)
   }
 
   private cancelarSondeo() {
     if (this.sondeo) clearTimeout(this.sondeo)
     this.sondeo = null
+    if (this.reintento) clearTimeout(this.reintento)
+    this.reintento = null
   }
 
-  private async cargar(capitulo: number, posicion: number, reproducir: boolean, fraseId: string | null = null) {
+  private async cargar(
+    capitulo: number,
+    posicion: number,
+    reproducir: boolean,
+    fraseId: string | null = null,
+    reintentar = false,
+  ) {
     const l = this.estado.libro
     if (!l) return
     const turno = ++this.turno
     this.cancelarSondeo()
+    this.quiereSonar = reproducir
+    this.pedido = { capitulo, posicion, fraseId }
     this.tiempos = null
     this.urls = { u1: null, u2: null }
     this.fraseObjetivo = fraseId
@@ -260,27 +378,38 @@ export class MotorAudio {
       fraseId: fraseId,
       fase: 'cargando',
       mensaje: null,
+      tipoError: null,
+      preparacion: null,
     })
     this.el?.pause()
+    const minutos = l.capitulos.find((c) => c.indice === capitulo)?.minutos
+    let primera = true
     const pedir = async (): Promise<void> => {
       if (turno !== this.turno) return
       let r: ResultDTO<EstadoAudioDTO>
       try {
-        r = await this.deps.pedirEstado({ ejemplarId: l.ejemplarId, vozId: this.estado.vozId, capitulo })
+        // Solo la primera petición de un reintento explícito lleva la marca: los sondeos no.
+        r = await this.deps.pedirEstado(
+          { ejemplarId: l.ejemplarId, vozId: this.estado.vozId, capitulo },
+          reintentar && primera ? { reintentar: true } : undefined,
+        )
       } catch {
         if (turno !== this.turno) return
-        this.poner({ fase: 'error', mensaje: MENSAJES.sinConexion })
+        this.fallar('red', TEXTOS_VOZ.sinRedReintentando)
+        this.programarReintento()
         return
       }
+      primera = false
       if (turno !== this.turno) return
+      this.intentosRed = 0
       if (!r.correct || !r.object) {
-        this.poner({ fase: 'error', mensaje: r.message || MENSAJES.vozFallo })
+        this.fallar('servidor', r.message || MENSAJES.vozFallo)
         return
       }
       const e = r.object
       if (e.estado === 'LISTO') {
         this.urls = { u1: this.deps.resolverUrl(e.url1x), u2: this.deps.resolverUrl(e.url2x) }
-        if (e.duracionSeg) this.poner({ duracion: e.duracionSeg })
+        this.poner({ preparacion: null, ...(e.duracionSeg ? { duracion: e.duracionSeg } : {}) })
         const ut = this.deps.resolverUrl(e.urlTiempos)
         if (ut) {
           this.deps
@@ -298,24 +427,60 @@ export class MotorAudio {
             })
             .catch(() => {})
         }
-        this.ponerFuente(posicion, reproducir)
+        this.ponerFuente(posicion, this.quiereSonar)
         return
       }
-      if (e.estado === 'ERROR' || e.estado === 'ERROR_CONVERSION') {
-        this.poner({
-          fase: 'error',
-          mensaje: e.estado === 'ERROR' ? MENSAJES.vozFallo : MENSAJES.libroNoConvertido,
-        })
+      if (e.estado === 'ERROR') {
+        this.fallar('capitulo', e.error ? `${TEXTOS_VOZ.capituloFallo} ${e.error}` : MENSAJES.vozFallo)
         return
       }
+      if (e.estado === 'ERROR_CONVERSION') {
+        this.fallar('conversion', MENSAJES.libroNoConvertido)
+        return
+      }
+      const previa = this.estado.preparacion
       this.poner({
         fase: 'preparando',
         mensaje:
           e.estado === 'CONVIRTIENDO' ? MENSAJES.libroConvirtiendo : MENSAJES.vozPreparando(this.estado.nombreVoz),
+        preparacion:
+          e.estado === 'CONVIRTIENDO'
+            ? null
+            : {
+                desde: previa?.desde ?? this.deps.ahora(),
+                estimadoSeg: e.estimadoSeg
+                  ? estimarPreparacion(null, e.estimadoSeg)
+                  : (previa?.estimadoSeg ?? estimarPreparacion(minutos)),
+              },
       })
       this.sondeo = setTimeout(pedir, SONDEO_MS)
     }
     await pedir()
+  }
+
+  /** Sin red: se vuelve a pedir solo, cada vez esperando un poco más. */
+  private programarReintento() {
+    if (this.reintento) clearTimeout(this.reintento)
+    const espera = REINTENTOS_MS[Math.min(this.intentosRed, REINTENTOS_MS.length - 1)]
+    this.intentosRed++
+    this.reintento = setTimeout(() => {
+      this.reintento = null
+      if (this.estado.fase === 'error' && this.estado.tipoError === 'red') this.reintentar()
+    }, espera)
+  }
+
+  /**
+   * Vuelve a pedir el capítulo que falló, desde donde iba. Si el servidor dijo
+   * ERROR, la petición lleva la marca de reintento explícito (contrato v1.2).
+   */
+  reintentar() {
+    const l = this.estado.libro
+    if (!l) return
+    const tipo = this.estado.tipoError
+    const p = this.pedido ?? { capitulo: this.estado.capitulo, posicion: this.estado.posicion, fraseId: null }
+    const pos = tipo === 'audio' ? this.estado.posicion : p.posicion
+    const frase = tipo === 'audio' ? null : p.fraseId
+    this.cargar(p.capitulo, pos, true, frase, tipo === 'capitulo')
   }
 
   /** Pone en el <audio> el archivo que toca para la velocidad actual, conservando la posición. */
@@ -359,7 +524,9 @@ export class MotorAudio {
     el.playbackRate = rate
     ;(el as AudioExtendido).preservesPitch = true
     if (reproducir) this.reproducir()
-    else if (this.estado.fase === 'cargando' || this.estado.fase === 'preparando') this.poner({ fase: 'pausado' })
+    else if (this.estado.fase === 'cargando' || this.estado.fase === 'preparando')
+      // Listo y en pausa: el «Preparando…» ya no es verdad (QA LV-09).
+      this.poner({ fase: 'pausado', mensaje: null, preparacion: null })
     this.sesionMedios()
   }
 
@@ -383,7 +550,14 @@ export class MotorAudio {
   // ------------------------------------------------------------ controles
   reproducir() {
     const el = this.audio()
-    if (!el || !this.urls.u1) return
+    if (!el || !this.estado.libro) return
+    this.quiereSonar = true
+    if (this.estado.fase === 'error') {
+      // ▶ en un fallo = reintentar ya (también desde la pantalla de bloqueo).
+      if (this.estado.tipoError !== 'conversion') this.reintentar()
+      return
+    }
+    if (!this.urls.u1) return // aún preparando: sonará en cuanto esté
     if (this.ultimaPausa && this.deps.ahora() - this.ultimaPausa > PAUSA_LARGA_MS && this.tiempos) {
       // Tras una pausa larga se vuelve una frase atrás, para retomar el hilo.
       const i = buscarFrase(this.tiempos.frases, this.posicion())
@@ -401,11 +575,13 @@ export class MotorAudio {
   }
 
   pausar() {
+    this.quiereSonar = false
     this.el?.pause()
   }
 
   alternar() {
-    if (this.estado.fase === 'reproduciendo') this.pausar()
+    const f = this.estado.fase
+    if (f === 'reproduciendo' || ((f === 'preparando' || f === 'cargando') && this.quiereSonar)) this.pausar()
     else this.reproducir()
   }
 
@@ -453,16 +629,24 @@ export class MotorAudio {
     this.buscar(t)
   }
 
+  /** Lo que el usuario quiere al cambiar de capítulo: seguir como estaba (sonando o no). */
+  private seguirSonando() {
+    return this.estado.fase === 'reproduciendo' || this.quiereSonar
+  }
+
   capituloSiguiente() {
     const l = this.estado.libro
     if (!l) return
-    if (this.estado.capitulo + 1 < l.capitulos.length)
-      this.cargar(this.estado.capitulo + 1, 0, this.estado.fase === 'reproduciendo' || this.estado.fase === 'cargando')
+    // Un capítulo que no se llegó a oír por falta de red no se salta: se reintenta (QA LV-02).
+    if (this.estado.fase === 'error' && (this.estado.tipoError === 'red' || this.estado.tipoError === 'audio'))
+      return this.reintentar()
+    if (this.estado.capitulo + 1 < l.capitulos.length) this.cargar(this.estado.capitulo + 1, 0, this.seguirSonando())
   }
 
   capituloAnterior() {
-    if (this.posicion() > 5 || this.estado.capitulo === 0) return this.buscar(0)
-    this.cargar(this.estado.capitulo - 1, 0, this.estado.fase === 'reproduciendo')
+    if (this.estado.fase !== 'error' && (this.posicion() > 5 || this.estado.capitulo === 0)) return this.buscar(0)
+    if (this.estado.capitulo === 0) return this.reintentar()
+    this.cargar(this.estado.capitulo - 1, 0, this.seguirSonando())
   }
 
   irACapitulo(capitulo: number, reproducir = true) {
@@ -472,8 +656,8 @@ export class MotorAudio {
   /** "Escuchar desde aquí": salta a la frase (cargando su capítulo si hace falta). */
   irAFrase(fraseId: string, reproducir = true) {
     const cap = capituloDeFrase(fraseId)
-    if (cap >= 0 && cap !== this.estado.capitulo) {
-      this.cargar(cap, 0, reproducir, fraseId)
+    if ((cap >= 0 && cap !== this.estado.capitulo) || this.estado.fase === 'error') {
+      this.cargar(cap >= 0 ? cap : this.estado.capitulo, 0, reproducir, fraseId)
       return
     }
     const t0 = this.inicioDeFrase(fraseId)
@@ -499,13 +683,84 @@ export class MotorAudio {
     }
   }
 
+  // ------------------------------------------------------------ cambiar de voz
+  private cancelarVozPendiente() {
+    this.turnoVoz++
+    if (this.sondeoVoz) clearTimeout(this.sondeoVoz)
+    this.sondeoVoz = null
+  }
+
+  /**
+   * Cambia la voz. Si la actual está sonando, sigue sonando mientras el taller
+   * prepara la nueva (QA LV-07) y se cambia en la misma frase cuando está LISTA.
+   * Si no suena, se carga ya conservando lo que el usuario quería (▶ o ⏸).
+   */
   setVoz(vozId: string, nombreVoz: string) {
-    if (vozId === this.estado.vozId) return
+    const pendiente = this.estado.vozPendiente
+    if (vozId === this.estado.vozId) {
+      if (pendiente) {
+        this.cancelarVozPendiente()
+        this.poner({ vozPendiente: null })
+      }
+      return
+    }
+    if (!this.estado.libro) {
+      this.poner({ vozId, nombreVoz })
+      return
+    }
+    const sonando = this.estado.fase === 'reproduciendo' && !!this.urls.u1
+    if (sonando) {
+      this.cancelarVozPendiente()
+      const minutos = this.estado.libro.capitulos.find((c) => c.indice === this.estado.capitulo)?.minutos
+      this.poner({
+        vozPendiente: {
+          id: vozId,
+          nombre: nombreVoz,
+          desde: this.deps.ahora(),
+          estimadoSeg: estimarPreparacion(minutos),
+        },
+      })
+      this.sondearVozPendiente()
+      return
+    }
+    this.cancelarVozPendiente()
     const pos = this.posicion()
     const frase = this.estado.fraseId
-    const sonando = this.estado.fase === 'reproduciendo'
-    this.poner({ vozId, nombreVoz })
-    if (this.estado.libro) this.cargar(this.estado.capitulo, frase ? 0 : pos, sonando, frase)
+    const reproducir = this.quiereSonar
+    this.poner({ vozId, nombreVoz, vozPendiente: null })
+    this.cargar(this.estado.capitulo, frase ? 0 : pos, reproducir, frase)
+  }
+
+  private async sondearVozPendiente() {
+    const p = this.estado.vozPendiente
+    const l = this.estado.libro
+    if (!p || !l) return
+    const turno = ++this.turnoVoz
+    const capitulo = this.estado.capitulo
+    let r: ResultDTO<EstadoAudioDTO> | null = null
+    try {
+      r = await this.deps.pedirEstado({ ejemplarId: l.ejemplarId, vozId: p.id, capitulo })
+    } catch {
+      r = null
+    }
+    if (turno !== this.turnoVoz || this.estado.vozPendiente?.id !== p.id) return
+    const e = r?.correct ? r.object : null
+    const abandonar = () => {
+      this.poner({ vozPendiente: null, mensaje: TEXTOS_VOZ.vozNuevaNoLista(p.nombre, this.estado.nombreVoz) })
+    }
+    if (r && (!r.correct || !e)) return abandonar()
+    if (e?.estado === 'ERROR' || e?.estado === 'ERROR_CONVERSION') return abandonar()
+    if (e?.estado === 'LISTO' && capitulo === this.estado.capitulo) {
+      // Cambio en la frase que suena ahora mismo, sin silencio de espera.
+      const frase = this.estado.fraseId
+      const pos = this.posicion()
+      const sonar = this.quiereSonar || this.estado.fase === 'reproduciendo'
+      this.poner({ vozId: p.id, nombreVoz: p.nombre, vozPendiente: null })
+      this.cargar(this.estado.capitulo, frase ? 0 : pos, sonar, frase)
+      return
+    }
+    if (e?.estimadoSeg) this.poner({ vozPendiente: { ...p, estimadoSeg: estimarPreparacion(null, e.estimadoSeg) } })
+    this.sondeoVoz = setTimeout(() => this.sondearVozPendiente(), SONDEO_MS)
   }
 
   // ------------------------------------------------------------ temporizador
@@ -523,6 +778,7 @@ export class MotorAudio {
     if (!t || t.tipo !== 'minutos' || !el) return
     const falta = t.finEn - this.deps.ahora()
     if (falta <= 0) {
+      this.quiereSonar = false
       el.pause()
       el.volume = 1
       this.poner({ temporizador: null, mensaje: MENSAJES.vozTemporizador })
@@ -553,6 +809,7 @@ export class MotorAudio {
     const l = this.estado.libro
     if (!l || !this.urls.u1) return
     if (this.estado.temporizador?.tipo === 'capitulo') {
+      this.quiereSonar = false
       this.poner({ temporizador: null, fase: 'pausado', mensaje: MENSAJES.vozFinCapitulo })
       this.guardar(true)
       return
@@ -561,6 +818,7 @@ export class MotorAudio {
       // Mismo elemento, nuevo src: así iOS sigue sonando con la pantalla bloqueada.
       this.cargar(this.estado.capitulo + 1, 0, true)
     } else {
+      this.quiereSonar = false
       this.poner({ fase: 'pausado', mensaje: MENSAJES.vozFinLibro })
       this.guardar(true)
     }
@@ -614,10 +872,11 @@ export class MotorAudio {
       capitulo: this.estado.capitulo,
       fraseId: this.estado.fraseId,
       cfi: null,
-      posicionAudioSeg: Number(pos.toFixed(2)),
+      posicionAudioSeg: Number(acotar(pos, 0, Number.MAX_SAFE_INTEGER, 0).toFixed(2)),
       vozId: this.estado.vozId,
-      velocidad: this.estado.velocidad,
-      porcentaje: Number(porcentaje.toFixed(2)),
+      // Contrato v1.2: el servidor acepta 0.25–5; se acota por si llega algo raro (nunca NaN).
+      velocidad: acotar(this.estado.velocidad, VELOCIDAD_PROGRESO.min, VELOCIDAD_PROGRESO.max, 1),
+      porcentaje: Number(acotar(porcentaje, 0, 100, 0).toFixed(2)),
       modo: 'VOZ',
       dispositivo: this.deps.dispositivo(),
       actualizadoEn: new Date(this.deps.ahora()).toISOString(),
@@ -638,15 +897,24 @@ export class MotorAudio {
     }
   }
 
-  /** Deja de sonar y olvida el libro (al cerrar sesión). */
-  detener() {
+  /**
+   * Deja de sonar y olvida el libro: al cerrar sesión, al caducar o al entrar
+   * otra cuenta (QA LV-03). Con `servidor: false` (la sesión ya caducó y el
+   * servidor contestaría 401) lo último se guarda solo en el teléfono.
+   */
+  detener(o: { servidor?: boolean } = {}) {
     this.turno++
     this.cancelarSondeo()
-    this.guardar(true)
-    this.el?.pause()
+    this.cancelarVozPendiente()
+    this.guardar(o.servidor ?? true)
+    this.quiereSonar = false
+    this.pedido = null
+    // Sin URLs antes de pausar: el 'pause' ya no guarda (con la sesión caducada daría 401).
     this.urls = { u1: null, u2: null }
     this.tiempos = null
+    this.el?.pause()
     this.poner({ ...inicial })
+    this.limpiarSesionMedios()
   }
 
   // ------------------------------------------------------------ Media Session (pantalla de bloqueo)
@@ -686,11 +954,29 @@ export class MotorAudio {
       h('seekforward', (d) => this.saltar(d?.seekOffset || SALTO_SEG))
       h('previoustrack', () => this.capituloAnterior())
       h('nexttrack', () => this.capituloSiguiente())
-      h('seekto', (d) => d?.seekTime != null && this.buscar(tiempoEn1x(d.seekTime, this.factor)))
+      // La pantalla de bloqueo ve la línea de tiempo 1x del capítulo (ver posicionSesion).
+      h('seekto', (d) => d?.seekTime != null && this.buscar(d.seekTime))
       this.estadoSesion(this.estado.fase === 'reproduciendo' ? 'playing' : 'paused')
       this.posicionSesion()
     } catch (e) {
       console.error('[voz] Media Session', e)
+    }
+  }
+
+  private limpiarSesionMedios() {
+    const ms = sesion()
+    if (!ms) return
+    try {
+      ms.metadata = null
+      for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'previoustrack', 'nexttrack', 'seekto'])
+        try {
+          ms.setActionHandler(a as MediaSessionAction, null)
+        } catch {
+          /* no soportada */
+        }
+      ms.playbackState = 'none'
+    } catch {
+      /* nada */
     }
   }
 
@@ -703,15 +989,21 @@ export class MotorAudio {
     }
   }
 
+  /**
+   * La posición en la pantalla de bloqueo, en la línea de tiempo 1x del
+   * capítulo y a la velocidad elegida (QA LV-P5): con el archivo 2x la
+   * duración del archivo es la mitad y engañaba.
+   */
   private posicionSesion() {
     const ms = sesion()
     const el = this.el
-    if (!ms?.setPositionState || !el || !Number.isFinite(el.duration) || el.duration <= 0) return
+    const duracion = this.estado.duracion
+    if (!ms?.setPositionState || !el || !(duracion > 0)) return
     try {
       ms.setPositionState({
-        duration: el.duration,
-        playbackRate: el.playbackRate || 1,
-        position: Math.min(el.duration, el.currentTime || 0),
+        duration: duracion,
+        playbackRate: this.estado.velocidad || 1,
+        position: Math.min(duracion, Math.max(0, this.posicion())),
       })
     } catch {
       /* posición fuera de rango mientras cambia el src */

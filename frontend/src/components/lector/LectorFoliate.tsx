@@ -20,6 +20,7 @@ const LectorFoliate = forwardRef<ControlLector, PropsLector>(({ onListo }, ref) 
     volverAtras: () => {},
     pintarAnotacion: () => {},
     borrarAnotacion: () => {},
+    actualizarAnotacion: () => {},
     limpiarSeleccion: () => {},
     seguirVoz: () => {},
   }))

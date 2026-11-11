@@ -1,191 +1,197 @@
 package com.bibliotecaah.auth.security;
 
 import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTCreator;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.bibliotecaah.auth.repository.EstadoDeSesion;
+import com.bibliotecaah.auth.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Date;
+import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("Filtro JWT de auth-service")
 class JWTAuthorizationFilterTest {
 
-    @Mock
-    private SecParams secParams;
+    private static final String SECRETO = "test-secret-key";
 
-    @Mock
-    private HttpServletRequest request;
-
-    @Mock
-    private HttpServletResponse response;
-
-    @Mock
-    private FilterChain filterChain;
+    @Mock private SecParams secParams;
+    @Mock private UserRepository usuarios;
+    @Mock private HttpServletRequest request;
+    @Mock private HttpServletResponse response;
+    @Mock private FilterChain filterChain;
 
     private JWTAuthorizationFilter filter;
+    private StringWriter cuerpo;
 
     @BeforeEach
-    void setUp() {
-        filter = new JWTAuthorizationFilter(secParams);
+    void setUp() throws Exception {
+        filter = new JWTAuthorizationFilter(secParams, usuarios);
+        SecurityContextHolder.clearContext();
+        when(secParams.getSecret()).thenReturn(SECRETO);
+        cuerpo = new StringWriter();
+        when(response.getWriter()).thenReturn(new PrintWriter(cuerpo));
+    }
+
+    @AfterEach
+    void limpiar() {
         SecurityContextHolder.clearContext();
     }
 
-    @Test
-    @DisplayName("Should pass through when no Authorization header")
-    void shouldPassWithoutAuthHeader() throws Exception {
-        when(request.getHeader("Authorization")).thenReturn(null);
-
-        filter.doFilterInternal(request, response, filterChain);
-
-        verify(filterChain).doFilter(request, response);
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+    private static JWTCreator.Builder base(long userId) {
+        return JWT.create().withSubject("ana@biblioteca.ah").withClaim("userId", userId)
+                .withExpiresAt(new Date(System.currentTimeMillis() + 3_600_000));
     }
 
-    @Test
-    @DisplayName("Should pass through when Authorization header is not Bearer")
-    void shouldPassWithNonBearerHeader() throws Exception {
-        when(request.getHeader("Authorization")).thenReturn("Basic abc123");
-
-        filter.doFilterInternal(request, response, filterChain);
-
-        verify(filterChain).doFilter(request, response);
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
-    }
-
-    @Test
-    @DisplayName("Should authenticate with valid JWT")
-    void shouldAuthenticateWithValidJWT() throws Exception {
-        String secret = "test-secret-key";
-        String token = JWT.create()
-                .withSubject("test@biblioteca.ah")
-                .withExpiresAt(new Date(System.currentTimeMillis() + 3600000))
-                .sign(Algorithm.HMAC256(secret));
-
+    private void conToken(String token) {
         when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
-        when(secParams.getSecret()).thenReturn(secret);
-
-        filter.doFilterInternal(request, response, filterChain);
-
-        verify(filterChain).doFilter(request, response);
-        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
-        assertEquals("test@biblioteca.ah",
-                SecurityContextHolder.getContext().getAuthentication().getPrincipal());
     }
 
-    @Test
-    @DisplayName("Should return 401 with invalid JWT")
-    void shouldClearContextWithInvalidJWT() throws Exception {
-        PrintWriter writer = mock(PrintWriter.class);
-        when(request.getHeader("Authorization")).thenReturn("Bearer invalid-token");
-        when(secParams.getSecret()).thenReturn("test-secret-key");
-        when(response.getWriter()).thenReturn(writer);
+    private void cuenta(long id, boolean activa, int version) {
+        when(usuarios.estadoDeSesion(id)).thenReturn(Optional.of(new EstadoDeSesion(activa, version)));
+    }
 
+    private void esperaRechazo(String mensaje) throws Exception {
         filter.doFilterInternal(request, response, filterChain);
-
         verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        verify(response).setContentType("application/json");
-        verify(writer).write(anyString());
         verify(filterChain, never()).doFilter(request, response);
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(cuerpo.toString()).contains("\"errorCode\":401").contains(mensaje);
     }
 
-    @Test
-    @DisplayName("Should return 401 with expired JWT")
-    void shouldClearContextWithExpiredJWT() throws Exception {
-        PrintWriter writer = mock(PrintWriter.class);
-        String secret = "test-secret-key";
-        String token = JWT.create()
-                .withSubject("test@biblioteca.ah")
-                .withExpiresAt(new Date(System.currentTimeMillis() - 1000))
-                .sign(Algorithm.HMAC256(secret));
+    @Nested
+    @DisplayName("Sin token")
+    class SinToken {
 
-        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
-        when(secParams.getSecret()).thenReturn(secret);
-        when(response.getWriter()).thenReturn(writer);
+        @Test
+        @DisplayName("sin cabecera pasa sin autenticar")
+        void sinCabecera() throws Exception {
+            when(request.getHeader("Authorization")).thenReturn(null);
+            filter.doFilterInternal(request, response, filterChain);
+            verify(filterChain).doFilter(request, response);
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        }
 
-        filter.doFilterInternal(request, response, filterChain);
-
-        verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        verify(response).setContentType("application/json");
-        verify(writer).write(anyString());
-        verify(filterChain, never()).doFilter(request, response);
-        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        @Test
+        @DisplayName("una cabecera que no es Bearer pasa sin autenticar")
+        void noBearer() throws Exception {
+            when(request.getHeader("Authorization")).thenReturn("Basic abc123");
+            filter.doFilterInternal(request, response, filterChain);
+            verify(filterChain).doFilter(request, response);
+            assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        }
     }
 
-    @Test
-    @DisplayName("las autoridades salen del claim roles del token")
-    void rolesDelToken() throws Exception {
-        String secret = "test-secret-key";
-        String token = JWT.create()
-                .withSubject("jefe@biblioteca.ah")
-                .withClaim("userId", 3L)
-                .withArrayClaim("roles", new String[]{"ADMIN", "USER"})
-                .withExpiresAt(new Date(System.currentTimeMillis() + 3600000))
-                .sign(Algorithm.HMAC256(secret));
+    @Nested
+    @DisplayName("Token valido y vigente")
+    class Vigente {
 
-        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
-        when(secParams.getSecret()).thenReturn(secret);
+        @Test
+        @DisplayName("autentica con el correo, el userId en los detalles y los roles del claim")
+        void autentica() throws Exception {
+            cuenta(3L, true, 2);
+            conToken(base(3L).withClaim("ver", 2).withArrayClaim("roles", new String[]{"ADMIN", "USER"})
+                    .sign(Algorithm.HMAC256(SECRETO)));
 
-        filter.doFilterInternal(request, response, filterChain);
+            filter.doFilterInternal(request, response, filterChain);
 
-        assertEquals(2, SecurityContextHolder.getContext().getAuthentication()
-                .getAuthorities().size());
-        assertTrue(SecurityContextHolder.getContext().getAuthentication().getAuthorities()
-                .stream().anyMatch(a -> "ADMIN".equals(a.getAuthority())));
+            verify(filterChain).doFilter(request, response);
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            assertThat(auth.getPrincipal()).isEqualTo("ana@biblioteca.ah");
+            assertThat(auth.getDetails()).isEqualTo(3L);
+            assertThat(auth.getAuthorities()).extracting(a -> a.getAuthority()).containsExactly("ADMIN", "USER");
+        }
+
+        @Test
+        @DisplayName("un token anterior a V4 (sin claim ver) vale como version 0 y sin roles")
+        void tokenAntiguo() throws Exception {
+            cuenta(4L, true, 0);
+            conToken(base(4L).sign(Algorithm.HMAC256(SECRETO)));
+
+            filter.doFilterInternal(request, response, filterChain);
+
+            verify(filterChain).doFilter(request, response);
+            assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities()).isEmpty();
+        }
     }
 
-    @Test
-    @DisplayName("un token de antes de la ola 4 no trae roles y entra sin permisos, no se rechaza")
-    void tokenAntiguoSinClaimDeRoles() throws Exception {
-        /* Al desplegar, las sesiones abiertas llevan tokens sin el claim. Si
-           eso fuera un rechazo, todo el mundo se quedaria fuera de golpe; si
-           fuera un rol por defecto, se regalarian permisos que el token no
-           dice. Se entra autenticado y sin autoridades. */
-        String secret = "test-secret-key";
-        String token = JWT.create()
-                .withSubject("viejo@biblioteca.ah")
-                .withClaim("userId", 4L)
-                .withExpiresAt(new Date(System.currentTimeMillis() + 3600000))
-                .sign(Algorithm.HMAC256(secret));
+    @Nested
+    @DisplayName("Token rechazado con 401 JSON")
+    class Rechazado {
 
-        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
-        when(secParams.getSecret()).thenReturn(secret);
+        @Test
+        @DisplayName("firma invalida")
+        void firmaInvalida() throws Exception {
+            conToken("no-es-un-token");
+            esperaRechazo("Sesión inválida o vencida");
+            verify(response).setContentType("application/json;charset=UTF-8");
+        }
 
-        filter.doFilterInternal(request, response, filterChain);
+        @Test
+        @DisplayName("caducado")
+        void caducado() throws Exception {
+            conToken(JWT.create().withSubject("x").withClaim("userId", 1L)
+                    .withExpiresAt(new Date(System.currentTimeMillis() - 1000)).sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Sesión inválida o vencida");
+        }
 
-        verify(filterChain).doFilter(request, response);
-        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
-        assertTrue(SecurityContextHolder.getContext().getAuthentication()
-                .getAuthorities().isEmpty());
-    }
+        @Test
+        @DisplayName("sin exp (QA SE-18)")
+        void sinExp() throws Exception {
+            conToken(JWT.create().withSubject("x").withClaim("userId", 1L).sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Sesión inválida o vencida");
+        }
 
-    @Test
-    @DisplayName("el id del usuario viaja en los detalles de la autenticacion")
-    void elIdViajaEnLosDetalles() throws Exception {
-        String secret = "test-secret-key";
-        String token = JWT.create()
-                .withSubject("test@biblioteca.ah")
-                .withClaim("userId", 77L)
-                .withExpiresAt(new Date(System.currentTimeMillis() + 3600000))
-                .sign(Algorithm.HMAC256(secret));
+        @Test
+        @DisplayName("sin userId (QA SE-18)")
+        void sinUserId() throws Exception {
+            conToken(JWT.create().withSubject("x").withExpiresAt(new Date(System.currentTimeMillis() + 60_000))
+                    .sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Sesión inválida o vencida");
+        }
 
-        when(request.getHeader("Authorization")).thenReturn("Bearer " + token);
-        when(secParams.getSecret()).thenReturn(secret);
+        @Test
+        @DisplayName("cuenta desactivada (QA SE-02)")
+        void cuentaDesactivada() throws Exception {
+            cuenta(3L, false, 0);
+            conToken(base(3L).withClaim("ver", 0).sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Tu sesión ya no es válida");
+        }
 
-        filter.doFilterInternal(request, response, filterChain);
+        @Test
+        @DisplayName("version de sesion vieja: roles o clave cambiados (QA SE-02)")
+        void versionVieja() throws Exception {
+            cuenta(3L, true, 1);
+            conToken(base(3L).withClaim("ver", 0).sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Tu sesión ya no es válida");
+        }
 
-        assertEquals(77L, SecurityContextHolder.getContext().getAuthentication().getDetails());
+        @Test
+        @DisplayName("cuenta que ya no existe")
+        void cuentaInexistente() throws Exception {
+            when(usuarios.estadoDeSesion(9L)).thenReturn(Optional.empty());
+            conToken(base(9L).sign(Algorithm.HMAC256(SECRETO)));
+            esperaRechazo("Tu sesión ya no es válida");
+        }
     }
 }

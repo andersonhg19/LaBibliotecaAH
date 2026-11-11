@@ -15,6 +15,9 @@ class RepoFalso:
         self.archivos: dict = {}
         self.audios: dict = {}
         self.cerrado = 0
+        self.retirados: set = set()  # archivos borrados por biblioteca-service
+        self.latidos = 0
+        self.reinicios: list = []
 
     def tomar(self, tipos):
         pend = [t for t in self.trabajos if t["estado"] == "PENDIENTE" and t["tipo"] in tipos]
@@ -28,7 +31,8 @@ class RepoFalso:
     def _t(self, tid):
         return next(t for t in self.trabajos if t["id"] == tid)
 
-    def reiniciar_atascados(self, minutos):
+    def reiniciar_atascados(self, segundos, tipos):
+        self.reinicios.append((segundos, list(tipos)))
         return 0
 
     def marcar_hecho(self, tid):
@@ -38,12 +42,17 @@ class RepoFalso:
         self._t(tid).update(estado="ERROR" if definitivo else "PENDIENTE", error=mensaje)
 
     def latido(self, tid):
-        pass
+        self.latidos += 1
 
     def archivo_procesando(self, aid):
+        if aid in self.retirados:
+            return False
         self.archivos[aid] = {"estado": "PROCESANDO"}
+        return True
 
     def archivo_listo(self, aid, metadatos, n_capitulos, n_palabras, minutos, tiene_portada, version_texto):
+        if aid in self.retirados:
+            return False
         self.archivos[aid] = {
             "estado": "LISTO",
             "metadatos": metadatos,
@@ -53,12 +62,16 @@ class RepoFalso:
             "portada": tiene_portada,
             "version": version_texto,
         }
+        return True
 
     def archivo_estado(self, aid, estado, error):
         self.archivos[aid] = {"estado": estado, "error": error}
 
     def audio_estado(self, aid, voz, cap, estado, duracion=None, error=None):
+        if aid in self.retirados:
+            return False
         self.audios[(aid, voz, cap)] = {"estado": estado, "duracion": duracion, "error": error}
+        return True
 
     def cerrar(self):
         self.cerrado += 1
@@ -124,7 +137,11 @@ def test_reintentos_hasta_tres():
         estados.append(procesar(t, m, repo, max_intentos=3))
     assert estados == ["PENDIENTE", "PENDIENTE", "ERROR"]
     assert repo.trabajos[0]["estado"] == "ERROR" and repo.trabajos[0]["intentos"] == 3
-    assert "se cayó" in repo.trabajos[0]["error"]
+    # el detalle técnico no llega al usuario (QA DA-20)
+    assert repo.trabajos[0]["error"] == (
+        "No se pudo convertir el libro por un problema inesperado del taller. "
+        "Quedó registrado para revisarlo; puedes volver a intentarlo más tarde."
+    )
     assert [d for _m, d in m.fallos] == [False, False, True]
     assert repo.tomar(["CONVERTIR"]) is None
 
@@ -148,7 +165,7 @@ def test_convertir_actualiza_archivo(tmp_path, txt_prueba):
     (rutas.originales("a1")).mkdir(parents=True)
     (rutas.originales("a1") / "libro.txt").write_bytes(txt_prueba.read_bytes())
     repo = RepoFalso([trabajo()])
-    assert procesar(repo.tomar(["CONVERTIR"]), ManejadorConvertir(rutas), repo, 3) == "HECHO"
+    assert procesar(repo.tomar(["CONVERTIR"]), ManejadorConvertir(rutas, aislar=False), repo, 3) == "HECHO"
     a = repo.archivos["a1"]
     assert a["estado"] == "LISTO" and a["n_capitulos"] == 3 and a["version"] == 1 and a["n_palabras"] > 10
     assert set(a["metadatos"]) == {"titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis"}
@@ -157,7 +174,7 @@ def test_convertir_actualiza_archivo(tmp_path, txt_prueba):
 
 def test_convertir_sin_original_marca_error(tmp_path):
     repo = RepoFalso([trabajo()])
-    procesar(repo.tomar(["CONVERTIR"]), ManejadorConvertir(Rutas(tmp_path)), repo, 3)
+    procesar(repo.tomar(["CONVERTIR"]), ManejadorConvertir(Rutas(tmp_path), aislar=False), repo, 3)
     assert repo.archivos["a1"]["estado"] == "ERROR"
     assert "original" in repo.archivos["a1"]["error"]
 

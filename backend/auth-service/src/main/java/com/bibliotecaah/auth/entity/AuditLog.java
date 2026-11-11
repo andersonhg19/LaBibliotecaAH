@@ -77,6 +77,7 @@ public class AuditLog {
     public enum Accion {
         LOGIN,
         USER_CREATE,
+        USER_UPDATE,
         USER_ACTIVATE,
         USER_DEACTIVATE,
         ROLE_CREATE,

@@ -25,7 +25,7 @@ public class RoleSaveDTO {
     @NotBlank(message = "es obligatorio")
     @Size(max = 50, message = "no puede superar los 50 caracteres")
     @Pattern(regexp = "^[A-Z][A-Z0-9_]*$",
-            message = "solo admite mayusculas, numeros y guion bajo, y empieza por letra")
+            message = "solo admite mayúsculas, números y guion bajo, y empieza por letra")
     private String name;
 
     @Size(max = 200, message = "no puede superar los 200 caracteres")

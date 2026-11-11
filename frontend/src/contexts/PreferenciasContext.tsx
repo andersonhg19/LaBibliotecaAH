@@ -18,7 +18,11 @@ import { activarSonidos } from '@utils/sonidos'
  */
 
 export type TemaPapel = 'marfil' | 'pergamino' | 'noche'
-export type ModoLector = 'paginado' | 'continuo'
+/**
+ * Cómo se lee: 'paginado' pasar páginas (una), 'continuo' HOJAS (desplazamiento vertical,
+ * hojas de papel una debajo de otra) y 'libro' el libro abierto a dos páginas (PC).
+ */
+export type ModoLector = 'paginado' | 'continuo' | 'libro'
 
 export interface Preferencias {
   vozId: string
@@ -32,6 +36,8 @@ export interface Preferencias {
   margen: number
   interlineado: number
   modo: ModoLector
+  /** Si la persona eligió el modo en este dispositivo; si no, se elige según la ventana (logica de modoLectura). */
+  modoElegido?: boolean
 }
 
 export const PREFERENCIAS_INICIALES: Preferencias = {
@@ -67,7 +73,8 @@ export const leerPreferencias = (json: string | null): Preferencias => {
     r.tamano = Math.min(200, Math.max(80, Number(r.tamano) || 110))
     r.margen = Math.min(20, Math.max(0, Number(r.margen) || 0))
     if (!['marfil', 'pergamino', 'noche'].includes(r.temaPapel)) r.temaPapel = 'noche'
-    if (!['paginado', 'continuo'].includes(r.modo)) r.modo = 'paginado'
+    if (!['paginado', 'continuo', 'libro'].includes(r.modo)) r.modo = 'paginado'
+    r.modoElegido = r.modoElegido === true
     if (!['literata', 'garamond', 'lora'].includes(r.fuente)) r.fuente = 'literata'
     return r
   } catch {

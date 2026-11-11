@@ -13,7 +13,10 @@ import com.bibliotecaah.auth.repository.RoleRepository;
 import com.bibliotecaah.auth.repository.UserRepository;
 import com.bibliotecaah.auth.service.AdminUserService;
 import com.bibliotecaah.auth.service.CambioAuditable;
+import com.bibliotecaah.auth.util.Mensajes;
 import com.bibliotecaah.auth.util.SecurityUtils;
+import com.bibliotecaah.auth.util.ValidacionDeAlias;
+import com.bibliotecaah.auth.util.ValidationUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -47,15 +50,21 @@ public class AdminUserServiceImpl implements AdminUserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final ApplicationEventPublisher eventos;
+    private final ValidacionDeAlias validacionDeAlias;
+    private final Mensajes mensajes;
 
     public AdminUserServiceImpl(UserRepository userRepository,
                                 RoleRepository roleRepository,
                                 PasswordEncoder passwordEncoder,
-                                ApplicationEventPublisher eventos) {
+                                ApplicationEventPublisher eventos,
+                                ValidacionDeAlias validacionDeAlias,
+                                Mensajes mensajes) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.eventos = eventos;
+        this.validacionDeAlias = validacionDeAlias;
+        this.mensajes = mensajes;
     }
 
     /**
@@ -118,8 +127,19 @@ public class AdminUserServiceImpl implements AdminUserService {
         if (dto.getPassword() == null || dto.getPassword().isBlank()) {
             return new ResultDTO(false, Message.Msj.passwordRequired.toString(), 101);
         }
-        if (userRepository.existsByEmailAndActiveTrue(dto.getEmail())) {
+        if (ValidationUtils.esClaveDebil(dto.getPassword())) {
+            return new ResultDTO(false, mensajes.texto(Message.Msj.claveDebil), ValidacionDeAlias.DATO_INVALIDO);
+        }
+        dto.setEmail(ValidationUtils.normalizarCorreo(dto.getEmail()));
+        /* Activa o no, sin distinguir mayusculas (QA SE-04, SE-10). */
+        if (userRepository.existeCorreo(dto.getEmail())) {
             return new ResultDTO(false, Message.Msj.emailAlreadyInUse.toString(), 102);
+        }
+        /* El alias es obligatorio en el alta (V3). Sus errores salen ya en
+           espanol (messages_es.properties), no como clave. */
+        Optional<ResultDTO> aliasMalo = validacionDeAlias.problema(dto.getAlias(), null);
+        if (aliasMalo.isPresent()) {
+            return aliasMalo.get();
         }
 
         Optional<Role> rolBase = roleRepository.findByNameAndActiveTrue(SecurityUtils.ROL_USER);
@@ -127,6 +147,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         User user = User.builder()
                 .name(dto.getName())
                 .email(dto.getEmail())
+                .alias(ValidationUtils.normalizarAlias(dto.getAlias()))
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .active(true)
                 /* Toda cuenta nace con USER. Una cuenta sin ningun rol puede
@@ -138,6 +159,48 @@ public class AdminUserServiceImpl implements AdminUserService {
         User saved = userRepository.save(user);
         log.info("Admin creo la cuenta {}", saved.getEmail());
         anotar(AuditLog.Accion.USER_CREATE, saved.getId(), "Alta de " + saved.getEmail());
+        return new ResultDTO(aDTO(saved, nombresDeRol(saved.getRoles())));
+    }
+
+    /**
+     * Edicion de otra cuenta: nombre, correo y alias.
+     *
+     * La contrasena NO: cambiar la clave de otro desde aqui convertiria una
+     * sesion de administrador robada en la llave de todas las cuentas, y la
+     * propia ya se cambia por /v1/users/save pidiendo la actual. Si llega una,
+     * se rechaza en vez de ignorarla en silencio.
+     */
+    @Override
+    public ResultDTO actualizar(UserSaveDTO dto) {
+        if (!ValidationUtils.isBlank(dto.getPassword())) {
+            return new ResultDTO(false, mensajes.texto(Message.Msj.claveDeOtraCuenta), ValidacionDeAlias.DATO_INVALIDO);
+        }
+        Optional<User> encontrado = userRepository.findByIdWithRoles(dto.getId());
+        if (encontrado.isEmpty()) {
+            return new ResultDTO(false, Message.Msj.userNotFound.toString(), 103);
+        }
+        dto.setEmail(ValidationUtils.normalizarCorreo(dto.getEmail()));
+        if (userRepository.existeCorreoEnOtraCuenta(dto.getEmail(), dto.getId())) {
+            return new ResultDTO(false, Message.Msj.emailAlreadyInUse.toString(), 102);
+        }
+        if (dto.getAlias() != null) {
+            Optional<ResultDTO> aliasMalo = validacionDeAlias.problema(dto.getAlias(), dto.getId());
+            if (aliasMalo.isPresent()) {
+                return aliasMalo.get();
+            }
+        }
+
+        User user = encontrado.get();
+        String antes = user.getName() + " <" + user.getEmail() + "> @" + user.getAlias();
+        user.setName(dto.getName());
+        user.setEmail(dto.getEmail());
+        if (dto.getAlias() != null) {
+            user.setAlias(ValidationUtils.normalizarAlias(dto.getAlias()));
+        }
+        User saved = userRepository.save(user);
+        String despues = saved.getName() + " <" + saved.getEmail() + "> @" + saved.getAlias();
+        log.info("Admin edito la cuenta {}", saved.getId());
+        anotar(AuditLog.Accion.USER_UPDATE, saved.getId(), antes + " -> " + despues);
         return new ResultDTO(aDTO(saved, nombresDeRol(saved.getRoles())));
     }
 
@@ -165,6 +228,11 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
 
         List<String> antes = nombresDeRol(user.getRoles());
+        if (!antes.equals(nombresDeRol(nuevos))) {
+            /* QA SE-02: los roles van firmados en el token; si cambian, los
+               tokens viejos (con los roles de antes) dejan de valer. */
+            user.revocarSesiones();
+        }
         user.setRoles(nuevos);
         userRepository.save(user);
         log.info("Roles de {} fijados a {}", user.getEmail(), dto.getRoles());
@@ -194,6 +262,9 @@ public class AdminUserServiceImpl implements AdminUserService {
         }
 
         user.setActive(activar);
+        /* QA SE-02: desactivar corta la sesion al momento; reactivar tampoco
+           resucita los tokens que la cuenta tenia antes de desactivarse. */
+        user.revocarSesiones();
         userRepository.save(user);
         log.info("Cuenta {} {}", user.getEmail(), activar ? "reactivada" : "desactivada");
         anotar(activar ? AuditLog.Accion.USER_ACTIVATE : AuditLog.Accion.USER_DEACTIVATE,
@@ -230,6 +301,7 @@ public class AdminUserServiceImpl implements AdminUserService {
         dto.setId(user.getId());
         dto.setName(user.getName());
         dto.setEmail(user.getEmail());
+        dto.setAlias(user.getAlias());
         dto.setActive(user.getActive());
         dto.setRoles(roles);
         dto.setCreatedAt(user.getCreatedAt());

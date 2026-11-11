@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import uuid
 from pathlib import Path
 
 from ..dominio.mensajes import Msj
@@ -25,6 +26,7 @@ def _ejecutar(args: list[str], entrada: bytes | None = None, tiempo: int = 600) 
     except FileNotFoundError as e:
         raise ErrorAudio(Msj.ERROR_AUDIO, detalle=f"no está instalado {args[0]}") from e
     if r.returncode != 0:
+        # el detalle técnico va solo al log (QA DA-20); el usuario ve el mensaje del catálogo
         raise ErrorAudio(Msj.ERROR_AUDIO, detalle=f"{args[0]}: {r.stderr.decode('utf-8', 'replace')[-300:]}")
     return r.stdout
 
@@ -62,7 +64,7 @@ def duracion_pcm(pcm_bytes: int) -> float:
 
 def codificar_m4a(ruta_pcm: Path, salida: Path) -> None:
     """PCM → AAC-LC mono 48 kbps en .m4a con moov al principio (faststart). Escritura atómica."""
-    tmp = salida.with_name(salida.stem + ".tmp.m4a")
+    tmp = _temporal(salida)
     _ejecutar(
         [
             "ffmpeg",
@@ -94,8 +96,13 @@ def codificar_m4a(ruta_pcm: Path, salida: Path) -> None:
     os.replace(tmp, salida)
 
 
+def _temporal(salida: Path) -> Path:
+    """Nombre temporal único: dos hilos de voz pueden generar a la vez el mismo capítulo."""
+    return salida.with_name(f"{salida.stem}.{uuid.uuid4().hex[:8]}.tmp.m4a")
+
+
 def variante_2x(entrada: Path, salida: Path) -> None:
-    tmp = salida.with_name(salida.stem + ".tmp.m4a")
+    tmp = _temporal(salida)
     _ejecutar(
         [
             "ffmpeg",

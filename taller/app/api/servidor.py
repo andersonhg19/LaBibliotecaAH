@@ -2,8 +2,10 @@
 
 - GET /salud  → estado del proceso, de los trabajadores y del volumen /datos.
 - GET /voces  → catálogo de voces (contratos.md §8).
-Al arrancar: devuelve a PENDIENTE los trabajos EN_CURSO atascados (> 30 min), inicia un hilo para CONVERTIR y otro
-para VOZ_CAPITULO, y genera en otro hilo las muestras de voz que falten.
+Al arrancar: devuelve a PENDIENTE TODOS los trabajos EN_CURSO del taller (con un único taller por base de datos,
+lo que estaba EN_CURSO murió con el proceso anterior; QA DA-01), inicia un hilo para CONVERTIR y `hilos_voz` para
+VOZ_CAPITULO, un barrendero que cada minuto devuelve a PENDIENTE los EN_CURSO sin latido, y genera en otro hilo
+las muestras de voz que falten.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from fastapi import FastAPI
 
 from .. import __version__
 from ..cola.repositorio import Repositorio, RepositorioPg
-from ..cola.trabajador import ManejadorConvertir, ManejadorVoz, Trabajador
+from ..cola.trabajador import Barrendero, ManejadorConvertir, ManejadorVoz, Trabajador
 from ..config.ajustes import Ajustes
 from ..config.rutas import Rutas
 from ..dominio.voces import listar_voces
@@ -35,6 +37,7 @@ class Taller:
         self.rutas = Rutas(ajustes.datos)
         self.parar = threading.Event()
         self.trabajadores: list[Trabajador] = []
+        self.barrendero: Barrendero | None = None
 
     def fabrica_repo(self) -> Repositorio:
         return RepositorioPg(self.ajustes.db_url)
@@ -52,39 +55,37 @@ class Taller:
         if not a.trabajadores:
             log.warning("Trabajadores desactivados (TALLER_TRABAJADORES=false)")
             return
+        conversion = ManejadorConvertir(
+            self.rutas, a.aislar_conversion, a.memoria_conversion_mb, a.tiempo_conversion_seg
+        )
+        voz = ManejadorVoz(self.rutas, a.concurrencia_voz)
+        tipos = [*conversion.tipos, *voz.tipos]
+        self.barrendero = Barrendero(
+            self.fabrica_repo, tipos, a.minutos_atascado * 60, a.intervalo_barrido_seg, self.parar
+        )
         try:
-            repo = self.fabrica_repo()
-            n = repo.reiniciar_atascados(a.minutos_atascado)
-            repo.cerrar()
-            if n:
-                log.warning("Trabajos EN_CURSO atascados devueltos a PENDIENTE: %d", n)
+            n = Barrendero(self.fabrica_repo, tipos, 0, a.intervalo_barrido_seg, self.parar).barrer()
+            log.info("Arranque: %d trabajos interrumpidos devueltos a PENDIENTE", n)
         except Exception:
-            log.exception("No se pudieron reiniciar los trabajos atascados (el sondeo sigue igual)")
+            log.exception("No se pudieron reabrir los trabajos interrumpidos (el barrido periódico lo reintentará)")
         self.trabajadores = [
-            Trabajador(
-                "conversion",
-                ManejadorConvertir(self.rutas),
-                self.fabrica_repo,
-                a.intervalo_seg,
-                a.max_intentos,
-                self.parar,
-            ),
-            Trabajador(
-                "voz",
-                ManejadorVoz(self.rutas, a.concurrencia_voz),
-                self.fabrica_repo,
-                a.intervalo_seg,
-                a.max_intentos,
-                self.parar,
-            ),
+            Trabajador("conversion", conversion, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar)
+        ]
+        nombres_voz = ["voz"] + [f"voz-{k}" for k in range(2, a.hilos_voz + 1)]
+        self.trabajadores += [
+            Trabajador(nombre, voz, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar)
+            for nombre in nombres_voz
         ]
         for t in self.trabajadores:
             t.start()
+        self.barrendero.start()
 
     def detener(self) -> None:
         self.parar.set()
         for t in self.trabajadores:
             t.join(timeout=5)
+        if self.barrendero is not None and self.barrendero.is_alive():
+            self.barrendero.join(timeout=5)
 
 
 def crear_app(ajustes: Ajustes) -> FastAPI:

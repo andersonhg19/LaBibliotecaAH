@@ -17,7 +17,12 @@ import java.util.UUID;
 /** "Mi Biblioteca": todo filtrado por el usuario del token. */
 public interface LibroService {
 
-    ResultDTO subir(List<MultipartFile> archivos, TipoEjemplar tipo);
+    /**
+     * @param deseoId opcional (QA BI-15, "Ya lo tengo"): un deseo del usuario que este archivo cumple. Con el,
+     *                se admite un solo archivo; el ejemplar que llegue hereda la nota, las etiquetas y los
+     *                estantes del deseo, y el deseo se borra.
+     */
+    ResultDTO subir(List<MultipartFile> archivos, TipoEjemplar tipo, UUID deseoId);
 
     EjemplarDTO deseo(DeseoDTO dto);
 
@@ -29,5 +34,6 @@ public interface LibroService {
 
     boolean delete(UUID ejemplarId);
 
-    FacetasDTO facetas();
+    /** Facetas de una pestana (null = TODO, solo libros). */
+    FacetasDTO facetas(FiltroLibrosDTO.Pestana pestana);
 }

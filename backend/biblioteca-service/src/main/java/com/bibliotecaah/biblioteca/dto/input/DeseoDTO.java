@@ -21,5 +21,6 @@ public class DeseoDTO {
     private String autor;
     @Size(max = 20, message = "{validacion.maximo}")
     private String isbn;
+    @Size(max = 2000, message = "{validacion.maximo}")
     private String nota;
 }

@@ -12,6 +12,9 @@ import java.util.UUID;
 @Repository
 public class TrabajoRepositoryImpl implements TrabajoRepository {
 
+    /** Hace MINUTOS_SIN_LATIDO minutos, en SQL. */
+    private static final String HACE_UN_RATO = "now() - interval '" + MINUTOS_SIN_LATIDO + " minutes'";
+
     private final JdbcTemplate jdbc;
 
     public TrabajoRepositoryImpl(JdbcTemplate jdbc) {
@@ -29,12 +32,16 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
 
     @Override
     public boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad) {
+        /* Vivo = PENDIENTE, o EN_CURSO con latido en los ultimos 10 min. Un
+           EN_CURSO o un GENERANDO sin latido es un trabajo que murio con el
+           taller (QA DA-01): no cuenta y el capitulo se vuelve a encolar. Un
+           ERROR tampoco se reencola solo (QA DA-02). */
         Integer vivos = jdbc.queryForObject("SELECT "
                         + "(SELECT COUNT(*) FROM bah_lib_trabajo WHERE tipo = ? AND archivo_id = ? "
-                        + "AND estado IN ('PENDIENTE', 'EN_CURSO') AND payload->>'vozId' = ? "
-                        + "AND (payload->>'capitulo')::int = ?) + "
+                        + "AND (estado = 'PENDIENTE' OR (estado = 'EN_CURSO' AND actualizado > " + HACE_UN_RATO + ")) "
+                        + "AND payload->>'vozId' = ? AND (payload->>'capitulo')::int = ?) + "
                         + "(SELECT COUNT(*) FROM bah_lib_audio WHERE archivo_id = ? AND voz_id = ? AND capitulo = ? "
-                        + "AND estado IN ('LISTO', 'GENERANDO'))",
+                        + "AND (estado IN ('LISTO', 'ERROR') OR (estado = 'GENERANDO' AND actualizado > " + HACE_UN_RATO + ")))",
                 Integer.class, VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, vozId, capitulo);
         if (vivos != null && vivos > 0) return false;
         jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
@@ -45,9 +52,18 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
     }
 
     @Override
+    public void reintentarVoz(UUID archivoId, String vozId, int capitulo, int prioridad) {
+        int filas = jdbc.update("UPDATE bah_lib_audio SET estado = 'PENDIENTE', error = NULL, actualizado = now() "
+                + "WHERE archivo_id = ? AND voz_id = ? AND capitulo = ? AND estado = 'ERROR'", archivoId, vozId, capitulo);
+        log.info("Reintento pedido de la voz {} capitulo {} del archivo {} ({} fila en ERROR)", vozId, capitulo,
+                archivoId, filas);
+        encolarVozSiFalta(archivoId, vozId, capitulo, prioridad);
+    }
+
+    @Override
     public Map<String, Object> estadoDelAudio(UUID archivoId, String vozId, int capitulo) {
         List<Map<String, Object>> filas = jdbc.queryForList(
-                "SELECT estado, duracion_seg FROM bah_lib_audio WHERE archivo_id = ? AND voz_id = ? AND capitulo = ?",
+                "SELECT estado, duracion_seg, error FROM bah_lib_audio WHERE archivo_id = ? AND voz_id = ? AND capitulo = ?",
                 archivoId, vozId, capitulo);
         return filas.isEmpty() ? null : filas.get(0);
     }

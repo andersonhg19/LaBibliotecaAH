@@ -18,10 +18,20 @@ public interface TrabajoRepository {
 
     UUID encolarConversion(UUID archivoId);
 
-    /** Encola la voz de un capitulo si no hay trabajo vivo ni audio LISTO/GENERANDO. */
+    /** Minutos sin latido tras los que un EN_CURSO o un GENERANDO se da por muerto (QA DA-01). El taller late cada 60 s y reabre los suyos a los 5 min; esto es la red de seguridad. */
+    int MINUTOS_SIN_LATIDO = 10;
+
+    /**
+     * Encola la voz de un capitulo si hace falta: no si hay un trabajo vivo
+     * (PENDIENTE, o EN_CURSO con latido reciente), ni audio LISTO, ni GENERANDO
+     * reciente, ni ERROR (un ERROR solo se reintenta con {@link #reintentarVoz}).
+     */
     boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad);
 
-    /** Fila de bah_lib_audio (estado, duracion_seg) o null. */
+    /** Un capitulo en ERROR vuelve a PENDIENTE y se encola (peticion explicita, QA DA-02). */
+    void reintentarVoz(UUID archivoId, String vozId, int capitulo, int prioridad);
+
+    /** Fila de bah_lib_audio (estado, duracion_seg, error) o null. */
     Map<String, Object> estadoDelAudio(UUID archivoId, String vozId, int capitulo);
 
     void olvidarArchivo(UUID archivoId);

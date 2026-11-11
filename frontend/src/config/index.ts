@@ -12,3 +12,6 @@ export const VOZ_POR_DEFECTO = 'edge.es-ES-AlvaroNeural'
 
 /** Zona horaria de la casa (estándar 12). */
 export const ZONA_HORARIA = 'America/Bogota'
+
+/** Tope por archivo al subir (el mismo que `spring.servlet.multipart.max-file-size` del backend). */
+export const TOPE_ARCHIVO_MB = 300

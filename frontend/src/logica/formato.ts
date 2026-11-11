@@ -20,6 +20,29 @@ export function reloj(segundos: number | null | undefined): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
 
+/**
+ * "1 libro", "3 libros", "1 documento", "0 deseos" (UX-18/19). Las cifras van
+ * siempre con su palabra y en su número: nunca "1 documentos".
+ */
+export function plural(n: number, singular: string, enPlural = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : enPlural}`
+}
+
+/** Qué se cuenta en cada pestaña del catálogo: deseos, documentos o libros. */
+export function cuentaDePestana(pestana: string, n: number): string {
+  if (pestana === 'DESEOS') return plural(n, 'deseo')
+  if (pestana === 'DOCUMENTOS') return plural(n, 'documento')
+  return plural(n, 'libro')
+}
+
+/** Lo que queda por leer de un libro, en tiempo de voz: "quedan 2 h 10 min". */
+export function tiempoRestante(minutos: number | null | undefined, porcentaje: number): string | null {
+  if (!minutos || minutos <= 0) return null
+  const resto = Math.round(minutos * (1 - Math.max(0, Math.min(100, porcentaje || 0)) / 100))
+  if (resto <= 0) return null
+  return `${resto === 1 || resto === 60 ? 'queda' : 'quedan'} ${duracion(resto)}`
+}
+
 export const autoresTexto = (autores: string[] | null | undefined) =>
   autores && autores.length ? autores.join(', ') : 'Autor desconocido'
 
@@ -85,3 +108,20 @@ export const seEstaPreparando = (l: Pick<EjemplarDTO, 'estadoConversion' | 'arch
 /** Si se puede abrir en el lector. */
 export const sePuedeLeer = (l: Pick<EjemplarDTO, 'estadoConversion' | 'archivoId' | 'tipo'>) =>
   l.tipo !== 'DESEO' && !!l.archivoId && l.estadoConversion === 'LISTO'
+
+/**
+ * ¿El servidor aplicó lo que se le mandó? (BI-07/BI-08) Si se pidió vaciar un
+ * campo (null) o cambiar un número, un estado o un sí/no, y la respuesta trae
+ * otra cosa, NO se aplicó: la pantalla no puede decir "Guardado". Los textos y
+ * las listas no se comparan (el servidor puede normalizarlos con razón).
+ */
+export function seAplico(enviado: object, recibido: object | null | undefined): boolean {
+  if (!recibido) return true
+  const r = recibido as Record<string, unknown>
+  return Object.entries(enviado).every(([k, v]) => {
+    if (k === 'id' || !(k in r)) return true
+    if (v === null) return r[k] === null || r[k] === undefined
+    if (typeof v === 'number' || typeof v === 'boolean') return r[k] === v
+    return true
+  })
+}

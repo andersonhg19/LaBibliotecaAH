@@ -4,6 +4,8 @@ import { StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-
 
 import { useTheme } from '@contextos/ThemeContext'
 import { spacing } from '@tema'
+import { panel } from '@tema/materiales'
+import { web } from '@tema/web'
 
 interface CardProps {
   /** Lo que anuncia el lector de pantalla. */
@@ -22,8 +24,9 @@ interface CardProps {
 }
 
 const Card: React.FC<CardProps> = ({ children, style, onPress, accessibilityLabel, accessible }) => {
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
 
+  /* Cuero de nogal de noche, papel marfil de día (sistema de materiales). */
   const cardStyle: ViewStyle = {
     backgroundColor: colors.card,
     borderRadius: 16,
@@ -35,6 +38,7 @@ const Card: React.FC<CardProps> = ({ children, style, onPress, accessibilityLabe
     elevation: 3,
     borderWidth: 1,
     borderColor: colors.border,
+    ...web(panel(isDark, colors)),
   }
 
   if (onPress) {

@@ -47,12 +47,39 @@ public class AlmacenDeArchivos {
         }
     }
 
+    /**
+     * Bytes libres en el disco de /datos (QA SE-07). Si no se puede saber, se
+     * devuelve Long.MAX_VALUE y queda en el log: no saber el espacio no debe
+     * impedir subir.
+     */
+    public long espacioLibre() {
+        try {
+            return Files.getFileStore(raiz).getUsableSpace();
+        } catch (IOException e) {
+            log.warn("No se pudo medir el espacio libre de {}: {}", raiz, e.getMessage());
+            return Long.MAX_VALUE;
+        }
+    }
+
     public Path carpetaOriginal(UUID archivoId) {
         return raiz.resolve("originales").resolve(archivoId.toString());
     }
 
     public Path normalizado(UUID archivoId, String nombre) {
         return raiz.resolve("normalizados").resolve(archivoId.toString()).resolve(nombre);
+    }
+
+    /** normalizados/{archivoId}/frases/cap-NNN.json (contratos.md §5). */
+    public Path frases(UUID archivoId, int capitulo) {
+        return normalizado(archivoId, "frases").resolve(String.format("cap-%03d.json", capitulo));
+    }
+
+    /**
+     * normalizados/{archivoId}/traducciones/{destino}/cap-NNN.json (contratos v1.3): compartido por
+     * archivo, no por usuario. Vive dentro de normalizados/{archivoId}, asi que se borra con el archivo.
+     */
+    public Path traduccion(UUID archivoId, String destino, int capitulo) {
+        return normalizado(archivoId, "traducciones").resolve(destino).resolve(String.format("cap-%03d.json", capitulo));
     }
 
     public Path audio(UUID archivoId, String vozId, String nombre) {
@@ -95,7 +122,7 @@ public class AlmacenDeArchivos {
         }
     }
 
-    static void borrarArbol(Path carpeta) {
+    public static void borrarArbol(Path carpeta) {
         if (!Files.exists(carpeta)) return;
         try (Stream<Path> arbol = Files.walk(carpeta)) {
             arbol.sorted(Comparator.reverseOrder()).forEach(AlmacenDeArchivos::borrarUno);

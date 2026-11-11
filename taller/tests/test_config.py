@@ -28,7 +28,7 @@ def test_ajustes_desde_entorno(monkeypatch, tmp_path):
     monkeypatch.setenv("TALLER_TRABAJADORES", "false")
     a = cargar_ajustes()
     assert a.db_url == "postgresql://a:b@c/d" and a.datos == tmp_path and a.trabajadores is False
-    assert a.puerto == 8926 and a.max_intentos == 3 and a.minutos_atascado == 30 and a.intervalo_seg == 2.0
+    assert a.puerto == 8926 and a.max_intentos == 3 and a.minutos_atascado == 5 and a.intervalo_seg == 2.0
     monkeypatch.delenv("TALLER_DATOS")
     assert str(AjustesBasicos().datos) == "datos-dev"
 

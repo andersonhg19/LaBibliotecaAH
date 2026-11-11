@@ -13,5 +13,5 @@ public interface EjemplarCustomRepository {
 
     Pagina buscar(Long usuarioId, FiltroLibrosDTO filtro, int page, int size);
 
-    FacetasDTO facetas(Long usuarioId);
+    FacetasDTO facetas(Long usuarioId, FiltroLibrosDTO.Pestana pestana);
 }

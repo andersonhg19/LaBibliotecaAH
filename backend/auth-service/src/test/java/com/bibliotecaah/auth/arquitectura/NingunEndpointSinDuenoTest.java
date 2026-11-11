@@ -74,6 +74,10 @@ class NingunEndpointSinDuenoTest {
                         + "que consultar. Lo que protege es la contrasena, no el aislamiento", null));
         EXENTAS.put("/v1/auth/register", new Exencion(
                 "publica por definicion: crea una cuenta nueva, no toca ninguna existente", null));
+        EXENTAS.put("/v1/auth/renovar", new Exencion(
+                "no recibe ningun identificador: renueva la sesion del propio token (userId del token)", null));
+        EXENTAS.put("/v1/auth/sesion", new Exencion(
+                "no recibe ningun identificador ni devuelve datos: solo confirma que el propio token vale", null));
     }
 
     /**

@@ -113,21 +113,25 @@ def _agregar(texto: str, a: int, b: int, rangos: list[tuple[int, int]]) -> None:
 
 
 def _partir_larga(texto: str, a: int, b: int) -> list[tuple[int, int]]:
-    if b - a <= MAX_FRASE:
-        return [(a, b)]
-    limite = a + MAX_FRASE
-    corte = -1
-    for separadores in ("; ", ": ", ", ", " "):
-        p = texto.rfind(separadores, a + MAX_FRASE // 3, limite)
-        if p != -1:
-            corte = p + len(separadores.rstrip())
-            break
-    if corte == -1:
-        corte = limite
-    izquierda = (a, corte)
-    resto = corte
-    while resto < b and texto[resto].isspace():
-        resto += 1
-    while izquierda[1] > izquierda[0] and texto[izquierda[1] - 1].isspace():
-        izquierda = (izquierda[0], izquierda[1] - 1)
-    return [izquierda, *_partir_larga(texto, resto, b)]
+    # iterativo: una "frase" de megabytes sin puntuación no debe agotar la pila (antes era recursivo)
+    salida: list[tuple[int, int]] = []
+    while b - a > MAX_FRASE:
+        limite = a + MAX_FRASE
+        corte = -1
+        for separadores in ("; ", ": ", ", ", " "):
+            p = texto.rfind(separadores, a + MAX_FRASE // 3, limite)
+            if p != -1:
+                corte = p + len(separadores.rstrip())
+                break
+        if corte == -1:
+            corte = limite
+        fin_izq = corte
+        while fin_izq > a and texto[fin_izq - 1].isspace():
+            fin_izq -= 1
+        salida.append((a, fin_izq))
+        a = corte
+        while a < b and texto[a].isspace():
+            a += 1
+    if a < b:
+        salida.append((a, b))
+    return salida

@@ -16,6 +16,7 @@ jest.mock('@servicios/adminService')
  * asi que no hay bucle.
  */
 jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ navigate: jest.fn(), goBack: jest.fn(), canGoBack: () => true }),
   useFocusEffect: (cb: () => unknown) => {
     const { useEffect } = require('react')
     useEffect(() => {
@@ -66,8 +67,8 @@ describe('AdminAuditScreen', () => {
   it('traduce las acciones a algo que se entiende leyendo', async () => {
     const { getByText } = render(<AdminAuditScreen />, { wrapper: Wrapper })
 
-    await waitFor(() => expect(getByText('Cambio los roles de alguien')).toBeTruthy())
-    expect(getByText('Entro')).toBeTruthy()
+    await waitFor(() => expect(getByText('Cambió los roles de alguien')).toBeTruthy())
+    expect(getByText('Entró')).toBeTruthy()
     expect(getByText('jefe@x.com')).toBeTruthy()
     expect(getByText('[USER] -> [USER, ADMIN]')).toBeTruthy()
   })
