@@ -1,7 +1,7 @@
 # La Biblioteca AH - Registro de Mejoras y Actividades
-## Estado: Planeacion (sin rama aun; repo por inicializar)
+## Estado: Ola 0 desplegada en casa (rama main, github.com/andersonhg19/LaBibliotecaAH)
 ## Microservicios propuestos: discovery (8860), gateway (8920), auth (8921, segun D1), biblioteca-service (8925), taller-service Python (8926)
-## Ultima actualizacion: 2026-11-10
+## Ultima actualizacion: 2026-11-11
 
 ---
 
@@ -88,3 +88,13 @@ Pendiente del backend: Karate; archivo huerfano en `originales/` si falla la tra
 **Humo de punta a punta por el gateway (todo OK):** login, token invalido → 401, subida de 2 archivos (EPUB + TXT) → LISTO en 2 s con metadatos del EPUB, EPUB con Range → 206, voces con Alvaro por defecto, audio cap. 0 con Alvaro LISTO en 8 s (1x, 2x y tiempos servidos con 206), progreso guardado y retomado, Samy no ve el libro de Anderson (404). CORS acepta `localhost:3100` y rechaza otros origenes (403).
 **Web real contra el backend (Chrome sin cabeza):** entrada → estanteria → ficha (indice con minutos) → lector (EPUB del servidor) → reproductor; todas las llamadas 200 y consola sin errores.
 - Verificacion final 2026-11-10: biblioteca-service 91 pruebas + puerta JaCoCo OK tras el cambio de permisos; motorAudio 11 pruebas OK; tsc y ESLint limpios; imagen web reconstruida.
+
+### 2026-11-11 - Ola 8 (adelantada): despliegue en casa
+- Repo publico `github.com/andersonhg19/LaBibliotecaAH` (cuenta personal), commit inicial `7aa9e05`; `.gitattributes` fija LF.
+- Imagenes `0.1.0` (web construida con `API_URL=https://casa.tail60fcb5.ts.net:7051`) → `docker save | gzip` (1 GB) → scp → `docker load` → `docker compose up -d --no-build` en `C:\srv\biblioteca-ah`.
+- `.env` de casa con secretos nuevos (solo en casa). Datos en `E:\LaBibliotecaAH\datos`.
+- Tailscale: **7050** web → 3100, **7051** API → 8920 (solo tailnet).
+- Humo en casa por la tailnet con la cuenta admin (luego retirados los libros): todo OK, conversion 4 s, voz Alvaro 4 s, CORS solo para el origen 7050.
+- Respaldo: `ops/respaldo.ps1` + tarea `BibliotecaAH-Respaldo` diaria 03:30; prueba manual OK (`D:\respaldos\biblioteca\2026-11-11_0004`).
+- Oh Churus sin cambios (contenedores siguen arriba).
+- Pendiente: probar en el iPhone y en el Android de Samy; retirar la prueba P1 (`bah-p1`, puerto 7052) cuando ya no haga falta.
