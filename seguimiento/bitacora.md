@@ -314,3 +314,13 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
   `C:\srv\biblioteca-ah-qa\qa\dev-docs\capturas\`.
 - Pendiente: XLS real (no se puede generar en el contenedor; probado con dobles), probar en iPhone real la selección
   de .md/.xlsx desde iCloud, y desplegar a producción (aplica V5).
+
+## 2026-11-12 — Versión 0.3.0 en producción
+
+- Commit `f8d9330`. Respaldo previo solo de bases (`D:\respaldos\biblioteca\2026-11-12_0325`, 0,08 MB). `.env` anterior en
+  `C:\srv\biblioteca-ah\.env.antes-0.3.0`. Imágenes construidas en la sesión de Windows y `up -d --no-build`.
+- Flyway aplicó la V5 (carpetas de documentos). Los 8 contenedores sanos.
+- Relleno de géneros: 19 archivos encolados y releídos; facetas tras el relleno: Fantasía 14, Romance 3, Suspense 2,
+  Ciencia ficción 1; etiquetas Novela 17, Juvenil 10.
+- Verificado: login de anderson, samy y admin; facetas; `/v1/carpetas/all`; web 200 local y por Tailscale (7050); CORS 7051.
+- Pendiente en iPhone real: voz por partes con pantalla bloqueada, zonas seguras del lector, elegir .md/.xlsx desde iCloud.
