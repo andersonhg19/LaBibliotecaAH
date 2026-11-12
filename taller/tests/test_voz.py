@@ -78,8 +78,8 @@ def test_ensamblar_tiempos_exactos(tmp_path):
     assert f["c000-s00003"]["t0"] == pytest.approx(3.0 + PAUSA_TITULO + PAUSA_FRASE)
     assert t["duracion"] == pytest.approx(3.5 + PAUSA_TITULO + PAUSA_FRASE)  # sin pausa tras la última
     assert f["c000-s00001"]["palabras"] == [
-        [0, 3, pytest.approx(1.8), pytest.approx(2.2)],
-        [4, 7, pytest.approx(2.3), pytest.approx(2.7)],
+        [0, 3, pytest.approx(1.1 + PAUSA_TITULO), pytest.approx(1.5 + PAUSA_TITULO)],
+        [4, 7, pytest.approx(1.6 + PAUSA_TITULO), pytest.approx(2.0 + PAUSA_TITULO)],
     ]
     assert (tmp_path / "x.raw").stat().st_size == round(t["duracion"] * audio.FRECUENCIA) * 2
     assert PAUSA_PARRAFO > PAUSA_FRASE

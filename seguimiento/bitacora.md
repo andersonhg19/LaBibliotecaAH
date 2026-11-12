@@ -324,3 +324,14 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
   Ciencia ficción 1; etiquetas Novela 17, Juvenil 10.
 - Verificado: login de anderson, samy y admin; facetas; `/v1/carpetas/all`; web 200 local y por Tailscale (7050); CORS 7051.
 - Pendiente en iPhone real: voz por partes con pantalla bloqueada, zonas seguras del lector, elegir .md/.xlsx desde iCloud.
+
+## 2026-11-12 — Arreglos tras probar la 0.3.0 en el iPhone
+
+- **Inicio tapado por la hora/muesca** (app instalada en el iPhone): todas las salas bajan `env(safe-area-inset-top)`
+  desde el `contentStyle` de la pila; el lector conserva su propio manejo (barra a sangre).
+- **«Ver texto» tapaba los controles de sonido**: el panel lleva abajo una barra compacta (frase anterior, −15 s,
+  reproducir/pausar, +15 s, frase siguiente) con la zona segura inferior.
+- **Pausas raras en la voz**: cada frase trae de edge-tts ~0,1 s de silencio delante y ~0,9 s detrás; sumado a la pausa
+  del taller quedaban 1,2 s entre frases y 1,7 s entre párrafos (medido en producción). `recortar_silencio` quita ese
+  silencio al ensamblar (por energía, sin cortar palabras) y deja solo la pausa del taller (0,25 / 0,50 / 0,80 s).
+  Con voz real: hueco entre frases 1,22 s → 0,27 s; el mismo fragmento 33,5 s → 26,0 s.

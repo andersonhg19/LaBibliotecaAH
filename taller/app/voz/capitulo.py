@@ -17,11 +17,13 @@ Si el libro se retira mientras se genera (`seguir()` devuelve False), se borra l
 
 from __future__ import annotations
 
+import array
 import asyncio
 import hashlib
 import json
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -40,9 +42,17 @@ from .motor import MotorDeVoz, Sintesis
 
 log = logging.getLogger(__name__)
 
+# Pausas tras cada frase. Son las ÚNICAS: el silencio que trae cada audio de edge-tts (~0,1 s delante y ~0,9 s
+# detrás) se recorta al ensamblar (`recortar_silencio`); sin ese recorte una pausa entre frases sumaba ~1,2 s y
+# entre párrafos ~1,7 s, y la lectura sonaba a trompicones (medido en producción el 2026-11-12).
 PAUSA_FRASE = 0.25
 PAUSA_PARRAFO = 0.50
-PAUSA_TITULO = 0.70
+PAUSA_TITULO = 0.80
+# Recorte: margen que se deja alrededor de la voz para no comerse ataques ni colas suaves (s, f, respiraciones).
+MARGEN_ANTES = 0.03
+MARGEN_DESPUES = 0.08
+UMBRAL_SILENCIO = 200  # |muestra| s16 por debajo de esto (~ -44 dBFS) es silencio
+VENTANA_SILENCIO = 240  # 10 ms a 24 kHz
 SILENCIO_SIN_TEXTO = 1.0  # duración del audio de un capítulo sin texto hablable
 
 # Frases con voz de cada parte: la primera, corta para sonar enseguida; la segunda da margen mientras se
@@ -102,6 +112,42 @@ class FraseSintetizada:
 
 def clave_cache(texto_voz: str, voz_id: str, version_motor: str) -> str:
     return hashlib.sha1(f"{texto_voz}\x1f{voz_id}\x1f{version_motor}".encode()).hexdigest()
+
+
+def _hay_voz(muestras: array.array[int], i: int) -> bool:
+    ventana = muestras[i : i + VENTANA_SILENCIO]
+    return bool(ventana) and max(abs(x) for x in ventana) > UMBRAL_SILENCIO
+
+
+def recortar_silencio(datos: bytes, palabras: list[tuple[str, float, float]]) -> tuple[bytes, float]:
+    """Quita el silencio de delante y de detrás del PCM de una frase. Devuelve (pcm, segundos quitados delante).
+
+    El borde se busca por energía (ventanas de 10 ms) y nunca corta dentro de una palabra según los tiempos de
+    edge-tts. Si no hay nada que suene por encima del umbral, se devuelve tal cual.
+    """
+    n = len(datos) // audio.BYTES_POR_MUESTRA
+    if n == 0:
+        return datos, 0.0
+    muestras = array.array("h")
+    muestras.frombytes(datos[: n * audio.BYTES_POR_MUESTRA])
+    if sys.byteorder != "little":
+        muestras.byteswap()
+    inicio = 0
+    while inicio < n and not _hay_voz(muestras, inicio):
+        inicio += VENTANA_SILENCIO
+    if inicio >= n:
+        return datos, 0.0
+    fin = n
+    while fin > inicio and not _hay_voz(muestras, max(inicio, fin - VENTANA_SILENCIO)):
+        fin -= VENTANA_SILENCIO
+    f = audio.FRECUENCIA
+    a = max(0, inicio - round(MARGEN_ANTES * f))
+    b = min(n, fin + round(MARGEN_DESPUES * f))
+    if palabras:  # nunca dentro de una palabra
+        a = min(a, max(0, round(min(p[1] for p in palabras) * f)))
+        b = max(b, min(n, round(max(p[2] for p in palabras) * f) + round(0.02 * f)))
+    bps = audio.BYTES_POR_MUESTRA
+    return datos[a * bps : b * bps], a / f
 
 
 def pausa_tras(frase: dict) -> float:
@@ -237,9 +283,10 @@ class Ensamblador:
             return None
         if len(datos) % 2:
             datos = datos[:-1]
+        datos, quitado = recortar_silencio(datos, s.palabras)
         self._escribir(datos, True)
         t1 = self.muestras / audio.FRECUENCIA
-        palabras = alinear_palabras(f["texto"], f["voz"], s.palabras, desplazamiento=t0)
+        palabras = alinear_palabras(f["texto"], f["voz"], s.palabras, desplazamiento=t0 - quitado)
         # las palabras nunca se salen de la frase
         palabras = [[a, b, min(max(x, t0), t1), min(max(y, t0), t1)] for a, b, x, y in palabras]
         self.salida.append({"id": f["id"], "t0": round(t0, 3), "t1": round(t1, 3), "palabras": palabras})

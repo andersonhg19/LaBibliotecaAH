@@ -354,6 +354,31 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
         titulo={tituloCap}
         fraseId={esteLibro ? v.fraseId : null}
         onTocarFrase={tocarFrase}
+        pie={
+          <>
+            <BotonIcono icono="fraseAnterior" etiqueta="Frase anterior" onPress={siEste(() => motor.fraseAnterior())} />
+            <BotonIcono icono="atras15" etiqueta="Retroceder 15 segundos" onPress={siEste(motor.atras15)} tamano={24} />
+            <BotonLaton
+              sonando={sonando}
+              ocupado={ocupado}
+              enError={enError}
+              onPress={alternar}
+              tamano={52}
+              testID="boton-play-texto"
+            />
+            <BotonIcono
+              icono="adelante15"
+              etiqueta="Adelantar 15 segundos"
+              onPress={siEste(motor.adelante15)}
+              tamano={24}
+            />
+            <BotonIcono
+              icono="fraseSiguiente"
+              etiqueta="Frase siguiente"
+              onPress={siEste(() => motor.fraseSiguiente())}
+            />
+          </>
+        }
         testID="panel-texto"
       />
     </Sala>

@@ -26,6 +26,7 @@ import LibroScreen from '@pantallas/libro/LibroScreen'
 import NotasScreen from '@pantallas/notas/NotasScreen'
 import ReproductorScreen from '@pantallas/reproductor/ReproductorScreen'
 import { fuentes } from '@tema'
+import { web } from '@tema/web'
 
 /*
  * Cada pantalla va dentro de su propio límite de errores: si una falla al
@@ -114,7 +115,9 @@ const AppNavigator: React.FC = () => {
         <Pila.Navigator
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
+            // En el iPhone (app instalada, viewport-fit=cover) la pantalla empieza bajo la hora y la muesca:
+            // cada sala baja lo que ocupa la barra de estado. El lector lo maneja él mismo (barra a sangre).
+            contentStyle: [{ backgroundColor: colors.background }, web({ paddingTop: 'env(safe-area-inset-top)' })],
             animation: 'fade',
           }}
         >
@@ -122,7 +125,11 @@ const AppNavigator: React.FC = () => {
             <>
               <Pila.Screen name="Biblioteca" component={pantalla(BibliotecaScreen)} />
               <Pila.Screen name="Libro" component={pantalla(LibroScreen)} />
-              <Pila.Screen name="Leer" component={pantalla(LectorScreen)} />
+              <Pila.Screen
+                name="Leer"
+                component={pantalla(LectorScreen)}
+                options={{ contentStyle: { backgroundColor: colors.background } }}
+              />
               <Pila.Screen name="Escuchar" component={pantalla(ReproductorScreen)} />
               <Pila.Screen name="Hoja" component={pantalla(HojaScreen)} />
               <Pila.Screen name="Documentos" component={pantalla(DocumentosScreen)} />

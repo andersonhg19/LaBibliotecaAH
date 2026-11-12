@@ -60,6 +60,8 @@ interface Props {
   fraseId: string | null
   /** Tocar una frase: llevar la voz ahí. */
   onTocarFrase: (fraseId: string) => void
+  /** Controles de sonido fijos abajo (pausar, saltar): el panel no los tapa en el teléfono. */
+  pie?: React.ReactNode
   testID?: string
 }
 
@@ -121,6 +123,7 @@ const PanelTexto: React.FC<Props> = ({
   titulo,
   fraseId,
   onTocarFrase,
+  pie,
   testID,
 }) => {
   const { colors, isDark } = useTheme()
@@ -315,7 +318,7 @@ const PanelTexto: React.FC<Props> = ({
           )}
 
           {!siguiendo && fraseVisible ? (
-            <View style={styles.volverCaja} pointerEvents="box-none">
+            <View style={[styles.volverCaja, pie ? { bottom: 96 } : null]} pointerEvents="box-none">
               <Pressable
                 onPress={volver}
                 accessibilityRole="button"
@@ -332,6 +335,18 @@ const PanelTexto: React.FC<Props> = ({
                   {TEXTOS_VER_TEXTO.volver}
                 </Text>
               </Pressable>
+            </View>
+          ) : null}
+          {pie ? (
+            <View
+              style={[
+                styles.pie,
+                { borderTopColor: colors.border, backgroundColor: colors.surface },
+                web({ paddingBottom: 'calc(6px + env(safe-area-inset-bottom))' }),
+              ]}
+              testID="panel-texto-controles"
+            >
+              {pie}
             </View>
           ) : null}
         </View>
@@ -365,6 +380,15 @@ const styles = StyleSheet.create({
   titulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, lineHeight: 30, marginTop: 6 },
   actual: { borderRadius: 4 },
   volverCaja: { position: 'absolute', left: 0, right: 0, bottom: 20, alignItems: 'center' },
+  pie: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 4,
+    paddingBottom: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   volver: {
     flexDirection: 'row',
     alignItems: 'center',
