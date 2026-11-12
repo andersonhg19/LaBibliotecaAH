@@ -12,6 +12,7 @@ import { ModoEstante } from '@componentes/estanteria/tiposLibro'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import Hoja from '@componentes/molecules/Hoja'
 import Sala from '@componentes/molecules/Sala'
+import Segmentos from '@componentes/molecules/Segmentos'
 import { ZONA_HORARIA } from '@config'
 import { useAuth } from '@contextos/AuthContext'
 import { useTheme } from '@contextos/ThemeContext'
@@ -27,10 +28,8 @@ import FichaLibro from '@pantallas/libro/FichaLibro'
 import { fontSize, fuentes } from '@tema'
 import { textoLegibleSobre } from '@tema/contraste'
 import { laton } from '@tema/madera'
-import { placaActiva } from '@tema/materiales'
 import { web } from '@tema/web'
 import type { EjemplarDTO, Orden, Pestana } from '@tipos'
-import { estadoElegible } from '@utils/aria'
 
 type Props = NativeStackScreenProps<Rutas, 'Biblioteca'>
 type Vista = 'estanteria' | 'catalogo'
@@ -134,42 +133,15 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const nombre = user?.name?.split(' ')[0] ?? 'lector'
 
   const segmentos = (
-    <View
-      style={[styles.segmentos, { borderColor: colors.border, backgroundColor: colors.card }]}
-      accessibilityRole="radiogroup"
-      accessibilityLabel="Cómo ver la biblioteca"
-    >
-      {(
-        [
-          ['estanteria', 'Estantería'],
-          ['catalogo', 'Catálogo'],
-        ] as [Vista, string][]
-      ).map(([v, n]) => (
-        <Pressable
-          key={v}
-          onPress={() => setVista(v)}
-          {...estadoElegible('radio', vista === v)}
-          accessibilityLabel={n}
-          testID={`vista-${v}`}
-          style={[
-            styles.segmento,
-            vista === v && { borderColor: colors.primaryLight },
-            vista === v && web(placaActiva(isDark)),
-            web({ cursor: 'pointer' }),
-          ]}
-        >
-          <Text
-            style={[
-              styles.segmentoTexto,
-              { color: vista === v ? colors.text : colors.textSecondary },
-              vista === v && styles.segmentoActivo,
-            ]}
-          >
-            {n}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
+    <Segmentos<Vista>
+      etiqueta="Cómo ver la biblioteca"
+      valor={vista}
+      onCambiar={setVista}
+      opciones={[
+        { clave: 'estanteria', nombre: 'Estantería', testID: 'vista-estanteria' },
+        { clave: 'catalogo', nombre: 'Catálogo', testID: 'vista-catalogo' },
+      ]}
+    />
   )
 
   const botonTraer = (flotante: boolean) => (
@@ -407,17 +379,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentos: { flexDirection: 'row', borderWidth: 1, borderRadius: 22, padding: 2 },
-  segmento: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  segmentoTexto: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs },
-  segmentoActivo: { fontFamily: fuentes.uiSemi },
   estanteria: { maxWidth: 1400, width: '100%', alignSelf: 'center', marginTop: 12 },
   panel: { width: 440, borderLeftWidth: 1 },
   panelBarra: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8 },

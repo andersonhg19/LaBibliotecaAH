@@ -1,8 +1,7 @@
 # Respaldo nocturno de La Biblioteca AH (estandares: pg_dump -Fc + sha256 + rotacion; imprime RESUMEN:/FALLA:).
 # Que se respalda:
 #   - auth_db y biblioteca_db con pg_dump -Fc (usuarios, ejemplares, progreso, notas, estantes...).
-#   - E:\LaBibliotecaAH\datos\originales en espejo (los archivos subidos son lo unico irrecuperable;
-#     normalizados y audio se regeneran desde el original con el taller).
+#   - NADA de libros, audio ni portadas: se decidio no copiarlos para no llenar el disco.
 # Uso: powershell -NoProfile -ExecutionPolicy Bypass -File respaldo.ps1 [-Destino D:\respaldos\biblioteca] [-Dias 14]
 param(
     [string]$Destino = 'D:\respaldos\biblioteca',
@@ -40,13 +39,8 @@ try {
         '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
     } | Set-Content (Join-Path $carpeta 'sha256.txt') -Encoding ascii
 
-    $origen = Join-Path $Datos 'originales'
-    if (Test-Path $origen) {
-        robocopy $origen (Join-Path $Destino 'originales-espejo') /MIR /R:2 /W:5 /NP /NFL /NDL /NJH /NJS | Out-Null
-        if ($LASTEXITCODE -ge 8) { throw "robocopy de originales fallo (codigo $LASTEXITCODE)" }
-    } else {
-        Escribir "AVISO: no existe $origen (sin libros todavia o disco E: desconectado)"
-    }
+    # Los LIBROS no se copian (decision de Anderson, 2026-11-11): una copia de la biblioteca
+    # gastaria el almacenamiento del servidor. Solo se respaldan las bases.
 
     $borradas = 0
     Get-ChildItem $Destino -Directory | Where-Object {
@@ -54,7 +48,7 @@ try {
     } | ForEach-Object { Remove-Item $_.FullName -Recurse -Force; $borradas++ }
 
     $mb = [math]::Round(((Get-ChildItem $carpeta -File | Measure-Object Length -Sum).Sum / 1MB), 2)
-    Escribir "RESUMEN: respaldo OK en $carpeta ($mb MB de bases), espejo de originales al dia, $borradas respaldos viejos rotados (> $Dias dias)"
+    Escribir "RESUMEN: respaldo OK en $carpeta ($mb MB de bases, sin libros), $borradas respaldos viejos rotados (> $Dias dias)"
     exit 0
 } catch {
     Escribir "FALLA: $($_.Exception.Message)"

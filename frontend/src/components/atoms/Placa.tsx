@@ -54,7 +54,11 @@ const Placa: React.FC<Props> = ({ titulo, detalle, accessibilityLabel, testID })
     <Text style={[styles.titulo, web({ textShadow: '0 1px 0 rgba(255,245,210,0.65)' })]} numberOfLines={1}>
       {titulo}
     </Text>
-    {detalle ? <Text style={[styles.detalle, styles.cifras]}>{detalle}</Text> : null}
+    {detalle ? (
+      <Text style={[styles.detalle, styles.cifras]} numberOfLines={1}>
+        {detalle}
+      </Text>
+    ) : null}
     <Tornillo />
   </View>
 )
@@ -78,7 +82,8 @@ const styles = StyleSheet.create({
     color: TINTA_LATON,
     flexShrink: 1,
   },
-  detalle: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs, color: TINTA_LATON },
+  /* La cuenta nunca se parte en dos líneas («1 / libro»): si falta sitio, encoge el nombre. */
+  detalle: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs, color: TINTA_LATON, flexShrink: 0 },
   cifras: { fontVariant: ['lining-nums', 'tabular-nums'] },
 })
 

@@ -315,6 +315,8 @@ const LibroEnEstante: React.FC<PropsLibroEnEstante> = (props) => {
       role="button"
       tabIndex={0}
       aria-label={etiquetaLibro(libro)}
+      /* Con el ratón encima, el título completo (aunque el lomo lo haya tenido que cortar). */
+      title={ordenando ? undefined : etiquetaLibro(libro)}
       aria-roledescription={ordenando ? 'libro que se puede mover' : 'libro'}
       data-testid={`libro-${libro.id}`}
       data-bah-estante={estanteId}

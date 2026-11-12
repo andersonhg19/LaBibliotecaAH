@@ -106,7 +106,8 @@ línea por petición con número de textos, caracteres, idiomas y ms; nunca el t
 
 - Manual: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\srv\biblioteca-ah\respaldo.ps1`
 - La última línea de `D:\respaldos\biblioteca\respaldo.log` dice `RESUMEN:` o `FALLA:`.
-- Se guardan 14 días. Los originales van en espejo (lo único irrecuperable); normalizados y audio se regeneran.
+- Se guardan 14 días. **Solo las bases de datos** (unos KB): los libros, el audio y las portadas NO se copian, por
+  decisión de Anderson (2026-11-11), para no gastar el almacenamiento del servidor.
 
 Restaurar una base (con el servicio dueño detenido):
 

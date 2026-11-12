@@ -17,6 +17,7 @@ import EmptyState from '@componentes/molecules/EmptyState'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import Hoja from '@componentes/molecules/Hoja'
+import SeccionFacetas from '@componentes/molecules/SeccionFacetas'
 import { useAuth } from '@contextos/AuthContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { mensajeDeError } from '@hooks/useCarga'
@@ -586,23 +587,6 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
   )
 }
 
-const SeccionFacetas: React.FC<{
-  titulo: string
-  valores: string[]
-  activos: string[]
-  onAlternar: (v: string) => void
-}> = ({ titulo, valores, activos, onAlternar }) =>
-  valores.length ? (
-    <View style={styles.seccion}>
-      <AppText variant="label">{titulo}</AppText>
-      <View style={styles.chips}>
-        {valores.map((v) => (
-          <Chip key={v} etiqueta={v} activo={activos.includes(v)} onPress={() => onAlternar(v)} />
-        ))}
-      </View>
-    </View>
-  ) : null
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   contenido: { paddingBottom: HUECO_FLOTANTE, maxWidth: 1400, width: '100%', alignSelf: 'center' },
@@ -647,7 +631,6 @@ const styles = StyleSheet.create({
   },
   fichaTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.md },
   fichaMeta: { fontFamily: fuentes.ui, fontSize: fontSize.xs, marginVertical: 3 },
-  seccion: { gap: 2 },
   anios: { flexDirection: 'row', gap: 10 },
   pie: { height: 40 },
 })

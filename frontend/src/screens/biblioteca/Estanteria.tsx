@@ -1,16 +1,30 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { StyleSheet, View } from 'react-native'
 
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
 import Spinner from '@componentes/atoms/Spinner'
 import Atril from '@componentes/estanteria/Atril'
+import BarraBaldas from '@componentes/estanteria/BarraBaldas'
 import Estante from '@componentes/estanteria/Estante'
 import Mueble, { Modulo } from '@componentes/estanteria/Mueble'
 import { ModoEstante } from '@componentes/estanteria/tiposLibro'
+import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
+import { useAuth } from '@contextos/AuthContext'
 import { useToast } from '@contextos/ToastContext'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { usePreparacion } from '@hooks/usePreparacion'
+import {
+  Agrupacion,
+  PREFERENCIAS_INICIALES,
+  PreferenciasEstanteria,
+  agruparLibros,
+  claveEstanteria,
+  leerPreferenciasEstanteria,
+} from '@logica/agrupar'
+import { EstadoFiltros, aFiltroDTO, contarFiltros } from '@logica/filtros'
 import { movimientoDeOrden } from '@logica/orden'
 import { estantesService, librosService } from '@servicios/bibliotecaService'
 import type { EjemplarDTO, EstanteDTO, Orden, Pestana } from '@tipos'
@@ -39,6 +53,29 @@ interface Datos {
   /** Cuántos libros hay en total (para "24 de 40"); null si no se sabe. */
   totalRecientes: number | null
   estantes: { estante: EstanteDTO; libros: EjemplarDTO[] }[]
+  /** Todos los libros (con los filtros puestos): solo al agrupar por género/autor o al filtrar. */
+  todos: EjemplarDTO[] | null
+  /** Con qué agrupación se pidieron (al cambiarla, hasta que llegan los nuevos, se espera). */
+  agrupar: Agrupacion
+}
+
+/** Página grande (el máximo del servidor) y tope de páginas al traer toda la biblioteca. */
+const PAGINA_TODOS = 200
+const MAX_PAGINAS_TODOS = 10
+
+/**
+ * TODOS LOS LIBROS (con los filtros de la estantería) para agrupar en el
+ * cliente: hasta 2000, en páginas de 200. Solo libros (sin documentos ni deseos).
+ */
+export async function pedirTodos(filtros: EstadoFiltros): Promise<EjemplarDTO[]> {
+  const libros: EjemplarDTO[] = []
+  for (let page = 0; page < MAX_PAGINAS_TODOS; page++) {
+    const r = exigir(await librosService.todos(aFiltroDTO(filtros, page, PAGINA_TODOS)))
+    if (!r) break
+    libros.push(...r.list.filter((l) => l.tipo === 'LIBRO'))
+    if (page + 1 >= (r.totalPage ?? 1) || !r.list.length) break
+  }
+  return libros
 }
 
 /** Cuántos se enseñan en "Recién llegados". */
@@ -110,33 +147,63 @@ const Estanteria: React.FC<Props> = ({
   apaisado = false,
 }) => {
   const { showToast } = useToast()
+  const { user } = useAuth()
   const [datos, setDatos] = useState<Datos | null>(null)
   const [ordenando, setOrdenando] = useState(false)
   const ordenEnCurso = useRef(false)
+  /* Cómo agrupar y filtrar las baldas: se recuerda POR USUARIO, como los filtros del catálogo. */
+  const [prefs, setPrefs] = useState<PreferenciasEstanteria>(PREFERENCIAS_INICIALES)
+  const [listos, setListos] = useState(false)
+  const { agrupar, filtros } = prefs
+  const filtrando = contarFiltros(filtros) > 0
+  /* Lo que cambia QUÉ se pide (el orden de las baldas solo cambia cómo se pinta). */
+  const claveFiltros = JSON.stringify([filtros.autores, filtros.generos, filtros.formatos])
+
+  useEffect(() => {
+    AsyncStorage.getItem(claveEstanteria(user?.userId))
+      .then((g) => setPrefs(leerPreferenciasEstanteria(g)))
+      .catch(() => {})
+      .finally(() => setListos(true))
+  }, [user?.userId])
+
+  const cambiarPrefs = useCallback(
+    (p: PreferenciasEstanteria) => {
+      setPrefs(p)
+      AsyncStorage.setItem(claveEstanteria(user?.userId), JSON.stringify(p)).catch(() => {})
+    },
+    [user?.userId],
+  )
 
   const tarea = useCallback(async () => {
-    const [leyendo, recientes, estantes] = await Promise.all([
+    const porColecciones = agrupar === 'COLECCIONES'
+    const [leyendo, recientes, estantes, todos] = await Promise.all([
       librosService.todos({ pestana: 'LEYENDO', orden: 'ULTIMO_ABIERTO', page: 0, size: 20 }),
-      pedirRecientes(),
-      estantesService.todos(),
+      porColecciones && !filtrando ? pedirRecientes() : null,
+      porColecciones ? estantesService.todos() : null,
+      !porColecciones || filtrando ? pedirTodos(filtros) : null,
     ])
-    const lista = exigir(estantes) ?? []
+    const lista = estantes ? (exigir(estantes) ?? []) : []
     const conLibros = await Promise.all(
       lista.map(async (e) => ({ estante: e, libros: exigir(await estantesService.libros(e.id)) ?? [] })),
     )
     conLibros.sort((a, b) => (a.estante.tipo === 'FAVORITOS' ? -1 : b.estante.tipo === 'FAVORITOS' ? 1 : 0))
+    /* Filtrando por colecciones: cada balda enseña solo los libros que pasan el filtro. */
+    const pasan = todos ? new Set(todos.map((l) => l.id)) : null
     setDatos({
       leyendo: (exigir(leyendo)?.list ?? []).filter((l) => l.tipo === 'LIBRO'),
-      recientes: recientes.libros,
-      totalRecientes: recientes.total,
-      estantes: conLibros,
+      recientes: recientes ? recientes.libros : (todos ?? []).slice(0, EN_RECIENTES),
+      totalRecientes: recientes ? recientes.total : (todos?.length ?? null),
+      estantes: pasan ? conLibros.map((e) => ({ ...e, libros: e.libros.filter((l) => pasan.has(l.id)) })) : conLibros,
+      todos,
+      agrupar,
     })
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- claveFiltros resume autores/géneros/formatos
+  }, [agrupar, claveFiltros])
   const { cargando, error, cargar } = useCarga(tarea)
 
   useEffect(() => {
-    cargar()
-  }, [cargar, version])
+    if (listos) cargar()
+  }, [cargar, version, listos])
 
   const reemplazar = useCallback((l: EjemplarDTO) => {
     setDatos(
@@ -146,6 +213,7 @@ const Estanteria: React.FC<Props> = ({
           leyendo: d.leyendo.map((x) => (x.id === l.id ? l : x)),
           recientes: d.recientes.map((x) => (x.id === l.id ? l : x)),
           estantes: d.estantes.map((e) => ({ ...e, libros: e.libros.map((x) => (x.id === l.id ? l : x)) })),
+          todos: d.todos && d.todos.map((x) => (x.id === l.id ? l : x)),
         },
     )
   }, [])
@@ -177,59 +245,156 @@ const Estanteria: React.FC<Props> = ({
     }
   }
 
-  if (cargando && !datos) return <Spinner />
-  if (error && !datos) return <EstadoError mensaje={error} onReintentar={cargar} />
+  /* Por género o autor: las baldas salen de agrupar todos los libros (si el filtro es de
+     ese mismo tipo, solo sus baldas). */
+  const grupos = useMemo(() => {
+    if (agrupar === 'COLECCIONES' || !datos?.todos || datos.agrupar !== agrupar) return null
+    return agruparLibros(datos.todos, agrupar, prefs.orden, agrupar === 'GENERO' ? filtros.generos : filtros.autores)
+  }, [agrupar, datos?.todos, datos?.agrupar, prefs.orden, filtros.generos, filtros.autores])
+
+  const barra = <BarraBaldas prefs={prefs} onCambiar={cambiarPrefs} version={version} />
+  const quitarFiltros = () => cambiarPrefs({ ...prefs, filtros: PREFERENCIAS_INICIALES.filtros })
+
+  if (cargando && !datos)
+    return (
+      <View testID="estanteria">
+        {barra}
+        <Spinner />
+      </View>
+    )
+  if (error && !datos)
+    return (
+      <View testID="estanteria">
+        {barra}
+        <EstadoError mensaje={error} onReintentar={cargar} />
+      </View>
+    )
   if (!datos) return null
 
   const columnas = columnasDeMueble(ancho)
   const escala = columnas > 1 ? 1.08 : 1
-  const filas = filasDeModulos(1 + datos.estantes.length, columnas)
-  const porFila = Math.max(...filas, 1)
-  const anchoBalda = Math.max(280, (ancho - 40) / porFila - (porFila > 1 ? 12 : 0))
+  const anchoDe = (n: number) => {
+    const filas = filasDeModulos(n, columnas)
+    const porFila = Math.max(...filas, 1)
+    return { filas, anchoBalda: Math.max(280, (ancho - 40) / porFila - (porFila > 1 ? 12 : 0)) }
+  }
 
-  const baldas: React.ReactElement[] = [
-    <Estante
-      key="recientes"
-      id="recientes"
-      indiceBalda={0}
-      titulo="Recién llegados"
-      libros={datos.recientes}
-      total={datos.totalRecientes}
-      onVerTodos={onVerCatalogo ? () => onVerCatalogo('TODO', 'RECIENTES') : undefined}
-      modo={modo}
-      onAbrir={onAbrir}
-      anchoBalda={anchoBalda}
-      escala={escala}
-      vacio="Aquí aparecen los libros que vas trayendo."
-      accionVacio={onTraer ? { titulo: 'Traer libros', icono: 'upload', onPress: onTraer } : undefined}
-    />,
-    ...datos.estantes.map(({ estante, libros }, i) => (
-      <Estante
-        key={estante.id}
-        indiceBalda={i + 1}
-        id={estante.id}
-        titulo={estante.nombre}
-        libros={libros}
-        modo={modo}
-        colorMadera={estante.colorMadera}
-        onAbrir={onAbrir}
-        anchoBalda={anchoBalda}
-        escala={escala}
-        ordenable={estante.tipo === 'FAVORITOS'}
-        ordenando={estante.tipo === 'FAVORITOS' && ordenando}
-        onAlternarOrden={() => setOrdenando((o) => !o)}
-        onReordenar={(d, h) => reordenar(estante.id, d, h)}
-        vacio={
-          estante.tipo === 'FAVORITOS'
-            ? 'Marca un libro con ♥ y aparecerá aquí.'
-            : 'Añade libros a esta colección desde su ficha, en «Datos».'
-        }
-      />
-    )),
-  ]
+  /* Cambiando de agrupación, mientras llegan los libros, una espera y no baldas vacías. */
+  const esperando = datos.agrupar !== agrupar || (agrupar !== 'COLECCIONES' && !grupos)
+  const nBaldas = grupos ? Math.max(1, grupos.length) : 1 + datos.estantes.length
+  const { filas, anchoBalda } = anchoDe(nBaldas)
+
+  const baldasPorGrupo = (gs: NonNullable<typeof grupos>): React.ReactElement[] =>
+    gs.length
+      ? gs.map((g, i) => (
+          <Estante
+            key={`grupo-${g.clave}`}
+            id={`grupo-${g.clave}`}
+            indiceBalda={i}
+            titulo={g.nombre}
+            libros={g.libros}
+            modo={modo}
+            onAbrir={onAbrir}
+            anchoBalda={anchoBalda}
+            escala={escala}
+            acciones={
+              g.resto || gs.length < 2 ? null : (
+                <BotonIcono
+                  icono="filtro"
+                  etiqueta={`Ver solo ${g.nombre}`}
+                  onPress={() =>
+                    cambiarPrefs({
+                      ...prefs,
+                      filtros:
+                        agrupar === 'GENERO'
+                          ? { ...filtros, generos: [g.nombre] }
+                          : { ...filtros, autores: [g.nombre] },
+                    })
+                  }
+                  testID={`solo-${g.clave}`}
+                  tamano={20}
+                />
+              )
+            }
+          />
+        ))
+      : [
+          <Estante
+            key="nada"
+            id="nada"
+            titulo={filtrando ? 'Nada coincide' : 'Sin libros'}
+            libros={[]}
+            modo={modo}
+            onAbrir={onAbrir}
+            anchoBalda={anchoBalda}
+            escala={escala}
+            vacio={
+              filtrando
+                ? 'Ningún libro pasa estos filtros. Prueba quitando alguno.'
+                : 'Aquí aparecen los libros que vas trayendo.'
+            }
+            accionVacio={
+              filtrando
+                ? { titulo: 'Quitar filtros', icono: 'close', onPress: quitarFiltros }
+                : onTraer
+                  ? { titulo: 'Traer libros', icono: 'upload', onPress: onTraer }
+                  : undefined
+            }
+          />,
+        ]
+
+  const baldas: React.ReactElement[] = grupos
+    ? baldasPorGrupo(grupos)
+    : [
+        <Estante
+          key="recientes"
+          id="recientes"
+          indiceBalda={0}
+          titulo={filtrando ? 'Lo que coincide' : 'Recién llegados'}
+          libros={datos.recientes}
+          total={datos.totalRecientes}
+          onVerTodos={onVerCatalogo && !filtrando ? () => onVerCatalogo('TODO', 'RECIENTES') : undefined}
+          modo={modo}
+          onAbrir={onAbrir}
+          anchoBalda={anchoBalda}
+          escala={escala}
+          vacio={filtrando ? 'Ningún libro pasa estos filtros.' : 'Aquí aparecen los libros que vas trayendo.'}
+          accionVacio={
+            filtrando
+              ? { titulo: 'Quitar filtros', icono: 'close', onPress: quitarFiltros }
+              : onTraer
+                ? { titulo: 'Traer libros', icono: 'upload', onPress: onTraer }
+                : undefined
+          }
+        />,
+        ...datos.estantes.map(({ estante, libros }, i) => (
+          <Estante
+            key={estante.id}
+            indiceBalda={i + 1}
+            id={estante.id}
+            titulo={estante.nombre}
+            libros={libros}
+            modo={modo}
+            colorMadera={estante.colorMadera}
+            onAbrir={onAbrir}
+            anchoBalda={anchoBalda}
+            escala={escala}
+            ordenable={estante.tipo === 'FAVORITOS'}
+            ordenando={estante.tipo === 'FAVORITOS' && ordenando}
+            onAlternarOrden={() => setOrdenando((o) => !o)}
+            onReordenar={(d, h) => reordenar(estante.id, d, h)}
+            vacio={
+              estante.tipo === 'FAVORITOS'
+                ? 'Marca un libro con ♥ y aparecerá aquí.'
+                : 'Añade libros a esta colección desde su ficha, en «Datos».'
+            }
+          />
+        )),
+      ]
 
   return (
     <View testID="estanteria">
+      {barra}
       <Mueble testID="mueble" grande={columnas > 1} apaisado={apaisado}>
         <Atril
           libros={datos.leyendo}
@@ -239,20 +404,24 @@ const Estanteria: React.FC<Props> = ({
           onSeguir={columnas > 1 && !apaisado ? onSeguir : undefined}
           onVerTodos={() => onVerCatalogo?.('LEYENDO', 'ULTIMO_ABIERTO')}
         />
-        {columnas > 1
-          ? filas.map((n, f) => {
-              const desde = filas.slice(0, f).reduce((a, b) => a + b, 0)
-              return (
-                <View key={f} style={styles.modulos}>
-                  {baldas.slice(desde, desde + n).map((b, i) => (
-                    <Modulo key={b.key} ancho={`${100 / n}%`} conSeparador={i > 0}>
-                      {b}
-                    </Modulo>
-                  ))}
-                </View>
-              )
-            })
-          : baldas}
+        {esperando ? (
+          <Spinner />
+        ) : columnas > 1 ? (
+          filas.map((n, f) => {
+            const desde = filas.slice(0, f).reduce((a, b) => a + b, 0)
+            return (
+              <View key={f} style={styles.modulos}>
+                {baldas.slice(desde, desde + n).map((b, i) => (
+                  <Modulo key={b.key} ancho={`${100 / n}%`} conSeparador={i > 0}>
+                    {b}
+                  </Modulo>
+                ))}
+              </View>
+            )
+          })
+        ) : (
+          baldas
+        )}
       </Mueble>
     </View>
   )

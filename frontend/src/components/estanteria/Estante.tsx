@@ -258,9 +258,9 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     marginBottom: 4,
     gap: 8,
-    flexWrap: 'wrap',
   },
-  acciones: { flexDirection: 'row', alignItems: 'center' },
+  /* Las acciones no se van a otra línea: la placa encoge su nombre (con «…») antes. */
+  acciones: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   verTodos: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 },
   verTodosTexto: { fontFamily: fuentes.uiSemi, fontSize: fontSize.sm },
   ayuda: { fontFamily: fuentes.ui, fontSize: fontSize.xs, paddingHorizontal: 14, marginBottom: 6 },
