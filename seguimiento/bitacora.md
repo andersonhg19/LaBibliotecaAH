@@ -335,3 +335,9 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
   del taller quedaban 1,2 s entre frases y 1,7 s entre párrafos (medido en producción). `recortar_silencio` quita ese
   silencio al ensamblar (por energía, sin cortar palabras) y deja solo la pausa del taller (0,25 / 0,50 / 0,80 s).
   Con voz real: hueco entre frases 1,22 s → 0,27 s; el mismo fragmento 33,5 s → 26,0 s.
+
+## 2026-11-12 — Versión 0.3.1 en producción
+
+- Commit `36f6b73`. Respaldo de bases `D:\respaldos\biblioteca\2026-11-12_0859`; `.env` anterior en `.env.antes-0.3.1`.
+- Los 18 capítulos de voz ya generados se marcaron PENDIENTE (prioridad 200) y se reensamblaron desde la caché de frases
+  en ~3 min. Capítulo 5 de prueba: 2015 s → 1650 s; hueco entre frases p50 0,28 s, p90 0,53 s (antes ~1,2 s).
