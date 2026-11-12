@@ -43,4 +43,8 @@ public interface EjemplarRepository extends JpaRepository<Ejemplar, UUID>, Ejemp
     @Query("SELECT e FROM Ejemplar e JOIN FETCH e.obra o "
             + "WHERE e.archivo.id = :archivoId AND o.fuenteMetadatos = :fuente")
     List<Ejemplar> conObraProvisional(@Param("archivoId") UUID archivoId, @Param("fuente") FuenteMetadatos fuente);
+
+    /** Los ejemplares (de cualquier usuario) que leen ese archivo, con su obra. */
+    @Query("SELECT e FROM Ejemplar e JOIN FETCH e.obra WHERE e.archivo.id = :archivoId")
+    List<Ejemplar> porArchivo(@Param("archivoId") UUID archivoId);
 }

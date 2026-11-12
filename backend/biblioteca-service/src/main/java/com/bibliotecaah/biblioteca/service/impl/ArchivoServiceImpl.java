@@ -34,8 +34,12 @@ public class ArchivoServiceImpl implements ArchivoService {
     public static final MediaType EPUB = MediaType.parseMediaType("application/epub+zip");
     public static final MediaType M4A = MediaType.parseMediaType("audio/mp4");
     public static final MediaType MP3 = MediaType.parseMediaType("audio/mpeg");
+    static final MediaType TEXTO = MediaType.parseMediaType("text/plain;charset=UTF-8");
 
-    static final Pattern FICHERO_DE_AUDIO = Pattern.compile("^cap-(\\d{3})(-2x\\.m4a|\\.m4a|\\.tiempos\\.json)$");
+    /* (v1.5) Tambien las partes de la sintesis progresiva: cap-NNN.partes.json y cap-NNN.parte-KKK.m4a. */
+    static final Pattern FICHERO_DE_AUDIO = Pattern.compile(
+            "^cap-(\\d{3})(-2x\\.m4a|\\.m4a|\\.tiempos\\.json|\\.partes\\.json|\\.parte-\\d{3}\\.m4a)$");
+    static final Pattern FICHERO_DE_FRASES = Pattern.compile("^cap-(\\d{3})\\.json$");
 
     private final ArchivoRepository archivos;
     private final EjemplarRepository ejemplares;
@@ -85,6 +89,21 @@ public class ArchivoServiceImpl implements ArchivoService {
     }
 
     @Override
+    public Binario frases(UUID archivoId, String fichero) {
+        exigirDueno(archivoId);
+        Matcher m = FICHERO_DE_FRASES.matcher(fichero == null ? "" : fichero);
+        ValidationUtils.exigir(m.matches(), Message.Msj.archivoNoEncontrado, CodigoError.NO_ENCONTRADO);
+        return existente(almacen.frases(archivoId, Integer.parseInt(m.group(1))), MediaType.APPLICATION_JSON, null);
+    }
+
+    /** (v1.6) La hoja de calculo convertida por el taller (contratos §11), para el visor de hojas. */
+    @Override
+    public Binario hoja(UUID archivoId) {
+        exigirDueno(archivoId);
+        return existente(almacen.normalizado(archivoId, "hoja.json"), MediaType.APPLICATION_JSON, null);
+    }
+
+    @Override
     public Binario muestra(String vozId) {
         SecurityUtils.usuarioActual();
         ValidationUtils.vozId(vozId);
@@ -109,7 +128,16 @@ public class ArchivoServiceImpl implements ArchivoService {
             case PDF -> MediaType.APPLICATION_PDF;
             case DOCX -> MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
             case DOC -> MediaType.parseMediaType("application/msword");
-            case TXT -> MediaType.parseMediaType("text/plain;charset=UTF-8");
+            /* (v1.6) Lo que es texto se sirve como texto plano: un HTML subido NUNCA se pinta como
+               pagina en el origen de la API (sus scripts no corren). */
+            case TXT, MD, HTML, JSON, YAML, LOG -> TEXTO;
+            case CSV -> MediaType.parseMediaType("text/csv;charset=UTF-8");
+            case RTF -> MediaType.parseMediaType("application/rtf");
+            case ODT -> MediaType.parseMediaType("application/vnd.oasis.opendocument.text");
+            case ODS -> MediaType.parseMediaType("application/vnd.oasis.opendocument.spreadsheet");
+            case PPTX -> MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+            case XLSX -> MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            case XLS -> MediaType.parseMediaType("application/vnd.ms-excel");
         };
     }
 }

@@ -1,9 +1,91 @@
 # Contratos entre componentes — La Biblioteca AH
 
 > Fuente de verdad técnica compartida por `backend/`, `taller/` y `frontend/`.
-> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.3.2 — 2026-11-11.**
+> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.6 — 2026-11-12.**
 
 ## Cambios
+
+### v1.6 — 2026-11-12 (más formatos de documentos, visor de hojas de cálculo y carpetas del archivador)
+Todo es **aditivo**: lo que ya existía responde igual (salvo el texto de `formatoNoSoportado`, que lista los formatos nuevos).
+- **Formatos nuevos** (`formatoOriginal`, `VARCHAR(10)` sin cambio de esquema): `MD` (.md .markdown), `HTML` (.html .htm
+  .xhtml), `RTF`, `ODT`, `PPTX`, `JSON`, `YAML` (.yaml .yml), `LOG` → el taller los convierte al **EPUB normalizado** (lector,
+  voz, notas, subrayado, traducción); `XLSX`, `XLS`, `ODS`, `CSV` (.csv .tsv) → **hojas de cálculo**: el taller NO genera
+  `libro.epub` ni `frases/`, sino `hoja.json` (§11) para el visor de hojas. Mismos topes de subida que siempre.
+- **Detección por contenido** (biblioteca-service y taller): los ZIP por dentro (EPUB: `mimetype` o `META-INF/container.xml`;
+  DOCX/XLSX/PPTX: el tipo de la parte principal en `[Content_Types].xml` o, si no lo declara, `word/document.xml` /
+  `xl/workbook.xml` / `ppt/presentation.xml`; ODT/ODS: su `mimetype`); los OLE por sus flujos (`WordDocument` = DOC,
+  `Workbook`/`Book` = XLS); RTF por `{\rtf`; los de texto, sin bytes nulos. Un .xlsx que es un Word, un .xls que es un Word o
+  un .doc que es un Excel → 120 `formatoNoCoincide`. Compatibilidad: un EPUB/DOCX/DOC cuyo contenido no se puede leer o no
+  se reconoce entra como antes (por su firma) y decide el taller. Las variantes con macros (xlsm/docm/pptm renombradas) se
+  aceptan como su formato: las macros **nunca** se ejecutan (solo se leen los valores guardados).
+- **Cómo se ve cada uno** (taller): Markdown con pandoc `gfm` (títulos, listas, **listas de tareas** →
+  `li.bah-tarea[.bah-tarea-hecha]` con la casilla pintada por CSS, tablas en `div.bah-tabla` con desplazamiento horizontal,
+  citas `blockquote.bah-cita`, código `pre.bah-codigo` que se ve tal cual y **no se segmenta ni se lee en voz**); HTML y el
+  HTML de Markdown pasan por la lista blanca del taller (fuera script, iframe, object, form, svg, estilos, `on*`; enlaces solo
+  http/https/mailto); RTF y ODT por LibreOffice a DOCX; PPTX un capítulo por diapositiva («Diapositiva N · título»; ocultas
+  fuera; notas del orador visibles pero no leídas); JSON/YAML/LOG una línea por párrafo monoespaciado con su sangría
+  (`p.bah-linea.bah-sangria-N`), capítulos de 800 líneas, JSON reindentado si es válido (≤ 4 MB).
+- **biblioteca** `GET /v1/archivos/{archivoId}/hoja.json` (nuevo, como `libro.epub`: `?t=`, dueño, 404/503 con HTTP real).
+  El **original** de MD/HTML/JSON/YAML/LOG/TXT se sirve como `text/plain` (un HTML subido nunca se pinta como página).
+- **Carpetas del archivador** (solo documentos, cada una de su usuario; Flyway **V5**): tabla `bah_lib_carpeta`
+  (`padre_id` NULL = raíz) y columna `bah_lib_ejemplar.carpeta_id` (NULL = raíz; libros y deseos siempre NULL).
+  `EjemplarDTO.carpetaId` nuevo. Endpoints `/v1/carpetas/*` en §9. Un documento que pasa a LIBRO sale de su carpeta.
+  Retirar un documento conserva su carpeta (vuelve a ella si se sube otra vez y la carpeta sigue; si no, a la raíz).
+- **biblioteca** `POST /v1/libros/subir` acepta `carpetaId?` (multipart): los documentos que **llegan** (no los que ya tenías)
+  entran en esa carpeta. Solo con `tipo=DOCUMENTO` y sin `deseoId` (si no, 120 `carpetaSoloDocumentos`); carpeta ajena o
+  inexistente → 102 `carpetaNoEncontrada`; se valida antes de copiar nada.
+
+### v1.5 — 2026-11-12 (la voz empieza en segundos: síntesis por partes y prioridad; texto al escuchar)
+Todo es **aditivo**: una web o un taller de antes siguen funcionando (esperan al capítulo entero, como hasta ahora).
+- **taller**: mientras genera un capítulo escribe **partes reproducibles** y su manifiesto (§6 bis):
+  `audio/{archivoId}/{vozId}/cap-NNN.parte-KKK.m4a` y `cap-NNN.partes.json`. La primera parte (3 frases) sale a los
+  2–4 s; luego una de 12 y después de 60. Las frases se piden en orden y se ensamblan **mientras** se sintetizan (el
+  PCM de una frase se decodifica en cuanto llega), así el capítulo entero también tarda menos. Al final, como siempre,
+  `cap-NNN.m4a`, `-2x.m4a` y `tiempos.json` (con los **mismos** tiempos que las partes) y `LISTO` en `bah_lib_audio`.
+  Las partes de un capítulo cuyo manifiesto no cambia desde hace 30 min se borran solas (al empezar cada trabajo de voz).
+- **taller**: un hilo de voz más, **`voz-urgente`**, que solo toma trabajos con `prioridad <= 10` (el capítulo que
+  alguien está escuchando): no espera detrás de precargas ni de otros libros. Los hilos de voz sondean la cola cada
+  0,5 s (`TALLER_INTERVALO_VOZ_SEG`). El capítulo pedido se sintetiza con 8 frases a la vez
+  (`TALLER_CONCURRENCIA_VOZ_URGENTE`); las precargas siguen con 4 (`TALLER_CONCURRENCIA_VOZ`). Las 3 primeras
+  frases no hacen cola (se piden ya) y, si una tarda más de 2 s, se pide un duplicado y gana la primera respuesta;
+  mientras un capítulo pedido prepara su primera parte, las precargas no empiezan frases nuevas (máx. 15 s).
+  Sin cambios en la tabla.
+- **biblioteca** `POST /v1/audio/estado`: nuevo campo **`urlPartes`** (`string|null`): con `PENDIENTE`/`GENERANDO`,
+  la URL de `cap-NNN.partes.json` en cuanto el taller escribió la primera parte; `null` en los demás casos.
+  El capítulo pedido **pasa por delante**: si su trabajo esperaba con otra prioridad (p. ej. como precarga) sube a 10, y
+  los demás capítulos **de ese libro y voz** que se pidieron antes y aún esperan bajan a 20. La precarga de los 2
+  siguientes (prioridad 20) se encola cuando el pedido **ya suena** (LISTO o con su primera parte), no antes: así no le
+  quita voz en los primeros segundos.
+- **biblioteca** `GET /v1/archivos/{archivoId}/audio/{vozId}/cap-NNN.partes.json` y `cap-NNN.parte-KKK.m4a`
+  (mismas reglas que el resto del audio: dueño, `?t=`, Range, 404 si no existe o el nombre no encaja).
+- **biblioteca** `GET /v1/archivos/{archivoId}/frases/cap-NNN.json` (nuevo): el texto del capítulo por frases (§5),
+  para ver lo que se lee mientras se escucha. Dueño, `?t=`, 404 (102) si no existe o el nombre no es `cap-NNN.json`.
+- **web**: el motor de la voz suena por partes en el **mismo** `<audio>` (cambia el `src` al acabar cada parte, como
+  entre capítulos) y pasa al archivo entero cuando está `LISTO`; la pantalla de escuchar tiene «Ver texto» (texto del
+  capítulo con la frase que suena) y la lista de capítulos plegada en una pastilla.
+
+### v1.4 — 2026-11-12 (géneros desde las materias del archivo; nada cambia para la web)
+- **taller**: `metadatos` (en `bah_lib_archivo` y en `estructura.json`) trae una clave nueva **`materias: string[]`**:
+  EPUB `dc:subject` (todos), PDF `keywords`, DOCX `keywords` + `category`; separadas por `;` `,` `/` `|`, sin espacios
+  de más, sin repetir (sin distinguir mayúsculas), máx. 30 de 100 caracteres, **tal cual** (sin normalizar). Un OPF
+  que dice ser UTF-8 (o no declara nada) pero viene en Windows-1252 se recodifica (antes «Rom�ntico», con U+FFFD), y el
+  mojibake «RomÃ¡ntico» se repara.
+- **biblioteca-service** normaliza con **una sola tabla** (`util/ClasificadorDeMaterias`): sinónimos es/en a una lista
+  canónica (Fantasía, Ciencia ficción, Romance, Suspense, Policiaca, Terror, Histórica, Biografía, Ensayo, Autoayuda,
+  Poesía, Teatro, Aventuras, Humor, Erótica, Bélica, Cómic, Clásicos, Filosofía, Mitología, Western). **Forma**
+  (Novela, Relatos) y **público** (Juvenil, Infantil, Adulto) no son géneros: van a las `etiquetas` del ejemplar
+  (sin repetir). Lo genérico (Ficción, Narrativa, General…) se descarta; lo desconocido se conserva con mayúscula
+  inicial (como mucho 10 géneros). Se rellenan los `generos` **solo si la obra no tiene ninguno** (fuente cualquiera):
+  lo editado a mano no se pisa. Pasa al ver un archivo `LISTO` (TareaMetadatos) y al subir un archivo ya `LISTO`.
+- **biblioteca** `POST /v1/libros/save` con `generos`: los sinónimos conocidos pasan a su nombre canónico
+  («fantástico» → «Fantasía»); lo demás (también «Novela») se guarda tal cual lo escribió el usuario.
+- **biblioteca** `POST /v1/admin/libros/rellenar-generos` (nuevo, rol **ADMIN**; sin él HTTP 403 `sinPermiso`) →
+  `{archivosEncolados, obrasSinGenero}`. Encola `RELEER_METADATOS` (§7) para los archivos `LISTO` con obras sin
+  géneros y sin `materias` en sus metadatos (ni trabajo vivo). Idempotente. Ver `despliegue.md`.
+- **Cola** (§7): tipo nuevo **`RELEER_METADATOS`** (payload `{}`, prioridad 200, hilo propio del taller
+  «metadatos»). El taller lee solo las materias del original y hace
+  `UPDATE bah_lib_archivo SET metadatos = COALESCE(metadatos,'{}') || {"materias": [...]}, metadatos_aplicados = FALSE`
+  **solo si el archivo está `LISTO`**; sin original o ilegible → `materias: []`. Nunca cambia el estado del archivo.
 
 ### v1.3.2 — 2026-11-11 (arreglos de la QA de regresión; la web debe adoptar BI-15)
 - **biblioteca** `POST /v1/libros/subir` acepta un campo multipart nuevo **`deseoId`** (UUID, opcional) — flujo
@@ -197,10 +279,13 @@ Raíz montada en `/datos` en **biblioteca-service y taller** (en casa: `E:\LaBib
   normalizados/{archivoId}/estructura.json               ← taller
   normalizados/{archivoId}/portada.jpg                   ← taller (si hay; máx. 1200 px de alto)
   normalizados/{archivoId}/frases/cap-{NNN}.json         ← taller (texto por frase para la voz)
+  normalizados/{archivoId}/hoja.json                     ← taller (v1.6, solo hojas de cálculo: XLSX/XLS/ODS/CSV; ver §11)
   normalizados/{archivoId}/traducciones/{destino}/cap-{NNN}.json ← biblioteca-service (v1.3, ver §9 "Traducción")
   audio/{archivoId}/{vozId}/cap-{NNN}.m4a                ← taller (1x)
   audio/{archivoId}/{vozId}/cap-{NNN}-2x.m4a             ← taller (variante 2x)
   audio/{archivoId}/{vozId}/cap-{NNN}.tiempos.json       ← taller (tiempos de la variante 1x)
+  audio/{archivoId}/{vozId}/cap-{NNN}.partes.json        ← taller (v1.5, mientras se genera; ver §6 bis)
+  audio/{archivoId}/{vozId}/cap-{NNN}.parte-{KKK}.m4a    ← taller (v1.5, partes reproducibles)
   buzon/{email-usuario}/...                               ← lo deja el humano; biblioteca-service lo importa
   cache-voz/{hash}.mp3                                    ← taller (frase sintetizada, reutilizable)
 ```
@@ -245,12 +330,31 @@ Los tiempos de `tiempos.json` son absolutos dentro del capítulo, con 3 decimale
 ```
 `palabras` = `[inicioChar, finChar, t0, t1]` relativos al **texto visual** de la frase. Puede venir vacío si el motor no da tiempos por palabra.
 
+## 6 bis. Partes de un capítulo que se está generando (v1.5)
+Mientras el taller genera un capítulo deja en `audio/{archivoId}/{vozId}/`:
+- `cap-NNN.parte-KKK.m4a` (`KKK` desde 000): AAC-LC mono 48 kbps, faststart, igual que el capítulo. Cada parte lleva
+  el audio de sus frases **con** las pausas entre ellas y **sin** la pausa final (el cambio de archivo hace de pausa).
+  Tamaños en frases con voz: 3, 12 y luego 60.
+- `cap-NNN.partes.json` (se reescribe de forma atómica tras cada parte):
+```json
+{"versionFormato": 1, "capitulo": 3, "vozId": "edge.es-ES-AlvaroNeural", "completo": false, "duracionEstimada": 1450.2,
+ "partes": [{"n": 0, "archivo": "cap-003.parte-000.m4a", "t0": 0.0, "t1": 16.33},
+            {"n": 1, "archivo": "cap-003.parte-001.m4a", "t0": 16.58, "t1": 105.59}],
+ "frases": [{"id": "c003-s00000", "t0": 0.00, "t1": 3.42, "palabras": [[0, 5, 0.05, 0.41]]}]}
+```
+- `t0`/`t1` de partes y frases están en la línea de tiempo **1x del capítulo entero** y coinciden exactamente con los de
+  `cap-NNN.tiempos.json` (posición en el capítulo = `t0` de la parte + segundo dentro de la parte). `frases` = las de
+  las partes ya escritas, en el formato de §6. `duracionEstimada` = proporcional a los caracteres de voz que faltan
+  (exacta cuando `completo: true`, que se escribe tras el capítulo entero).
+- Las partes no sustituyen al capítulo: cuando está `LISTO` la web pasa a `cap-NNN.m4a`. Se borran (con su manifiesto)
+  cuando el manifiesto lleva 30 min sin cambiar; también con el resto del audio del capítulo.
+
 ## 7. Cola de trabajos (tabla en `biblioteca_db`, la crea Flyway de biblioteca-service)
 
 ```sql
 CREATE TABLE bah_lib_trabajo (
   id            UUID PRIMARY KEY,
-  tipo          VARCHAR(30)  NOT NULL,   -- CONVERTIR | VOZ_CAPITULO
+  tipo          VARCHAR(30)  NOT NULL,   -- CONVERTIR | VOZ_CAPITULO | RELEER_METADATOS (v1.4)
   archivo_id    UUID         NOT NULL,
   payload       JSONB        NOT NULL DEFAULT '{}'::jsonb,
   estado        VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE', -- PENDIENTE | EN_CURSO | HECHO | ERROR
@@ -262,14 +366,15 @@ CREATE TABLE bah_lib_trabajo (
 );
 CREATE INDEX ix_bah_lib_trabajo_cola ON bah_lib_trabajo (estado, prioridad, creado);
 ```
-- payload CONVERTIR: `{}`. payload VOZ_CAPITULO: `{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 3}`.
+- payload CONVERTIR y RELEER_METADATOS: `{}`. payload VOZ_CAPITULO: `{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 3}`.
 - El **taller** toma trabajos con
   `UPDATE bah_lib_trabajo SET estado='EN_CURSO', intentos=intentos+1, actualizado=now() WHERE id = (SELECT id FROM bah_lib_trabajo WHERE estado='PENDIENTE' ORDER BY prioridad, creado FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`.
   (v1.1) La subconsulta filtra además `AND tipo = ANY(:tipos)`: hay un hilo de conversión y otro de voz, y ninguno toma trabajos del otro.
   Máx. 3 intentos; entre intentos el archivo/audio vuelve a `PENDIENTE` con el último mensaje en `error_conversion`/`error`;
   al fallar el 3.º queda `ERROR`. Errores sin arreglo posible (PDF escaneado, archivo dañado) van directo a `ERROR`.
   VOZ_CAPITULO solo se encola cuando el archivo está `LISTO` (si no, el taller lo marca ERROR). (v1.2) Latido cada 60 s; al arrancar el taller reabre todos los `EN_CURSO` y cada minuto los que lleven `TALLER_MINUTOS_ATASCADO` (5) min sin latir, dejando archivo/audio en `PENDIENTE`.
-- **biblioteca-service** encola: CONVERTIR al subir un archivo nuevo; VOZ_CAPITULO cuando la web pide audio de un capítulo que no existe (y encola también los 2 siguientes con prioridad +10).
+- **biblioteca-service** encola: CONVERTIR al subir un archivo nuevo; VOZ_CAPITULO cuando la web pide audio de un capítulo que no existe (y encola también los 2 siguientes con prioridad +10; v1.5: cuando el pedido ya suena, LISTO o con su primera parte).
+  (v1.5) Al pedir un capítulo, su trabajo PENDIENTE sube a prioridad 10 y los PENDIENTE de prioridad 10 de otros capítulos del mismo libro y voz bajan a 20. El taller tiene un hilo `voz-urgente` que solo toma `prioridad <= 10` (`AND prioridad <= :max` en la subconsulta).
 
 ### Tablas que el taller ACTUALIZA (las crea biblioteca-service)
 ```sql
@@ -278,7 +383,8 @@ estado_conversion VARCHAR(20)  -- PENDIENTE | PROCESANDO | LISTO | ERROR
 error_conversion  TEXT
 version_texto     INT
 n_capitulos INT, n_palabras INT, minutos_estimados INT
-metadatos         JSONB        -- {titulo, autores[], idioma, isbn, editorial, anio, sinopsis}
+metadatos         JSONB        -- {titulo, autores[], idioma, isbn, editorial, anio, sinopsis, materias[] (v1.4)}
+metadatos_aplicados BOOLEAN    -- (v1.4) RELEER_METADATOS la vuelve a FALSE para que biblioteca rellene géneros
 tiene_portada     BOOLEAN
 actualizado       TIMESTAMP
 
@@ -291,6 +397,7 @@ CREATE TABLE bah_lib_audio (
 ```
 El taller hace UPSERT en `bah_lib_audio` (GENERANDO → LISTO/ERROR).
 biblioteca-service, al ver un archivo `LISTO`, copia `metadatos` a la obra si la obra aún tiene datos provisionales (fuente `NOMBRE_ARCHIVO`).
+(v1.4) Además rellena los `generos` vacíos de **todas** las obras de ese archivo desde `materias` (ver Cambios v1.4).
 
 Conexión del taller: `TALLER_DB_URL=postgresql://USER:PASS@postgres:5432/biblioteca_db`.
 
@@ -310,12 +417,13 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 
 | Método y ruta | Cuerpo | Respuesta (`object`) |
 |---|---|---|
-| POST `/v1/libros/subir` (multipart: `archivos[]`, `tipo`=LIBRO\|DOCUMENTO, v1.3.2 `deseoId?`: «Ya lo tengo», un solo archivo; el ejemplar hereda nota, etiquetas y estantes del deseo, que se borra) | — | `[EjemplarDTO]` (duplicado por sha256 → reutiliza el archivo) |
+| POST `/v1/libros/subir` (multipart: `archivos[]`, `tipo`=LIBRO\|DOCUMENTO, v1.3.2 `deseoId?`: «Ya lo tengo», un solo archivo; el ejemplar hereda nota, etiquetas y estantes del deseo, que se borra; v1.6 `carpetaId?`: los documentos que llegan entran en esa carpeta) | — | `[EjemplarDTO]` (duplicado por sha256 → reutiliza el archivo) |
 | POST `/v1/libros/deseo` | `{titulo, autor?, isbn?, nota?}` | `EjemplarDTO` (tipo DESEO, sin archivo) |
 | POST `/v1/libros/all` | `FiltroLibrosDTO` | `PageDTO<EjemplarDTO>` |
 | POST `/v1/libros/get/{ejemplarId}` | — | `EjemplarDetalleDTO` (incluye estructura resumida y progreso) |
 | POST `/v1/libros/save` | `{id, titulo?, autores?, anio?, editorial?, sinopsis?, generos?, etiquetas?, estado?, calificacion?, favorito?, tipo?}` (v1.2: ausente = no tocar; `null` = vaciar) | `EjemplarDTO` |
 | POST `/v1/libros/delete/{ejemplarId}` | — | `true` (v1.2: RETIRA el libro o documento conservando lo escrito, que reaparece al volver a subir el mismo fichero; borra los deseos. El archivo, solo si nadie más lo usa) |
+| POST `/v1/admin/libros/rellenar-generos` (v1.4, rol ADMIN) | — | `{archivosEncolados, obrasSinGenero}` (encola RELEER_METADATOS; idempotente) |
 | POST `/v1/libros/facetas` | `{pestana?}` (v1.2; por defecto TODO = solo libros) | `{autores:[{nombre,n}], generos:[…], anios:[…], formatos:[…], etiquetas:[…]}` |
 | POST `/v1/progreso/get/{ejemplarId}` | — | `ProgresoDTO` |
 | POST `/v1/progreso/save` | `ProgresoDTO` | `ProgresoDTO` (gana el `actualizadoEn` más reciente; v1.2: uno más de 2 min en el futuro se toma como la hora del servidor) |
@@ -328,9 +436,17 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 | POST `/v1/estantes/{id}/agregar` · `/quitar` | `{ejemplarId}` | `true` |
 | POST `/v1/estantes/{id}/ordenar` | `{ejemplarId, antesDe?: ejemplarId, despuesDe?: ejemplarId}` | `true` (índice fraccional) |
 | POST `/v1/voces/all` | — | `[VozDTO]` |
-| POST `/v1/audio/estado` | `{ejemplarId, vozId, capitulo, reintentar?}` | `{estado, duracionSeg, url1x, url2x, urlTiempos, error}` y encola si falta (v1.2: `vozId` del catálogo; un ERROR trae `error` y solo se reencola con `reintentar: true`). `estado`: PENDIENTE \| GENERANDO \| LISTO \| ERROR, o (v1.1) CONVIRTIENDO \| ERROR_CONVERSION si el libro aun no esta LISTO (no encola) |
+| POST `/v1/audio/estado` | `{ejemplarId, vozId, capitulo, reintentar?}` | `{estado, duracionSeg, url1x, url2x, urlTiempos, error, urlPartes}` y encola si falta (v1.2: `vozId` del catálogo; un ERROR trae `error` y solo se reencola con `reintentar: true`). `estado`: PENDIENTE \| GENERANDO \| LISTO \| ERROR, o (v1.1) CONVIRTIENDO \| ERROR_CONVERSION si el libro aun no esta LISTO (no encola). (v1.5) `urlPartes`: con PENDIENTE/GENERANDO, el manifiesto de partes ya reproducibles (§6 bis) o `null`; el capítulo pedido pasa por delante en la cola y la precarga de los siguientes espera a que suene |
 | GET `/v1/archivos/{archivoId}/libro.epub` · `/portada.jpg` · `/original` | `?t=` | binario |
-| GET `/v1/archivos/{archivoId}/audio/{vozId}/cap-{NNN}.m4a` · `-2x.m4a` · `.tiempos.json` | `?t=` | binario con Range |
+| GET `/v1/archivos/{archivoId}/hoja.json` (v1.6) | `?t=` | `application/json` (§11). 404 si no es una hoja o aún no está convertida |
+| POST `/v1/carpetas/all` (v1.6) | — | `[CarpetaDTO]`: todas, en profundidad y hermanas por nombre (para elegir destino) |
+| POST `/v1/carpetas/contenido` (v1.6) | `{carpetaId?: uuid\|null (null = raíz), texto? (≤ 200), orden?: 'NOMBRE'\|'RECIENTES'\|'ANTIGUOS'}` | `CarpetaContenidoDTO`. Sin texto: subcarpetas directas y documentos de esa carpeta (máx. 500, `recortado`). Con texto: carpetas y documentos que coinciden (sin mayúsculas ni tildes; título, autores, sinopsis, etiquetas) en ella y en TODAS sus subcarpetas (máx. 200), con `ubicaciones` |
+| POST `/v1/carpetas/save` (v1.6) | `{id?, nombre (1–100), padreId?}` | `CarpetaDTO`. Sin id crea dentro de `padreId` (o en la raíz); con id renombra (`padreId` se ignora). Nombre repetido entre hermanas (sin mayúsculas) → 101 `carpetaDuplicada`; más de 10 niveles → 120 `carpetaDemasiadoProfunda`; más de `BIBLIOTECA_MAX_CARPETAS` (500) → 120 `demasiadasCarpetas` |
+| POST `/v1/carpetas/mover` (v1.6) | `{carpetaId, destinoId?: uuid\|null}` | `CarpetaDTO`. Dentro de sí misma o de una subcarpeta → 120 `carpetaDentroDeSiMisma`; nombre ocupado en el destino → 101; pasar de 10 niveles → 120 |
+| POST `/v1/carpetas/mover-documentos` (v1.6) | `{ejemplarIds: uuid[] (1–200), carpetaId?: uuid\|null}` | nº de movidos. Todo o nada: uno ajeno o retirado → 102 `libroNoEncontrado`; un libro o deseo → 120 `soloDocumentosEnCarpetas` |
+| POST `/v1/carpetas/delete/{id}` (v1.6) | `{contenido?: 'SUBIR'\|'BORRAR'}` | `CarpetaBorradaDTO`. Vacía: sin cuerpo. Con algo dentro y sin `contenido` → 120 `carpetaNoVacia`. `SUBIR`: documentos y subcarpetas pasan a la carpeta de arriba (la raíz si era de primer nivel; un nombre que choca → «Nombre (2)»). `BORRAR`: subcarpetas fuera y documentos RETIRADOS como en `/libros/delete` (lo escrito se conserva) |
+| GET `/v1/archivos/{archivoId}/audio/{vozId}/cap-{NNN}.m4a` · `-2x.m4a` · `.tiempos.json` · (v1.5) `.partes.json` · `.parte-{KKK}.m4a` | `?t=` | binario con Range |
+| GET `/v1/archivos/{archivoId}/frases/cap-{NNN}.json` (v1.5) | `?t=` | el texto del capítulo por frases (§5), JSON |
 | GET `/v1/voces/{vozId}/muestra.mp3` | `?t=` | binario |
 | POST `/v1/traducir` (v1.3) | `{texto, origen?: 'auto'\|'en'\|'es', destino?: 'es'\|'en'}` | `TraduccionDTO`. 503 si el traductor no responde, 429 por el freno |
 | POST `/v1/traducir/capitulo` (v1.3) | `{ejemplarId, capitulo, destino?: 'es', reintentar?: boolean}` | `CapituloTraducidoDTO`: `LISTO` con las frases, `PENDIENTE` (volver a preguntar) o `ERROR` con `error` |
@@ -344,7 +460,8 @@ EjemplarDTO {
   estado: 'POR_LEER'|'LEYENDO'|'LEIDO'|'ABANDONADO',
   titulo, subtitulo|null, autores: string[], anio|null, editorial|null, idioma|null, isbn|null,
   sinopsis|null, generos: string[], etiquetas: string[], calificacion|null (0.5..5), favorito: boolean,
-  formatoOriginal|null ('EPUB'|'PDF'|'DOCX'|'DOC'|'TXT'), estadoConversion|null, tienePortada: boolean,
+  formatoOriginal|null ('EPUB'|'PDF'|'DOCX'|'DOC'|'TXT'; v1.6 'MD'|'HTML'|'RTF'|'ODT'|'PPTX'|'JSON'|'YAML'|'LOG'|
+                       'XLSX'|'XLS'|'ODS'|'CSV'), estadoConversion|null, tienePortada: boolean,
   minutosEstimados|null, porcentaje: number (0..100), fechaLlegada (ISO), ultimaApertura|null, fechaFin|null,
   nNotas: number, fuenteMetadatos: 'NOMBRE_ARCHIVO'|'ARCHIVO'|'MANUAL'|'OPEN_LIBRARY'|'IA',
   nota|null (v1.2, la del deseo), yaLoTenias?: boolean (v1.2, solo en la respuesta de /subir)
@@ -364,6 +481,14 @@ AnotacionDTO { id?, ejemplarId, tipo: 'RESALTADO'|'NOTA'|'MARCADOR', color|null,
                textoCitado|null, prefijo|null, sufijo|null, nota|null, capitulo|null, creado?, editado? }
 ComentarioDTO { id?, ejemplarId, texto, creado? }
 EstanteDTO { id, nombre, tipo: 'FAVORITOS'|'COLECCION', colorMadera|null, nLibros }
+EjemplarDTO.carpetaId: uuid|null                                     // v1.6 (null = raíz; libros y deseos, siempre null)
+CarpetaDTO { id, nombre, padreId|null, nDocumentos (de todo su subárbol), nSubcarpetas (directas) }   // v1.6
+CarpetaContenidoDTO {                                                // v1.6
+  carpeta: CarpetaDTO|null (null = raíz), ruta: CarpetaDTO[] (migas: de la primera bajo la raíz a la abierta),
+  subcarpetas: CarpetaDTO[], documentos: EjemplarDTO[], totalDocumentos (de todo el archivador),
+  busqueda: boolean, recortado: boolean, ubicaciones: {carpetaId: "Proyectos / 2026"} (solo al buscar)
+}
+CarpetaBorradaDTO { documentosMovidos, carpetasMovidas, documentosRetirados, carpetasBorradas }  // v1.6
 VozDTO { id, nombre, pais, genero, motor, porDefecto }
 PageDTO<T> { page, size, totalPage, totalElements, list: T[] }
 TraduccionDTO { traduccion: string, origenDetectado: 'en'|'es'|null }            // v1.3
@@ -399,6 +524,8 @@ CapituloTraducidoDTO {                                                          
 | `TraducirDTO.texto` · `origen`/`destino` (v1.3) | 1–5 000 · 10 (y de la lista `TRADUCTOR_IDIOMAS`) |
 | `TraducirCapituloDTO.capitulo` (v1.3) | 0–999 |
 | Subida: archivos por petición · por archivo · por petición · libre en `/datos` | `BIBLIOTECA_MAX_ARCHIVOS_POR_SUBIDA` (20) · `BIBLIOTECA_MAX_ARCHIVO` (300MB) · `BIBLIOTECA_MAX_SUBIDA` (1GB) · `BIBLIOTECA_ESPACIO_MINIMO_MB` (1024) → 413 / 507 |
+| (v1.6) Carpetas: nombre · por usuario · niveles · documentos por `mover-documentos` · texto de búsqueda | 100 · `BIBLIOTECA_MAX_CARPETAS` (500) · 10 · 200 · 200 |
+| (v1.6) Hojas de cálculo (taller; se recorta con aviso, no falla) | 50 hojas · 5 000 filas y 200 columnas por hoja · 250 000 celdas con valor · 5 000 caracteres por celda; XLS ≤ 64 MB; los ZIP con los topes de siempre |
 
 ## 10. Reglas transversales
 1. Ningún endpoint acepta `userId` en el cuerpo; todo se filtra por el usuario del token.
@@ -406,3 +533,41 @@ CapituloTraducidoDTO {                                                          
 3. Las anotaciones nunca se borran al reprocesar un libro.
 4. Si `/datos` no está disponible: la API sigue respondiendo (biblioteca, progreso, notas) y los binarios devuelven 503 con mensaje claro; queda en log.
 5. Mensajes al usuario en español; nada de secretos en el repo (`.env` ignorado).
+
+## 11. `hoja.json` (v1.6, hojas de cálculo)
+
+Lo escribe el taller en `normalizados/{archivoId}/hoja.json` (UTF-8, sin sangría) para XLSX, XLS, ODS y CSV; el
+`estructura.json` de una hoja trae un «capítulo» por hoja (`href: null`, 0 frases) y `minutosEstimados: 0`. La web lo
+pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pintarlo en el visor de hojas.
+
+```json
+{
+ "versionFormato": 1,
+ "recortado": false,
+ "hojas": [{
+   "nombre": "Ventas",
+   "filas": 120, "columnas": 8,
+   "filasOriginal": 120, "columnasOriginal": 8,
+   "recortada": false,
+   "fijas": {"filas": 1, "columnas": 1},
+   "anchos": [96, 140],
+   "altos": [[0, 32]],
+   "celdas": [[0, 0, "Fecha", "t", 1], [1, 0, "12/11/2026", "f", 0], [1, 1, "$1.234.567,89", "n", 0]],
+   "combinadas": [[0, 0, 0, 3]],
+   "estilos": [{}, {"negrita": true, "alinear": "centro", "fondo": "#2F4A3A", "color": "#FFFFFF"}]
+ }]
+}
+```
+- `celdas`: solo las que tienen texto, `[fila, columna, texto, tipo, estilo]` (desde 0). `tipo`: `t` texto, `n` número,
+  `f` fecha/hora, `b` booleano (VERDADERO/FALSO), `e` error (#N/A…). El **texto ya viene formateado** con convenciones
+  es-CO (miles con punto, decimales con coma, fechas dd/mm/aaaa, meses y días en español, «a. m./p. m.») según el código
+  de formato del archivo (monedas `$` y `[$€-xxx]`, %, científico, secciones pos;neg;cero, transcurrido `[h]:mm`…).
+  Fórmulas: el **valor calculado guardado** (sin él, la celda va vacía); nunca se evalúa nada ni corren macros. ODS: el
+  texto mostrado que guardó su programa. CSV: el texto tal cual (separador detectado: `,` `;` tabulador `|`; los números
+  reconocibles son `n`).
+- `fijas`: paneles inmovilizados del archivo (tope 5 filas y 3 columnas); si no tiene, 1 fila y 1 columna (0 si la hoja
+  tiene una sola). `anchos` en px a zoom 1 (40–480), uno por columna; `altos` solo las filas con alto propio (18–200).
+- `combinadas`: rectángulos inclusivos `[fila1, col1, fila2, col2]`. `estilos[0]` es siempre `{}`; claves opcionales
+  `negrita`, `cursiva`, `subrayado`, `alinear` (izquierda|centro|derecha), `vertical` (arriba|centro|abajo), `fondo` y
+  `color` (#RRGGBB; el fondo blanco y el texto negro por defecto se omiten), `ajustar`.
+- Hojas ocultas fuera. Recortes (límites en §9): `recortada` por hoja y `recortado` si se omitieron hojas.

@@ -10,3 +10,6 @@ pillow==13.0.0
 python-docx==1.2.0
 mammoth==1.13.0
 edge-tts==7.3.1
+openpyxl==3.1.5  # (v1.6) hojas de cálculo .xlsx: solo valores guardados (data_only), sin macros
+xlrd==2.0.1  # (v1.6) hojas de cálculo .xls (Excel 97-2003), solo lectura
+defusedxml==0.7.1  # openpyxl la usa sola: XML sin entidades peligrosas

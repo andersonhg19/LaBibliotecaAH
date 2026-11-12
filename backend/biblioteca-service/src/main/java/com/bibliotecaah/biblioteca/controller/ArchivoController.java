@@ -83,6 +83,20 @@ public class ArchivoController {
         return servir(archivos.audio(archivoId, vozId, fichero), rango);
     }
 
+    @Operation(summary = "(v1.5) Texto de un capitulo por frases (cap-NNN.json), para el panel de texto al escuchar")
+    @RequestMapping(value = "/archivos/{archivoId}/frases/{fichero}", method = {RequestMethod.GET, RequestMethod.HEAD})
+    public ResponseEntity<Resource> frases(@PathVariable UUID archivoId, @PathVariable String fichero,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rango) {
+        return servir(archivos.frases(archivoId, fichero), rango);
+    }
+
+    @Operation(summary = "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas")
+    @RequestMapping(value = "/archivos/{archivoId}/hoja.json", method = {RequestMethod.GET, RequestMethod.HEAD})
+    public ResponseEntity<Resource> hoja(@PathVariable UUID archivoId,
+            @RequestHeader(value = HttpHeaders.RANGE, required = false) String rango) {
+        return servir(archivos.hoja(archivoId), rango);
+    }
+
     @Operation(summary = "Muestra de una voz (MP3)")
     @RequestMapping(value = "/voces/{vozId}/muestra.mp3", method = {RequestMethod.GET, RequestMethod.HEAD})
     public ResponseEntity<Resource> muestra(@PathVariable String vozId,

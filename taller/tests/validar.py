@@ -25,6 +25,7 @@ def validar_salida(dir_norm: Path) -> dict:
         "editorial",
         "anio",
         "sinopsis",
+        "materias",
         "tienePortada",
         "capitulos",
         "toc",

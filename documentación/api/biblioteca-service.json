@@ -128,6 +128,55 @@
         ],
         "type" : "object"
       },
+      "CarpetaBorrarDTO" : {
+        "properties" : {
+          "contenido" : {
+            "enum" : [
+              "SUBIR",
+              "BORRAR"
+            ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "CarpetaMoverDTO" : {
+        "properties" : {
+          "carpetaId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "destinoId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "carpetaId"
+        ],
+        "type" : "object"
+      },
+      "CarpetaSaveDTO" : {
+        "properties" : {
+          "id" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "nombre" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "padreId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "nombre"
+        ],
+        "type" : "object"
+      },
       "ComentarioDTO" : {
         "properties" : {
           "creado" : {
@@ -224,6 +273,28 @@
         "required" : [
           "nombre"
         ],
+        "type" : "object"
+      },
+      "FiltroCarpetaDTO" : {
+        "properties" : {
+          "carpetaId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "orden" : {
+            "enum" : [
+              "NOMBRE",
+              "RECIENTES",
+              "ANTIGUOS"
+            ],
+            "type" : "string"
+          },
+          "texto" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
         "type" : "object"
       },
       "FiltroLibrosDTO" : {
@@ -390,6 +461,27 @@
         },
         "required" : [
           "id"
+        ],
+        "type" : "object"
+      },
+      "MoverDocumentosDTO" : {
+        "properties" : {
+          "carpetaId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "ejemplarIds" : {
+            "items" : {
+              "format" : "uuid",
+              "type" : "string"
+            },
+            "maxItems" : 200,
+            "minItems" : 0,
+            "type" : "array"
+          }
+        },
+        "required" : [
+          "ejemplarIds"
         ],
         "type" : "object"
       },
@@ -561,9 +653,30 @@
   },
   "openapi" : "3.0.1",
   "paths" : {
+    "/v1/admin/libros/rellenar-generos" : {
+      "post" : {
+        "operationId" : "rellenarGeneros",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Rellena los generos vacios releyendo las materias de los originales (idempotente)",
+        "tags" : [
+          "Administracion"
+        ]
+      }
+    },
     "/v1/anotaciones/all/{ejemplarId}" : {
       "post" : {
-        "operationId" : "all_3",
+        "operationId" : "all_4",
         "parameters" : [
           {
             "in" : "path",
@@ -595,7 +708,7 @@
     },
     "/v1/anotaciones/delete/{id}" : {
       "post" : {
-        "operationId" : "delete_3",
+        "operationId" : "delete_4",
         "parameters" : [
           {
             "in" : "path",
@@ -627,7 +740,7 @@
     },
     "/v1/anotaciones/save" : {
       "post" : {
-        "operationId" : "save_4",
+        "operationId" : "save_5",
         "requestBody" : {
           "content" : {
             "application/json" : {
@@ -763,6 +876,182 @@
           }
         },
         "summary" : "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/frases/{fichero}" : {
+      "get" : {
+        "operationId" : "frases",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "fichero",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "(v1.5) Texto de un capitulo por frases (cap-NNN.json), para el panel de texto al escuchar",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "frases_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "fichero",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "(v1.5) Texto de un capitulo por frases (cap-NNN.json), para el panel de texto al escuchar",
+        "tags" : [
+          "Archivos"
+        ]
+      }
+    },
+    "/v1/archivos/{archivoId}/hoja.json" : {
+      "get" : {
+        "operationId" : "hoja",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas",
+        "tags" : [
+          "Archivos"
+        ]
+      },
+      "head" : {
+        "operationId" : "hoja_1",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "archivoId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "header",
+            "name" : "Range",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "format" : "binary",
+                  "type" : "string"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas",
         "tags" : [
           "Archivos"
         ]
@@ -1036,6 +1325,193 @@
         "summary" : "Estado del audio de un capitulo; si falta lo encola (y los 2 siguientes)",
         "tags" : [
           "Voces y audio"
+        ]
+      }
+    },
+    "/v1/carpetas/all" : {
+      "post" : {
+        "operationId" : "all_3",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Todas tus carpetas (en profundidad, hermanas por nombre) con sus cuentas",
+        "tags" : [
+          "Carpetas"
+        ]
+      }
+    },
+    "/v1/carpetas/contenido" : {
+      "post" : {
+        "description" : "Con texto busca en la carpeta y en todas sus subcarpetas (sin mayusculas ni tildes). Orden: NOMBRE (por defecto), RECIENTES o ANTIGUOS.",
+        "operationId" : "contenido",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FiltroCarpetaDTO"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Lo que hay en una carpeta (carpetaId null = raiz): migas, subcarpetas y documentos",
+        "tags" : [
+          "Carpetas"
+        ]
+      }
+    },
+    "/v1/carpetas/delete/{id}" : {
+      "post" : {
+        "description" : "Vacia: sin cuerpo. Con algo dentro hay que elegir {contenido: SUBIR} (todo pasa a la carpeta de arriba) o {contenido: BORRAR} (subcarpetas fuera y documentos retirados).",
+        "operationId" : "delete_3",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "id",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CarpetaBorrarDTO"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Borra una carpeta",
+        "tags" : [
+          "Carpetas"
+        ]
+      }
+    },
+    "/v1/carpetas/mover" : {
+      "post" : {
+        "operationId" : "mover",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CarpetaMoverDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Mueve una carpeta con todo lo suyo dentro de otra (destinoId null = a la raiz)",
+        "tags" : [
+          "Carpetas"
+        ]
+      }
+    },
+    "/v1/carpetas/mover-documentos" : {
+      "post" : {
+        "operationId" : "moverDocumentos",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MoverDocumentosDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Mueve uno o varios documentos (hasta 200) a una carpeta (carpetaId null = a la raiz)",
+        "tags" : [
+          "Carpetas"
+        ]
+      }
+    },
+    "/v1/carpetas/save" : {
+      "post" : {
+        "operationId" : "save_4",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CarpetaSaveDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Crea (sin id, dentro de padreId o en la raiz) o renombra (con id) una carpeta",
+        "tags" : [
+          "Carpetas"
         ]
       }
     },
@@ -1565,6 +2041,7 @@
     },
     "/v1/libros/subir" : {
       "post" : {
+        "description" : "EPUB, PDF, DOCX, DOC, TXT y (v1.6) MD, HTML, RTF, ODT, PPTX, JSON, YAML, LOG, XLSX, XLS, ODS, CSV. El contenido debe coincidir con la extension (los ZIP y OLE se reconocen por dentro).",
         "operationId" : "subir",
         "parameters" : [
           {
@@ -1585,6 +2062,16 @@
             "description" : "\"Ya lo tengo\" (v1.3.2): id de un deseo propio que este archivo cumple. Un solo archivo; el ejemplar que llega hereda nota, etiquetas y estantes, y el deseo se borra.",
             "in" : "query",
             "name" : "deseoId",
+            "required" : false,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "description" : "(v1.6) Carpeta del archivador donde entran los documentos (solo con tipo=DOCUMENTO)",
+            "in" : "query",
+            "name" : "carpetaId",
             "required" : false,
             "schema" : {
               "format" : "uuid",
@@ -1629,7 +2116,7 @@
             "description" : "OK"
           }
         },
-        "summary" : "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+        "summary" : "Sube uno o varios archivos (libros, documentos y hojas de calculo; hasta 300 MB cada uno)",
         "tags" : [
           "Libros"
         ]
@@ -1867,12 +2354,20 @@
   ],
   "tags" : [
     {
+      "description" : "Requiere rol ADMIN",
+      "name" : "Administracion"
+    },
+    {
       "description" : "Resaltados, notas y marcadores",
       "name" : "Anotaciones"
     },
     {
       "description" : "Binarios por GET con Range y ?t=",
       "name" : "Archivos"
+    },
+    {
+      "description" : "Archivador de documentos: carpetas y subcarpetas de cada usuario",
+      "name" : "Carpetas"
     },
     {
       "description" : "Diario de lectura de cada libro",

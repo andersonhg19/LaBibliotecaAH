@@ -13,12 +13,17 @@ from pathlib import Path
 
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import ErrorDefinitivo, Libro, NodoToc, TrabajoCancelado
+from .desde_codigo import convertir_codigo
 from .desde_docx import convertir_doc, convertir_docx
 from .desde_epub import convertir_epub
+from .desde_html import convertir_html, convertir_markdown
 from .desde_pdf import convertir_pdf
+from .desde_pptx import convertir_pptx
 from .desde_txt import convertir_txt
 from .epub_salida import escribir_epub, href_capitulo, href_toc, toc_efectivo
+from .formatos import EXTENSIONES_TEXTO, HOJAS, tipo_ole, tipo_zip
 from .frases import contar_palabras, envolver_capitulo
+from .hojas import leer_hoja_de_calculo
 from .idioma import detectar_idioma, muestra
 from .normalizador import normalizar_visual
 from .partir import partir_capitulos_largos
@@ -41,38 +46,59 @@ class ResultadoConversion:
     total_frases: int
 
 
+_BINARIOS_POR_EXTENSION = {"epub", "pdf", "docx", "doc", "rtf", "odt", "pptx", "xlsx", "xls", "ods"}
+
+
 def detectar_formato(ruta: Path) -> str:
-    """EPUB | PDF | DOCX | DOC | TXT, por firma y luego por extensión."""
+    """EPUB | PDF | DOCX | DOC | TXT y (v1.6) MD | HTML | RTF | ODT | PPTX | XLSX | XLS | ODS | CSV | JSON | YAML | LOG.
+
+    Por contenido primero (firma; los ZIP por sus partes; los OLE por sus flujos) y, para el texto, por la extensión.
+    Un ZIP u OLE que no se reconoce por dentro conserva lo de siempre: la extensión decide (y el conversor dirá si
+    está dañado).
+    """
     with open(ruta, "rb") as f:
         cabecera = f.read(64)
     ext = ruta.suffix.lower().lstrip(".")
     if cabecera.startswith(b"%PDF") or b"%PDF-" in cabecera[:1024]:
         return "PDF"
     if cabecera.startswith(b"PK"):
+        por_dentro = tipo_zip(ruta)
+        if por_dentro:
+            return por_dentro
         if b"mimetypeapplication/epub+zip" in cabecera or ext == "epub":
             return "EPUB"
-        return "DOCX" if ext != "epub" else "EPUB"
+        return ext.upper() if ext in ("xlsx", "ods", "odt", "pptx") else "DOCX"
     if cabecera.startswith(b"\xd0\xcf\x11\xe0"):
-        return "DOC"
+        return tipo_ole(ruta) or ("XLS" if ext == "xls" else "DOC")
     if cabecera.startswith(b"{\\rtf"):
-        raise ErrorDefinitivo(Msj.RTF_PENDIENTE)
-    if ext in ("txt", "text", "md", ""):
-        return "TXT"
-    if ext in ("epub", "pdf", "docx", "doc"):
+        return "RTF"
+    if ext in EXTENSIONES_TEXTO:
+        return EXTENSIONES_TEXTO[ext]
+    if ext in _BINARIOS_POR_EXTENSION:
         return ext.upper()
     raise ErrorDefinitivo(Msj.FORMATO_NO_SOPORTADO, extension=ext)
 
 
-def extraer(ruta: Path) -> Libro:
-    formato = detectar_formato(ruta)
+def extraer(ruta: Path, formato: str | None = None) -> Libro:
+    formato = formato or detectar_formato(ruta)
     log.info("Convirtiendo %s como %s", ruta.name, formato)
-    return {
+    if formato in ("RTF", "ODT"):
+        return convertir_doc(ruta, formato.lower())
+    if formato in ("JSON", "YAML", "LOG"):
+        return convertir_codigo(ruta, formato)
+    convertidores: dict[str, Callable[[Path], Libro]] = {
         "EPUB": convertir_epub,
         "PDF": convertir_pdf,
         "DOCX": convertir_docx,
         "DOC": convertir_doc,
         "TXT": convertir_txt,
-    }[formato](ruta)
+        "MD": convertir_markdown,
+        "HTML": convertir_html,
+        "PPTX": convertir_pptx,
+    }
+    if formato not in convertidores:
+        raise ErrorDefinitivo(Msj.FORMATO_NO_SOPORTADO, extension=ruta.suffix.lower().lstrip("."))
+    return convertidores[formato](ruta)
 
 
 def buscar_original(dir_original: Path) -> Path:
@@ -95,6 +121,7 @@ def _limpiar_textos(libro: Libro) -> None:
         if isinstance(md.get(k), str):
             md[k] = normalizar_visual(md[k]).strip() or None
     md["autores"] = [a for a in (normalizar_visual(str(x)).strip() for x in md.get("autores") or []) if a]
+    md["materias"] = [m for m in (normalizar_visual(str(x)).strip() for x in md.get("materias") or []) if m]
     for cap in libro.capitulos:
         cap.titulo = normalizar_visual(cap.titulo)
 
@@ -115,6 +142,9 @@ def convertir(
     existe porque el libro se retiró, QA DA-14) se borra lo escrito y se lanza `TrabajoCancelado`.
     """
     seguir = seguir or origen.exists
+    formato = detectar_formato(origen)
+    if formato in HOJAS:
+        return _convertir_hoja(origen, destino, formato, seguir)
     libro = extraer(origen)
     _limpiar_textos(libro)
     partir_capitulos_largos(libro)
@@ -163,7 +193,8 @@ def convertir(
     escribir_epub(libro, temporal / "libro.epub", archivo_id, portada)
 
     minutos = math.ceil(total_palabras / PALABRAS_POR_MINUTO) if total_palabras else 0
-    metadatos = {k: md.get(k) for k in ("titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis")}
+    claves = ("titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis", "materias")
+    metadatos = {k: md.get(k) for k in claves}
     estructura = {
         "versionFormato": VERSION_FORMATO,
         "versionTexto": VERSION_TEXTO,
@@ -178,11 +209,17 @@ def convertir(
     with open(temporal / "estructura.json", "w", encoding="utf-8") as f:
         json.dump(estructura, f, ensure_ascii=False, indent=1)
 
+    _publicar(temporal, destino, seguir)
+    return ResultadoConversion(
+        metadatos, len(libro.capitulos), total_palabras, minutos, portada is not None, total_frases
+    )
+
+
+def _publicar(temporal: Path, destino: Path, seguir: Callable[[], bool]) -> None:
+    """Reemplazo atómico de `destino` por `temporal`, comprobando `seguir()` antes y después (QA DA-14)."""
     if not seguir():
         shutil.rmtree(temporal, ignore_errors=True)
         raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
-
-    # reemplazo atómico del directorio
     if destino.exists():
         viejo = destino.with_name(destino.name + ".viejo")
         if viejo.exists():
@@ -197,6 +234,55 @@ def convertir(
         shutil.rmtree(destino, ignore_errors=True)
         raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
 
-    return ResultadoConversion(
-        metadatos, len(libro.capitulos), total_palabras, minutos, portada is not None, total_frases
-    )
+
+def _convertir_hoja(origen: Path, destino: Path, formato: str, seguir: Callable[[], bool]) -> ResultadoConversion:
+    """(v1.6) Hoja de cálculo → hoja.json + estructura.json (una entrada por hoja), sin EPUB ni frases."""
+    log.info("Convirtiendo %s como hoja de cálculo %s", origen.name, formato)
+    hoja, leidos = leer_hoja_de_calculo(origen, formato)
+    metadatos: dict = {
+        "titulo": leidos.get("titulo"),
+        "autores": leidos.get("autores") or [],
+        "idioma": None,
+        "isbn": None,
+        "editorial": None,
+        "anio": None,
+        "sinopsis": None,
+        "materias": [],
+    }
+    if isinstance(metadatos["titulo"], str):
+        metadatos["titulo"] = normalizar_visual(metadatos["titulo"]).strip() or None
+    metadatos["autores"] = [a for a in (normalizar_visual(str(x)).strip() for x in metadatos["autores"]) if a]
+    temporal = destino.with_name(destino.name + ".tmp")
+    if temporal.exists():
+        shutil.rmtree(temporal)
+    temporal.mkdir(parents=True)
+    with open(temporal / "hoja.json", "w", encoding="utf-8") as f:
+        json.dump(hoja, f, ensure_ascii=False, separators=(",", ":"))
+    capitulos = [
+        {
+            "indice": i,
+            "titulo": h["nombre"],
+            "href": None,
+            "nivel": 1,
+            "frases": 0,
+            "palabras": 0,
+            "primeraFrase": None,
+            "ultimaFrase": None,
+        }
+        for i, h in enumerate(hoja["hojas"])
+    ]
+    estructura = {
+        "versionFormato": VERSION_FORMATO,
+        "versionTexto": VERSION_TEXTO,
+        **metadatos,
+        "tienePortada": False,
+        "capitulos": capitulos,
+        "toc": [],
+        "totalFrases": 0,
+        "totalPalabras": 0,
+        "minutosEstimados": 0,
+    }
+    with open(temporal / "estructura.json", "w", encoding="utf-8") as f:
+        json.dump(estructura, f, ensure_ascii=False, indent=1)
+    _publicar(temporal, destino, seguir)
+    return ResultadoConversion(metadatos, len(capitulos), 0, 0, False, 0)

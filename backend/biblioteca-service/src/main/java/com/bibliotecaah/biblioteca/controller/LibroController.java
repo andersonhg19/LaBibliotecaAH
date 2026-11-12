@@ -36,7 +36,9 @@ public class LibroController {
     }
 
     /** Acepta el campo como "archivos" o "archivos[]" (asi lo mandan algunos navegadores). */
-    @Operation(summary = "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)")
+    @Operation(summary = "Sube uno o varios archivos (libros, documentos y hojas de calculo; hasta 300 MB cada uno)",
+            description = "EPUB, PDF, DOCX, DOC, TXT y (v1.6) MD, HTML, RTF, ODT, PPTX, JSON, YAML, LOG, XLSX, XLS, ODS, CSV. "
+                    + "El contenido debe coincidir con la extension (los ZIP y OLE se reconocen por dentro).")
     @PostMapping(value = "/subir", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "application/json")
     public ResponseEntity<ResultDTO> subir(
             @RequestParam(name = "archivos", required = false) List<MultipartFile> archivos,
@@ -44,11 +46,13 @@ public class LibroController {
             @RequestParam(name = "tipo", required = false, defaultValue = "LIBRO") TipoEjemplar tipo,
             @Parameter(description = "\"Ya lo tengo\" (v1.3.2): id de un deseo propio que este archivo cumple. "
                     + "Un solo archivo; el ejemplar que llega hereda nota, etiquetas y estantes, y el deseo se borra.")
-            @RequestParam(name = "deseoId", required = false) UUID deseoId) {
+            @RequestParam(name = "deseoId", required = false) UUID deseoId,
+            @Parameter(description = "(v1.6) Carpeta del archivador donde entran los documentos (solo con tipo=DOCUMENTO)")
+            @RequestParam(name = "carpetaId", required = false) UUID carpetaId) {
         List<MultipartFile> todos = new ArrayList<>();
         if (archivos != null) todos.addAll(archivos);
         if (archivosCorchetes != null) todos.addAll(archivosCorchetes);
-        return ResponseEntity.ok(libros.subir(todos, tipo, deseoId));
+        return ResponseEntity.ok(libros.subir(todos, tipo, deseoId, carpetaId));
     }
 
     @Operation(summary = "Agrega un libro a la lista de deseos (sin archivo)")

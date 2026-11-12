@@ -31,6 +31,15 @@ MAX_TXT = 32 * MB
 MAX_DOC = 64 * MB
 MAX_PAGINAS_PDF = 3000
 
+# (v1.6) Hojas de cálculo → hoja.json: por encima se recorta con aviso (`recortada` / `recortado`), no es un error
+MAX_HOJAS = 50
+MAX_FILAS_HOJA = 5_000
+MAX_COLUMNAS_HOJA = 200
+MAX_CELDAS_HOJAS = 250_000  # celdas con valor en todo el libro
+MAX_TEXTO_CELDA = 5_000
+MAX_XLS = 64 * MB
+MAX_CAMPO_CSV = 1 * MB
+
 _EXT_TEXTO = (".xhtml", ".html", ".htm", ".xml", ".opf", ".ncx", ".svg", ".css")
 
 

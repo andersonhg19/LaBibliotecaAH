@@ -85,6 +85,10 @@ public class Ejemplar extends EntidadAuditable {
     @Column(name = "retirado_en")
     private Instant retiradoEn;
 
+    /** (v1.6) Carpeta del archivador (solo documentos); null = raiz. */
+    @Column(name = "carpeta_id")
+    private UUID carpetaId;
+
     /** sha256 del archivo: con el se reconoce al volver a subirlo. */
     @Column(name = "archivo_sha256", length = 64)
     private String archivoSha256;

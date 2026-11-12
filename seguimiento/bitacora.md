@@ -1,7 +1,7 @@
 # La Biblioteca AH - Registro de Mejoras y Actividades
 ## Estado: Ola 0 desplegada en casa (rama main, github.com/andersonhg19/LaBibliotecaAH)
 ## Microservicios propuestos: discovery (8860), gateway (8920), auth (8921, segun D1), biblioteca-service (8925), taller-service Python (8926)
-## Ultima actualizacion: 2026-11-11
+## Ultima actualizacion: 2026-11-12
 
 ---
 
@@ -247,3 +247,70 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
 - Imágenes construidas en casa (commit 911b1fe): rediseño, modo Hojas, anotaciones, traductor Opus-MT, login por alias, lomos legibles en el móvil y baldas por género/autor con filtros.
 - Verificado en 7050/7051: 8 contenedores sanos; CORS 200 (7050) / 403 (ajeno); entran anderson, samy y admin; 18 libros de Anderson; facetas; traducción; captura iPhone con títulos completos en los lomos.
 - Pendiente: confirmar los lomos en Safari de un iPhone real.
+
+## 2026-11-12 — Géneros desde las materias del archivo (contratos v1.4, sin desplegar en producción)
+- taller: `metadatos.materias` (EPUB `dc:subject`, PDF/DOCX `keywords`), OPF Windows-1252 que dice UTF-8 recodificado,
+  mojibake reparado; trabajo nuevo `RELEER_METADATOS` (hilo «metadatos») que solo relee materias.
+- biblioteca-service: tabla única `util/ClasificadorDeMaterias` (sinónimos → lista canónica; forma y público a
+  etiquetas); rellena géneros solo si la obra no tiene; `POST /v1/admin/libros/rellenar-generos` (ADMIN, idempotente);
+  403 con ResultDTO en `/v1/admin/**`.
+- Verde: `mvn verify` (235 pruebas, JaCoCo ok), taller ruff+mypy+pytest (193, incl. PostgreSQL real, 91 %).
+- QA (imágenes `:qa` reconstruidas): 4 EPUB fabricados → Fantasía/Suspense/Romance (OPF Latin-1)/Fantasía con sus
+  etiquetas; relleno: 259 archivos releídos, 2 «viejos» simulados rellenados, el vaciado por el usuario no se rellena,
+  2.ª llamada 0, samy 403.
+- Producción: tras desplegar, lanzar el relleno (`despliegue.md` § Relleno de géneros).
+
+## 2026-11-12 — La voz empieza en segundos + «Ver texto» al escuchar (contratos v1.5, sin desplegar en producción)
+- Causa del «tarda muchísimo / no empieza»: el taller sintetizaba el capítulo ENTERO (≈ 200 frases, 60–80 s con 4 a la
+  vez) y luego lo ensamblaba (≈ 25 s) antes de marcar LISTO; nada sonaba hasta entonces. Además, con solo 2 hilos, el
+  capítulo pedido podía quedar detrás de precargas u otros libros, y su prioridad no subía si ya estaba encolado como
+  precarga.
+- taller: síntesis por partes (`cap-NNN.parte-KKK.m4a` + `cap-NNN.partes.json`, 3/12/60 frases), ensamblado mientras
+  se sintetiza, hilo `voz-urgente` (prioridad ≤ 10), concurrencia 8 para el pedido, las 3 primeras frases sin cola y
+  con duplicado a los 2 s, las precargas ceden el paso hasta la primera parte, sondeo de voz cada 0,5 s, limpieza de
+  partes viejas.
+- biblioteca-service: `urlPartes` en `/audio/estado`, partes servidas por GET, `GET /v1/archivos/{id}/frases/cap-NNN.json`,
+  prioridad del capítulo pedido (sube a 10; lo pedido antes del mismo libro baja a 20), precarga cuando el pedido ya suena.
+- web: el motor suena por partes en el mismo `<audio>` (cambio de `src` al acabar cada parte; pasa al archivo entero
+  cuando está LISTO), sondeo de 0,7 s al principio; «Ver texto» (hoja/panel con la frase resaltada que sigue al audio,
+  «Volver a la frase actual», tocar frase = saltar); capítulos plegados en una pastilla «Capítulo N de M ▾» con hoja.
+- Medido en QA (capítulos de 201 frases, ≈ 24 min de voz): ANTES 83–95 s hasta la primera palabra. DESPUÉS 2,5–3,7 s
+  (6 voces seguidas, con precargas de por medio), 3,1 s en el navegador; en momentos en que el servicio de Microsoft
+  responde lento, 5–6 s. Corte entre partes: 150–180 ms. Capítulo entero: 45–60 s (antes 83–95).
+- Verde: biblioteca `mvn verify` (270, JaCoCo ok), taller (mis pruebas + PostgreSQL real; fallan solo `test_hojas`/
+  `test_documentos` del trabajo de formatos en curso, por dependencias que aún no están en la imagen de pruebas),
+  web lint + tipos + jest (559; `BibliotecaDeLujo` se pasó de tiempo una vez con todo en paralelo, sola pasa).
+- Pendiente: confirmar en un iPhone real con la pantalla bloqueada el paso de una parte a otra (mismo mecanismo que
+  el cambio de capítulo, que ya funciona) y en Android Chrome.
+
+## 2026-11-12 — Documentos: más formatos, visor de hojas de cálculo y carpetas (contratos v1.6, sin desplegar en producción)
+
+| Decisión | Elección | Motivo |
+|---|---|---|
+| Markdown, HTML, RTF, ODT, PPTX, JSON/YAML/LOG | Al EPUB normalizado del taller (mismo lector) | Voz, notas, subrayado, traducción y progreso gratis; Markdown con pandoc `gfm` y la lista blanca de siempre |
+| Código en Markdown | `pre.bah-codigo` tal cual, sin segmentar ni leer en voz | Colapsar espacios rompía la sangría; leer código en voz no sirve |
+| Hojas de cálculo | Taller → `hoja.json` + visor propio (DOM virtualizado) | Rendimiento y seguridad: nada de parsear binarios en el iPhone ni SheetJS (versiones con fallos en npm); valores calculados guardados, sin macros |
+| Formato de celdas | Texto ya formateado en el taller (es-CO) | El visor solo pinta; fechas, monedas y % iguales en todos los clientes |
+| Detección | ZIP por partes, OLE por flujos, RTF por firma | Un .xlsx que es un Word se rechaza; lo de antes ilegible sigue entrando como siempre |
+| Borrar carpeta con contenido | Elegir: subirlo a la carpeta de arriba o retirarlo | «A la raíz» para las de primer nivel; para subcarpetas, subir un nivel no desperdiga lo ordenado |
+| Navegación del archivador | `/documentos?carpeta=…` con `push` | Atrás del navegador sube un nivel; recargar deja donde estabas |
+| iPhone y `accept` | Sin `accept` en iOS, filtro después | Safari deja en gris .md/.yaml/.log de iCloud si no los reconoce |
+
+- biblioteca-service: `Formato` + 12, `DetectorDeFormato` (ZIP/OLE por dentro), `GET /v1/archivos/{id}/hoja.json`,
+  originales de texto como `text/plain`; carpetas (Flyway V5 `bah_lib_carpeta` + `ejemplar.carpeta_id`),
+  `/v1/carpetas/{all,contenido,save,mover,mover-documentos,delete/{id}}`, `/libros/subir` con `carpetaId`,
+  `BIBLIOTECA_MAX_CARPETAS` (500); mensajes nuevos en `Message.Msj`; spec y Postman al día.
+- taller: `formatos.py`, `desde_html.py`, `desde_codigo.py`, `desde_pptx.py`, `hojas/*` (xlsx con openpyxl, xls con
+  xlrd, ods con lxml, csv; formateador de códigos de Excel); deps openpyxl 3.1.5, xlrd 2.0.1, defusedxml 0.7.1.
+- web: archivador con carpetas kraft, migas de latón, iconos por tipo, «⋯» con el resto, selección para mover varios,
+  buscar dentro, subir aquí; ruta `Hoja` (`/hoja/:id`) con visor de hojas (pestañas, fila/columna fijas, combinadas,
+  búsqueda en todas las hojas, zoom, ancho de columna arrastrando); FichaLibro «Abrir hoja».
+- Verde: backend `mvn verify` (JaCoCo ok), taller ruff + mypy + pytest (310, 91,5 %), web lint + tipos + jest (575;
+  `BibliotecaDeLujo` se pasa de tiempo con la suite entera en paralelo, sola pasa 23/23).
+- QA de punta a punta (imágenes `:qa`): .md con tareas/tablas/cita/código (+ script, iframe y `javascript:` que no
+  pasan), .xlsx con 3 hojas visibles + 1 oculta, fechas, COP, EUR, %, negativos entre paréntesis, combinadas e
+  inmovilización, .csv Latin-1 con `;`, .ods, .pptx con notas y diapositiva oculta, .json; carpetas y subcarpetas,
+  subir a carpeta, mover dos a la vez, buscar dentro, borrar vacía, con «subir» y con «borrar». Capturas en casa:
+  `C:\srv\biblioteca-ah-qa\qa\dev-docs\capturas\`.
+- Pendiente: XLS real (no se puede generar en el contenedor; probado con dobles), probar en iPhone real la selección
+  de .md/.xlsx desde iCloud, y desplegar a producción (aplica V5).

@@ -3,8 +3,10 @@ import type { Preferencias } from '@contextos/PreferenciasContext'
 import type { AnotacionDTO } from '@tipos'
 
 export interface Ubicacion {
-  /** 0..1 del libro. */
+  /** 0..1 del libro (foliate la da al FINAL de la página a la vista). */
   fraccion: number
+  /** 0..1 del libro al PRINCIPIO de la página a la vista (dónde vas dentro del capítulo). */
+  fraccionInicio?: number | null
   cfi: string | null
   fraseId: string | null
   capitulo: number
@@ -57,7 +59,7 @@ export interface InfoLibro {
   /** El idioma que declara el EPUB (o el del texto), para ofrecer «Ver en español». */
   idioma?: string | null
   /** Dónde empieza cada sección (0..1) y cómo se llama, para la vista previa del deslizador. */
-  secciones: { fraccion: number; titulo: string }[]
+  secciones: { fraccion: number; titulo: string; href?: string }[]
 }
 
 export interface ResultadoBusqueda {

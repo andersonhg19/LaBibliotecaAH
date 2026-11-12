@@ -1,5 +1,6 @@
 """Bucle de trabajadores: sondea la cola, ejecuta el manejador del tipo y registra el resultado.
 
+- (v1.4) Un hilo para RELEER_METADATOS (relleno de géneros: solo lee las materias del original).
 - Un hilo para CONVERTIR y `hilos_voz` (2) para VOZ_CAPITULO: la voz nunca bloquea conversiones y un capítulo
   largo no deja esperando a los demás (QA DA-19).
 - Máx. `max_intentos` (3): un fallo con intentos < 3 vuelve a PENDIENTE; al 3.º queda ERROR.
@@ -25,10 +26,11 @@ from ..config.registro import contexto
 from ..config.rutas import Rutas
 from ..conversion.aislado import ejecutar_aislado
 from ..conversion.convertir import VERSION_TEXTO, buscar_original, convertir
+from ..conversion.materias import leer_materias
 from ..dominio.mensajes import Msj, texto
 from ..dominio.modelo import ErrorDefinitivo, ErrorDeTaller, TrabajoCancelado
 from ..dominio.voces import voz_conocida
-from ..voz.capitulo import borrar_audio_capitulo, generar_capitulo
+from ..voz.capitulo import borrar_audio_capitulo, generar_capitulo, limpiar_partes_viejas
 from ..voz.motor import motor_para
 from .repositorio import Repositorio
 
@@ -104,15 +106,45 @@ class ManejadorConvertir(Manejador):
         repo.archivo_estado(str(trabajo["archivo_id"]), "ERROR" if definitivo else "PENDIENTE", mensaje)
 
 
+class ManejadorMetadatos(Manejador):
+    """RELEER_METADATOS (v1.4): materias del original → `metadatos.materias` del archivo, sin reconvertir.
+
+    No toca título, autores, portada ni el EPUB normalizado. Un original que falta o no se puede leer deja la lista
+    vacía (el archivo queda «releído» y el relleno no lo vuelve a encolar). Un fallo no cambia el estado del archivo.
+    """
+
+    tipos = ("RELEER_METADATOS",)
+
+    def __init__(self, rutas: Rutas):
+        self.rutas = rutas
+
+    def ejecutar(self, trabajo: Trabajo, repo: Repositorio) -> None:
+        archivo_id = str(trabajo["archivo_id"])
+        try:
+            materias = leer_materias(buscar_original(self.rutas.originales(archivo_id)))
+        except ErrorDefinitivo as e:
+            log.warning("Relectura de materias sin original: %s", e)
+            materias = []
+        if repo.archivo_materias(archivo_id, materias):
+            log.info("Materias releídas: %d (%s)", len(materias), "; ".join(materias))
+        else:
+            log.info("Relectura de materias descartada: el archivo ya no existe o no está LISTO")
+
+
 class ManejadorVoz(Manejador):
     """VOZ_CAPITULO: audio 1x/2x + tiempos de un capítulo y upsert en bah_lib_audio."""
 
     tipos = ("VOZ_CAPITULO",)
     mensaje_interno = Msj.ERROR_INTERNO_VOZ
 
-    def __init__(self, rutas: Rutas, concurrencia: int = 4):
+    def __init__(
+        self, rutas: Rutas, concurrencia: int = 4, concurrencia_urgente: int | None = None, prioridad_urgente: int = 10
+    ):
         self.rutas = rutas
         self.concurrencia = concurrencia
+        # (v1.5) el capítulo que alguien escucha (prioridad <= prioridad_urgente) se sintetiza con más concurrencia
+        self.concurrencia_urgente = concurrencia_urgente or concurrencia
+        self.prioridad_urgente = prioridad_urgente
 
     def ejecutar(self, trabajo: Trabajo, repo: Repositorio) -> None:
         archivo_id = str(trabajo["archivo_id"])
@@ -145,6 +177,8 @@ class ManejadorVoz(Manejador):
                 voz_motor,
                 latido=lambda: repo.latido(trabajo["id"]),
                 seguir=sigue_existiendo,
+                concurrencia=self._concurrencia_de(trabajo),
+                urgente=self._es_urgente(trabajo),
             )
         )
         listo = sigue_existiendo() and repo.audio_estado(
@@ -154,6 +188,14 @@ class ManejadorVoz(Manejador):
             borrar_audio_capitulo(self.rutas, archivo_id, voz_id, capitulo)
             raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         log.info("Audio listo: voz=%s capitulo=%s duracion=%.1fs", voz_id, capitulo, duracion)
+        limpiar_partes_viejas(self.rutas)  # (v1.5) partes de capítulos ya enteros (al final: no retrasa el arranque)
+
+    def _es_urgente(self, trabajo: Trabajo) -> bool:
+        prioridad = trabajo.get("prioridad")
+        return prioridad is not None and int(prioridad) <= self.prioridad_urgente
+
+    def _concurrencia_de(self, trabajo: Trabajo) -> int:
+        return self.concurrencia_urgente if self._es_urgente(trabajo) else self.concurrencia
 
     def al_fallar(self, trabajo: Trabajo, repo: Repositorio, mensaje: str, definitivo: bool) -> None:
         p = _payload(trabajo)
@@ -272,6 +314,7 @@ class Trabajador(threading.Thread):
         max_intentos: int,
         parar: threading.Event,
         intervalo_latido: float = INTERVALO_LATIDO,
+        prioridad_max: int | None = None,
     ):
         super().__init__(name=nombre, daemon=True)
         self.manejador = manejador
@@ -280,6 +323,8 @@ class Trabajador(threading.Thread):
         self.max_intentos = max_intentos
         self.parar = parar
         self.intervalo_latido = intervalo_latido
+        # (v1.5) hilo reservado: solo toma trabajos con prioridad <= prioridad_max (el capítulo que se escucha)
+        self.prioridad_max = prioridad_max
         self.procesados = 0
         self.ultimo_error: str | None = None
 
@@ -290,7 +335,8 @@ class Trabajador(threading.Thread):
             try:
                 if repo is None:
                     repo = self.fabrica_repo()
-                trabajo = repo.tomar(list(self.manejador.tipos))
+                tipos = list(self.manejador.tipos)
+                trabajo = repo.tomar(tipos) if self.prioridad_max is None else repo.tomar(tipos, self.prioridad_max)
                 if trabajo is None:
                     self.parar.wait(self.intervalo)
                     continue

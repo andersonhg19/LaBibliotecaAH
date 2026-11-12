@@ -97,6 +97,8 @@ def crear_epub(destino: Path) -> Path:
     <dc:publisher>Editorial Roble</dc:publisher>
     <dc:date>2019-05-01</dc:date>
     <dc:description>&lt;p&gt;Una &lt;b&gt;sinopsis&lt;/b&gt; breve.&lt;/p&gt;</dc:description>
+    <dc:subject>Novela; Fantástico</dc:subject>
+    <dc:subject>Juvenil</dc:subject>
     <meta property="dcterms:modified">2024-01-01T00:00:00Z</meta>
   </metadata>
   <manifest>
@@ -233,6 +235,7 @@ def crear_docx(destino: Path) -> Path:
     d = docx.Document()
     d.core_properties.title = "Manual de la casa"
     d.core_properties.author = "Samy"
+    d.core_properties.keywords = "Ensayo, Hogar"
     d.add_paragraph("Texto antes del primer título.")
     d.add_heading("Introducción", level=1)
     p = d.add_paragraph("La biblioteca abre a las nueve. ")

@@ -8,14 +8,15 @@ import { z } from 'zod'
  * formada, la app falla AL ARRANCAR con un mensaje claro, no en la primera
  * petición con un "Network Error" que no dice nada.
  *
- *   EXPO_PUBLIC_API_URL  URL del gateway (en casa: https://casa.tail60fcb5.ts.net:7051)
+ *   EXPO_PUBLIC_API_URL  URL del gateway (en casa: https://casa.tail60fcb5.ts.net:7051). Por defecto el
+ *                        gateway de QA (9920): en casa el 8920 es PRODUCCION y una prueba local no debe tocarlo.
  *   EXPO_PUBLIC_MOCK     "1" = modo demostración sin backend (libros de ejemplo en public/demo)
  */
 const esquema = z.object({
   EXPO_PUBLIC_API_URL: z
     .string()
-    .regex(/^https?:\/\/[^\s/]+/, 'EXPO_PUBLIC_API_URL debe ser una URL completa, p. ej. http://localhost:8920')
-    .default('http://localhost:8920')
+    .regex(/^https?:\/\/[^\s/]+/, 'EXPO_PUBLIC_API_URL debe ser una URL completa, p. ej. http://localhost:9920')
+    .default('http://localhost:9920')
     .transform((u) => u.replace(/\/+$/, '')),
   EXPO_PUBLIC_MOCK: z
     .enum(['0', '1', 'true', 'false', ''])

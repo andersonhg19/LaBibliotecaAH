@@ -30,6 +30,10 @@
     {
       "key": "deseoId",
       "value": ""
+    },
+    {
+      "key": "carpetaId",
+      "value": ""
     }
   ],
   "item": [
@@ -2258,7 +2262,7 @@
           ]
         },
         {
-          "name": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)",
+          "name": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a), sus tiempos (cap-NNN.tiempos.json) o, mientras se genera, sus partes (v1.5: cap-NNN.partes.json, cap-NNN.parte-KKK.m4a)",
           "request": {
             "method": "GET",
             "header": [],
@@ -2356,6 +2360,45 @@
               "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
             }
           ]
+        },
+        {
+          "name": "(v1.5) Texto de un capitulo por frases (cap-NNN.json), para el panel de texto al escuchar",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/frases/:fichero?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "frases",
+                ":fichero"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                },
+                {
+                  "key": "fichero",
+                  "value": "cap-003.json"
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "Audio de un capitulo (cap-NNN.m4a, cap-NNN-2x.m4a) o sus tiempos (cap-NNN.tiempos.json)"
+          }
         },
         {
           "name": "EPUB normalizado (con ids por frase)",
@@ -4297,7 +4340,7 @@
           ]
         },
         {
-          "name": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+          "name": "Sube uno o varios archivos (libros, documentos y hojas de calculo; hasta 300 MB cada uno)",
           "request": {
             "method": "POST",
             "header": [],
@@ -4314,7 +4357,7 @@
                 "subir"
               ]
             },
-            "description": "Sube uno o varios archivos (EPUB, PDF, DOCX, DOC, TXT; hasta 300 MB cada uno)",
+            "description": "Sube uno o varios archivos (libros, documentos y hojas de calculo; hasta 300 MB cada uno)",
             "body": {
               "mode": "formdata",
               "formdata": [
@@ -5147,6 +5190,860 @@
                 }
               ],
               "body": "(binario; con Range: bytes=0-99 responde 206 y Content-Range)"
+            }
+          ]
+        },
+        {
+          "name": "Rellena los generos vacios releyendo las materias de los originales (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/rellenar-generos",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "libros",
+                "rellenar-generos"
+              ]
+            },
+            "description": "v1.4, rol ADMIN (sin el: HTTP 403 sinPermiso). Encola RELEER_METADATOS para los archivos LISTO con obras sin generos y sin materias leidas; el taller relee solo dc:subject/keywords y biblioteca rellena los generos vacios. Idempotente."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/rellenar-generos",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "libros",
+                    "rellenar-generos"
+                  ]
+                },
+                "description": "Rellena los generos vacios releyendo las materias de los originales (idempotente)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"archivosEncolados\": 18,\n    \"obrasSinGenero\": 18\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Todas tus carpetas, en profundidad y hermanas por nombre",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/all",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "all"
+              ]
+            },
+            "description": "(v1.6) Todas tus carpetas, en profundidad y hermanas por nombre"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/all",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "all"
+                  ]
+                },
+                "description": "(v1.6) Todas tus carpetas, en profundidad y hermanas por nombre"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": [\n    {\n      \"id\": \"{{carpetaId}}\",\n      \"nombre\": \"Proyectos\",\n      \"padreId\": null,\n      \"nDocumentos\": 3,\n      \"nSubcarpetas\": 1\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Lo que hay en una carpeta (carpetaId null = raiz): migas, subcarpetas y documentos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/contenido",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "contenido"
+              ]
+            },
+            "description": "(v1.6) Lo que hay en una carpeta (carpetaId null = raiz): migas, subcarpetas y documentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"orden\": \"NOMBRE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/contenido",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "contenido"
+                  ]
+                },
+                "description": "(v1.6) Lo que hay en una carpeta (carpetaId null = raiz): migas, subcarpetas y documentos",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"orden\": \"NOMBRE\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"carpeta\": {\n      \"id\": \"{{carpetaId}}\",\n      \"nombre\": \"Proyectos\",\n      \"padreId\": null,\n      \"nDocumentos\": 3,\n      \"nSubcarpetas\": 1\n    },\n    \"ruta\": [\n      {\n        \"id\": \"{{carpetaId}}\",\n        \"nombre\": \"Proyectos\",\n        \"padreId\": null,\n        \"nDocumentos\": 3,\n        \"nSubcarpetas\": 1\n      }\n    ],\n    \"subcarpetas\": [\n      {\n        \"id\": \"…\",\n        \"nombre\": \"2026\",\n        \"padreId\": \"{{carpetaId}}\",\n        \"nDocumentos\": 1,\n        \"nSubcarpetas\": 0\n      }\n    ],\n    \"documentos\": [],\n    \"totalDocumentos\": 7,\n    \"busqueda\": false,\n    \"recortado\": false,\n    \"ubicaciones\": {}\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Buscar dentro de una carpeta y sus subcarpetas (sin mayusculas ni tildes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/contenido",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "contenido"
+              ]
+            },
+            "description": "(v1.6) Buscar dentro de una carpeta y sus subcarpetas (sin mayusculas ni tildes)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"texto\": \"cotizacion\",\n  \"orden\": \"RECIENTES\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/contenido",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "contenido"
+                  ]
+                },
+                "description": "(v1.6) Buscar dentro de una carpeta y sus subcarpetas (sin mayusculas ni tildes)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"texto\": \"cotizacion\",\n  \"orden\": \"RECIENTES\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"busqueda\": true,\n    \"subcarpetas\": [],\n    \"documentos\": [],\n    \"ubicaciones\": {\n      \"…\": \"Proyectos / 2026\"\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Crea (sin id, dentro de padreId o en la raiz) o renombra (con id) una carpeta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/save",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "save"
+              ]
+            },
+            "description": "(v1.6) Crea (sin id, dentro de padreId o en la raiz) o renombra (con id) una carpeta",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Proyectos\",\n  \"padreId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/save",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "save"
+                  ]
+                },
+                "description": "(v1.6) Crea (sin id, dentro de padreId o en la raiz) o renombra (con id) una carpeta",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nombre\": \"Proyectos\",\n  \"padreId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"id\": \"{{carpetaId}}\",\n    \"nombre\": \"Proyectos\",\n    \"padreId\": null,\n    \"nDocumentos\": 3,\n    \"nSubcarpetas\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Mueve una carpeta con todo lo suyo (destinoId null = a la raiz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/mover",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "mover"
+              ]
+            },
+            "description": "(v1.6) Mueve una carpeta con todo lo suyo (destinoId null = a la raiz)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"destinoId\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/mover",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "mover"
+                  ]
+                },
+                "description": "(v1.6) Mueve una carpeta con todo lo suyo (destinoId null = a la raiz)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"carpetaId\": \"{{carpetaId}}\",\n  \"destinoId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"id\": \"{{carpetaId}}\",\n    \"nombre\": \"Proyectos\",\n    \"padreId\": null,\n    \"nDocumentos\": 3,\n    \"nSubcarpetas\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Mueve uno o varios documentos (hasta 200) a una carpeta (carpetaId null = a la raiz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/mover-documentos",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "mover-documentos"
+              ]
+            },
+            "description": "(v1.6) Mueve uno o varios documentos (hasta 200) a una carpeta (carpetaId null = a la raiz)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarIds\": [\n    \"{{ejemplarId}}\"\n  ],\n  \"carpetaId\": \"{{carpetaId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/mover-documentos",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "mover-documentos"
+                  ]
+                },
+                "description": "(v1.6) Mueve uno o varios documentos (hasta 200) a una carpeta (carpetaId null = a la raiz)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarIds\": [\n    \"{{ejemplarId}}\"\n  ],\n  \"carpetaId\": \"{{carpetaId}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Borra una carpeta: vacia sin cuerpo; con algo dentro {contenido: SUBIR|BORRAR}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/delete/:id",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "carpetas",
+                "delete",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{carpetaId}}"
+                }
+              ]
+            },
+            "description": "(v1.6) Borra una carpeta: vacia sin cuerpo; con algo dentro {contenido: SUBIR|BORRAR}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contenido\": \"SUBIR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/carpetas/delete/:id",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "carpetas",
+                    "delete",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{carpetaId}}"
+                    }
+                  ]
+                },
+                "description": "(v1.6) Borra una carpeta: vacia sin cuerpo; con algo dentro {contenido: SUBIR|BORRAR}",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"contenido\": \"SUBIR\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"documentosMovidos\": 3,\n    \"carpetasMovidas\": 1,\n    \"documentosRetirados\": 0,\n    \"carpetasBorradas\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/hoja.json?t={{token}}",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "archivos",
+                ":archivoId",
+                "hoja.json"
+              ],
+              "variable": [
+                {
+                  "key": "archivoId",
+                  "value": ""
+                }
+              ],
+              "query": [
+                {
+                  "key": "t",
+                  "value": "{{token}}"
+                }
+              ]
+            },
+            "description": "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/:archivoId/hoja.json?t={{token}}",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "archivos",
+                    ":archivoId",
+                    "hoja.json"
+                  ],
+                  "variable": [
+                    {
+                      "key": "archivoId",
+                      "value": ""
+                    }
+                  ],
+                  "query": [
+                    {
+                      "key": "t",
+                      "value": "{{token}}"
+                    }
+                  ]
+                },
+                "description": "(v1.6) Hoja de calculo convertida (hoja.json) para el visor de hojas"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"versionFormato\": 1,\n  \"recortado\": false,\n  \"hojas\": [\n    {\n      \"nombre\": \"Ventas\",\n      \"filas\": 2,\n      \"columnas\": 2,\n      \"filasOriginal\": 2,\n      \"columnasOriginal\": 2,\n      \"recortada\": false,\n      \"fijas\": {\n        \"filas\": 1,\n        \"columnas\": 1\n      },\n      \"anchos\": [\n        96,\n        140\n      ],\n      \"altos\": [],\n      \"celdas\": [\n        [\n          0,\n          0,\n          \"Fecha\",\n          \"t\",\n          1\n        ],\n        [\n          1,\n          1,\n          \"$1.234.567,89\",\n          \"n\",\n          0\n        ]\n      ],\n      \"combinadas\": [],\n      \"estilos\": [\n        {},\n        {\n          \"negrita\": true\n        }\n      ]\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "(v1.6) Subir documentos directamente a una carpeta",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "subir"
+              ]
+            },
+            "description": "(v1.6) Subir documentos directamente a una carpeta",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "archivos",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "tipo",
+                  "value": "DOCUMENTO",
+                  "type": "text"
+                },
+                {
+                  "key": "carpetaId",
+                  "value": "{{carpetaId}}",
+                  "type": "text",
+                  "description": "v1.6: solo con tipo DOCUMENTO"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Deseo cumplido",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "subir"
+                  ]
+                },
+                "description": "(v1.6) Subir documentos directamente a una carpeta",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "archivos",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "tipo",
+                      "value": "DOCUMENTO",
+                      "type": "text"
+                    },
+                    {
+                      "key": "carpetaId",
+                      "value": "{{carpetaId}}",
+                      "type": "text",
+                      "description": "v1.6: solo con tipo DOCUMENTO"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": [\n    {\n      \"id\": \"b6f1c0de-0000-4000-8000-000000000001\",\n      \"tipo\": \"LIBRO\",\n      \"titulo\": \"Ficciones\",\n      \"nota\": \"regalo de Samy\",\n      \"etiquetas\": [\n        \"borges\"\n      ],\n      \"isbn\": \"9788499089515\",\n      \"favorito\": true,\n      \"yaLoTenias\": false\n    }\n  ]\n}"
+            },
+            {
+              "name": "Dos archivos con deseoId",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/subir",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "subir"
+                  ]
+                },
+                "description": "Un deseo pasa a la biblioteca SOLO al subir su archivo. Con deseoId (un solo archivo) el ejemplar que llega hereda nota, etiquetas, estantes e ISBN del deseo, y el deseo se borra. libros/save ya no cambia el tipo de un DESEO (120 deseoSoloConArchivo).",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "archivos",
+                      "type": "file",
+                      "src": []
+                    },
+                    {
+                      "key": "tipo",
+                      "value": "LIBRO",
+                      "type": "text"
+                    },
+                    {
+                      "key": "deseoId",
+                      "value": "{{deseoId}}",
+                      "type": "text",
+                      "description": "v1.3.2 «Ya lo tengo»: id de un deseo propio; un solo archivo"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": false,\n  \"message\": \"Para cumplir un deseo sube un solo archivo (llegaron 2).\",\n  \"errorCode\": 120,\n  \"object\": null\n}"
             }
           ]
         }

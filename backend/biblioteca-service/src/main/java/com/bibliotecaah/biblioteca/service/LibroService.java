@@ -21,8 +21,9 @@ public interface LibroService {
      * @param deseoId opcional (QA BI-15, "Ya lo tengo"): un deseo del usuario que este archivo cumple. Con el,
      *                se admite un solo archivo; el ejemplar que llegue hereda la nota, las etiquetas y los
      *                estantes del deseo, y el deseo se borra.
+     * @param carpetaId opcional (v1.6): carpeta del archivador donde entran los documentos (solo con DOCUMENTO).
      */
-    ResultDTO subir(List<MultipartFile> archivos, TipoEjemplar tipo, UUID deseoId);
+    ResultDTO subir(List<MultipartFile> archivos, TipoEjemplar tipo, UUID deseoId, UUID carpetaId);
 
     EjemplarDTO deseo(DeseoDTO dto);
 

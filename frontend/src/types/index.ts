@@ -124,7 +124,25 @@ export interface LineaDeAuditoria {
 // ============================================================================
 export type TipoEjemplar = 'LIBRO' | 'DOCUMENTO' | 'DESEO'
 export type EstadoLectura = 'POR_LEER' | 'LEYENDO' | 'LEIDO' | 'ABANDONADO'
-export type Formato = 'EPUB' | 'PDF' | 'DOCX' | 'DOC' | 'TXT'
+/** Formato del original (contrato v1.6: documentos de texto, ofimática y hojas de cálculo). */
+export type Formato =
+  | 'EPUB'
+  | 'PDF'
+  | 'DOCX'
+  | 'DOC'
+  | 'TXT'
+  | 'MD'
+  | 'HTML'
+  | 'RTF'
+  | 'ODT'
+  | 'PPTX'
+  | 'XLSX'
+  | 'XLS'
+  | 'ODS'
+  | 'CSV'
+  | 'JSON'
+  | 'YAML'
+  | 'LOG'
 export type EstadoConversion = 'PENDIENTE' | 'PROCESANDO' | 'LISTO' | 'ERROR'
 export type FuenteMetadatos = 'NOMBRE_ARCHIVO' | 'ARCHIVO' | 'MANUAL' | 'OPEN_LIBRARY' | 'IA'
 
@@ -159,6 +177,8 @@ export interface EjemplarDTO {
   nota?: string | null
   /** v1.2, solo en la respuesta de /subir: ese archivo ya estaba en tu biblioteca (BI-16). */
   yaLoTenias?: boolean
+  /** v1.6: carpeta del archivador donde está el documento (null = raíz; los libros siempre null). */
+  carpetaId?: string | null
 }
 
 export interface CapituloResumen {
@@ -276,6 +296,38 @@ export interface EstanteDTO {
   nLibros: number
 }
 
+// ---------------------------------------------------------------- archivador (contrato v1.6)
+export type OrdenCarpeta = 'NOMBRE' | 'RECIENTES' | 'ANTIGUOS'
+
+/** Una carpeta del archivador: documentos de todo su subárbol y subcarpetas directas. */
+export interface CarpetaDTO {
+  id: string
+  nombre: string
+  padreId: string | null
+  nDocumentos: number
+  nSubcarpetas: number
+}
+
+/** Lo que se ve al abrir una carpeta (o la raíz), o el resultado de buscar dentro. */
+export interface CarpetaContenidoDTO {
+  carpeta: CarpetaDTO | null
+  ruta: CarpetaDTO[]
+  subcarpetas: CarpetaDTO[]
+  documentos: EjemplarDTO[]
+  totalDocumentos: number
+  busqueda: boolean
+  recortado: boolean
+  /** Solo al buscar: carpetaId → "Proyectos / 2026". */
+  ubicaciones: Record<string, string>
+}
+
+export interface CarpetaBorradaDTO {
+  documentosMovidos: number
+  carpetasMovidas: number
+  documentosRetirados: number
+  carpetasBorradas: number
+}
+
 export interface VozDTO {
   id: string
   nombre: string
@@ -298,6 +350,27 @@ export interface EstadoAudioDTO {
   error?: string | null
   /** Opcional (aún no en el contrato): segundos estimados hasta que esté LISTO. */
   estimadoSeg?: number | null
+  /** v1.5: con PENDIENTE/GENERANDO, el manifiesto de partes ya reproducibles (contratos §6 bis), o null. */
+  urlPartes?: string | null
+}
+
+/** v1.5: una parte reproducible del capítulo que aún se genera (tiempos en la línea 1x del capítulo). */
+export interface ParteAudio {
+  n: number
+  archivo: string
+  t0: number
+  t1: number
+}
+
+/** v1.5: cap-NNN.partes.json (contratos §6 bis). `frases` = tiempos de las frases de las partes ya escritas. */
+export interface PartesCapitulo {
+  versionFormato: number
+  capitulo: number
+  vozId: string
+  completo: boolean
+  duracionEstimada: number
+  partes: ParteAudio[]
+  frases: FraseTiempo[]
 }
 
 /** cap-NNN.tiempos.json (contratos §6). Palabras: [inicioChar, finChar, t0, t1]. */

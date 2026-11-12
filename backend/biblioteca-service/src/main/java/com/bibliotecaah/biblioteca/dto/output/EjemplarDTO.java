@@ -46,6 +46,8 @@ public class EjemplarDTO {
     private Instant fechaFin;
     private long nNotas;
     private FuenteMetadatos fuenteMetadatos;
+    /** (v1.6) Carpeta del archivador donde esta el documento; null = raiz (y siempre en libros y deseos). */
+    private UUID carpetaId;
     /** Nota del deseo ("regalo de cumpleanos"); null en libros y documentos (QA BI-15). */
     private String nota;
     /**

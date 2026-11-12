@@ -22,7 +22,7 @@ CREATE INDEX ix_bah_lib_trabajo_cola ON bah_lib_trabajo (estado, prioridad, crea
 CREATE TABLE bah_lib_archivo (
   id UUID PRIMARY KEY, estado_conversion VARCHAR(20), error_conversion TEXT, version_texto INT,
   n_capitulos INT, n_palabras INT, minutos_estimados INT, metadatos JSONB, tiene_portada BOOLEAN,
-  actualizado TIMESTAMP);
+  metadatos_aplicados BOOLEAN NOT NULL DEFAULT FALSE, actualizado TIMESTAMP);
 CREATE TABLE bah_lib_audio (
   archivo_id UUID NOT NULL, voz_id VARCHAR(80) NOT NULL, capitulo INT NOT NULL, estado VARCHAR(20) NOT NULL,
   duracion_seg NUMERIC(10,2), error TEXT, actualizado TIMESTAMP NOT NULL DEFAULT now(),
@@ -68,6 +68,17 @@ def test_tomar_respeta_orden_tipo_e_intentos(con):
     estados = dict(con.execute("SELECT id, estado FROM bah_lib_trabajo").fetchall())
     assert estados[a] == "PENDIENTE" and estados[b] == "HECHO" and estados[c] == "ERROR"
     assert repo.tomar(["CONVERTIR"])["intentos"] == 2
+    repo.cerrar()
+
+
+def test_hilo_urgente_solo_toma_hasta_su_prioridad(con):
+    """(v1.5) El hilo voz-urgente no se queda con precargas (prioridad 20) y sí toma el capítulo pedido (10)."""
+    precarga = insertar(con, tipo="VOZ_CAPITULO", prioridad=20, creado="now() - interval '5 min'")
+    pedido = insertar(con, tipo="VOZ_CAPITULO", prioridad=10)
+    repo = RepositorioPg(URL)
+    assert repo.tomar(["VOZ_CAPITULO"], 10)["id"] == pedido
+    assert repo.tomar(["VOZ_CAPITULO"], 10) is None
+    assert repo.tomar(["VOZ_CAPITULO"])["id"] == precarga
     repo.cerrar()
 
 
@@ -168,4 +179,23 @@ def test_da14_da28_sin_archivo_no_hay_filas_huerfanas(con):
     assert repo.audio_estado(str(aid), "edge.es-ES-AlvaroNeural", 0, "GENERANDO") is True
     assert repo.audio_estado(str(aid), "edge.es-ES-AlvaroNeural", 0, "ERROR", error="x") is True
     assert con.execute("SELECT estado, error FROM bah_lib_audio").fetchone() == ("ERROR", "x")
+    repo.cerrar()
+
+
+def test_v14_materias_se_suman_a_los_metadatos_y_reabren_la_aplicacion(con):
+    listo, pendiente = uuid.uuid4(), uuid.uuid4()
+    con.execute(
+        "INSERT INTO bah_lib_archivo (id, estado_conversion, metadatos, metadatos_aplicados) "
+        "VALUES (%s, 'LISTO', '{\"titulo\": \"Ñandú\"}'::jsonb, TRUE), (%s, 'PENDIENTE', NULL, FALSE)",
+        (listo, pendiente),
+    )
+    repo = RepositorioPg(URL)
+    assert repo.archivo_materias(str(listo), ["Novela", "Fantástico"]) is True
+    assert repo.archivo_materias(str(pendiente), ["Novela"]) is False  # solo archivos LISTO
+    assert repo.archivo_materias(str(uuid.uuid4()), []) is False
+    md, aplicados = con.execute(
+        "SELECT metadatos, metadatos_aplicados FROM bah_lib_archivo WHERE id = %s", (listo,)
+    ).fetchone()
+    assert md == {"titulo": "Ñandú", "materias": ["Novela", "Fantástico"]} and aplicados is False
+    assert con.execute("SELECT metadatos FROM bah_lib_archivo WHERE id = %s", (pendiente,)).fetchone()[0] is None
     repo.cerrar()

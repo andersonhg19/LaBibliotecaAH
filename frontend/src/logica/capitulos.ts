@@ -7,8 +7,9 @@
  * florón) y la cuenta empieza en el primer capítulo de verdad.
  */
 
+// «Inicio» (solo, sin más) es como llama el taller al texto que va antes del primer capítulo (TXT, DOCX, PDF).
 const PRELIMINAR =
-  /^(portada|portadilla|cubierta|anteportada|cover|title\s*page|p[aá]gina\s+de\s+t[ií]tulo|cr[eé]ditos|copyright|derechos|legal|dedicatoria|epígrafe|ep[ií]grafe|[ií]ndice|contenido|tabla\s+de\s+contenidos?|contents|table\s+of\s+contents)\b/i
+  /^(portada|portadilla|cubierta|anteportada|cover|title\s*page|p[aá]gina\s+de\s+t[ií]tulo|cr[eé]ditos|copyright|derechos|legal|dedicatoria|epígrafe|ep[ií]grafe|[ií]ndice|contenido|tabla\s+de\s+contenidos?|contents|table\s+of\s+contents|inicio(?=\s*$))\b/i
 
 /** Sin tildes, sin signos y en minúsculas: para comparar títulos. */
 export const normalizarTitulo = (t: string): string =>

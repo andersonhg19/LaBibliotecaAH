@@ -20,6 +20,7 @@ import com.bibliotecaah.biblioteca.enums.TipoEjemplar;
 import com.bibliotecaah.biblioteca.event.EntityChangeEvent;
 import com.bibliotecaah.biblioteca.mapper.BibliotecaMapper;
 import com.bibliotecaah.biblioteca.repository.ArchivoRepository;
+import com.bibliotecaah.biblioteca.repository.CarpetaRepository;
 import com.bibliotecaah.biblioteca.repository.EjemplarCustomRepository;
 import com.bibliotecaah.biblioteca.repository.EjemplarRepository;
 import com.bibliotecaah.biblioteca.repository.ObraRepository;
@@ -29,6 +30,7 @@ import com.bibliotecaah.biblioteca.service.EstanteService;
 import com.bibliotecaah.biblioteca.service.IngestaService;
 import com.bibliotecaah.biblioteca.service.LibroService;
 import com.bibliotecaah.biblioteca.util.AlmacenDeArchivos;
+import com.bibliotecaah.biblioteca.util.ClasificadorDeMaterias;
 import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.Mensajes;
 import com.bibliotecaah.biblioteca.util.SecurityUtils;
@@ -76,13 +78,15 @@ public class LibroServiceImpl implements LibroService {
     private final Topes topes;
     private final EstanteItemRepository estanteItems;
     private final TransactionTemplate tx;
+    private final CarpetaRepository carpetas;
 
     public LibroServiceImpl(EjemplarRepository ejemplares, ObraRepository obras, ArchivoRepository archivos,
                             ProgresoRepository progresos, TrabajoRepository trabajos, IngestaService ingesta,
                             EstanteService estantes, EnsambladorDeEjemplares ensamblador,
                             LectorDeEstructura estructura, BibliotecaMapper mapper, AlmacenDeArchivos almacen,
                             Mensajes mensajes, ApplicationEventPublisher eventos, Topes topes,
-                            EstanteItemRepository estanteItems, TransactionTemplate tx) {
+                            EstanteItemRepository estanteItems, TransactionTemplate tx, CarpetaRepository carpetas) {
+        this.carpetas = carpetas;
         this.topes = topes;
         this.estanteItems = estanteItems;
         this.tx = tx;
@@ -104,7 +108,7 @@ public class LibroServiceImpl implements LibroService {
     // ------------------------------------------------------------------ subir
 
     @Override
-    public ResultDTO subir(List<MultipartFile> ficheros, TipoEjemplar tipo, UUID deseoId) {
+    public ResultDTO subir(List<MultipartFile> ficheros, TipoEjemplar tipo, UUID deseoId, UUID carpetaId) {
         Long yo = SecurityUtils.usuarioActual();
         /* Los vacios tambien pasan: la ingesta los rechaza con "el archivo esta
            vacio" (QA BI-21: antes se descartaban aqui y el mensaje era "no llego
@@ -112,6 +116,12 @@ public class LibroServiceImpl implements LibroService {
         List<MultipartFile> validos = ficheros == null ? List.of()
                 : ficheros.stream().filter(f -> f != null).toList();
         ValidationUtils.exigir(!validos.isEmpty(), Message.Msj.sinArchivos, CodigoError.DATO_INVALIDO);
+        if (carpetaId != null) {
+            /* (v1.6) Subir directamente a una carpeta: solo documentos, y la carpeta debe ser suya. */
+            ValidationUtils.exigir(tipo == TipoEjemplar.DOCUMENTO && deseoId == null, Message.Msj.carpetaSoloDocumentos,
+                    CodigoError.DATO_INVALIDO);
+            ValidationUtils.encontrado(carpetas.findByIdAndUsuarioId(carpetaId, yo), Message.Msj.carpetaNoEncontrada);
+        }
         if (deseoId != null) {
             /* QA BI-15 ("Ya lo tengo"): antes de copiar nada, el deseo debe ser suyo y seguir siendo deseo. */
             ValidationUtils.exigir(validos.size() == 1, Message.Msj.deseoUnSoloArchivo, CodigoError.DATO_INVALIDO,
@@ -157,6 +167,9 @@ public class LibroServiceImpl implements LibroService {
         if (deseoId != null) {
             EjemplarDTO llegado = aceptados.get(0);
             aceptados.set(0, tx.execute(s -> cumplirDeseo(yo, deseoId, llegado)));
+        }
+        if (carpetaId != null) {
+            ponerEnCarpeta(yo, aceptados, carpetaId);
         }
         String mensaje = rechazos.isEmpty() ? "OK"
                 : mensajes.texto(Message.Msj.algunosRechazados, aceptados.size(), String.join(" ", rechazos));
@@ -206,6 +219,17 @@ public class LibroServiceImpl implements LibroService {
         EjemplarDTO dto = ensamblador.uno(yo, ejemplar);
         dto.setYaLoTenias(llegado.getYaLoTenias());
         return dto;
+    }
+
+    /**
+     * (v1.6) Los documentos que acaban de llegar (no los que ya tenias, que se quedan donde estaban) entran en
+     * la carpeta elegida. Un documento retirado que reaparece tambien va a esa carpeta.
+     */
+    private void ponerEnCarpeta(Long yo, List<EjemplarDTO> aceptados, UUID carpetaId) {
+        List<EjemplarDTO> nuevos = aceptados.stream()
+                .filter(d -> d.getTipo() == TipoEjemplar.DOCUMENTO && !Boolean.TRUE.equals(d.getYaLoTenias())).toList();
+        ejemplares.moverDocumentos(yo, nuevos.stream().map(EjemplarDTO::getId).toList(), carpetaId);
+        nuevos.forEach(d -> d.setCarpetaId(carpetaId));
     }
 
     // ------------------------------------------------------------------ deseo
@@ -316,7 +340,8 @@ public class LibroServiceImpl implements LibroService {
             datosDeObra = true;
         }
         if (dto.tocar("generos", dto.getGeneros())) {
-            o.setGeneros(limpiar(dto.getGeneros()));
+            /* Sinonimos al nombre canonico ("fantastico" -> "Fantasía"); lo demas, tal cual. */
+            o.setGeneros(ClasificadorDeMaterias.normalizarGeneros(dto.getGeneros()));
             datosDeObra = true;
         }
         if (datosDeObra) {
@@ -345,6 +370,8 @@ public class LibroServiceImpl implements LibroService {
         ValidationUtils.exigir(e.getTipo() != TipoEjemplar.DESEO || tipo == TipoEjemplar.DESEO,
                 Message.Msj.deseoSoloConArchivo, CodigoError.DATO_INVALIDO);
         e.setTipo(tipo);
+        /* (v1.6) Solo los documentos viven en carpetas. */
+        if (tipo != TipoEjemplar.DOCUMENTO) e.setCarpetaId(null);
     }
 
     /** Las fechas acompanan al estado: empezar, terminar, releer. */

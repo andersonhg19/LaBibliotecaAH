@@ -11,8 +11,18 @@ import Icono from '@componentes/atoms/Icono'
 import Input from '@componentes/atoms/Input'
 import Spinner from '@componentes/atoms/Spinner'
 import AppText from '@componentes/atoms/Text'
+import IndicadorCapitulo, { FilaCapitulo } from '@componentes/lector/IndicadorCapitulo'
 import LectorFoliate from '@componentes/lector/LectorFoliate'
+import PistaLector, { marcarPistaVista, pistaVista } from '@componentes/lector/PistaLector'
 import SelectorModo from '@componentes/lector/SelectorModo'
+import {
+  TramoCapitulo,
+  capituloEn,
+  entradaActual,
+  minutosQuedanCapitulo,
+  tramosDeCapitulos,
+  vecinos,
+} from '@componentes/lector/capitulos'
 import { ALTO_BARRA_LECTOR, ALTO_MINI, LECTOR_PAPEL } from '@componentes/lector/disenoLector'
 import { Lugar, debeOcultarBarra } from '@componentes/lector/gestos'
 import { posicionMenu } from '@componentes/lector/menuSeleccion'
@@ -54,6 +64,10 @@ const CADA_LOCAL = 5000
 const CADA_SERVIDOR = 15000
 /** Lo mínimo entre el primer movimiento y el primer guardado en el servidor. */
 const PRIMER_GUARDADO = 2000
+/** Alto de la barra de abajo: la fila del capítulo y la del avance del libro (sin la zona segura). */
+const ALTO_BARRA_ABAJO = 104
+/** Lo que ocupa el indicador del capítulo al pie (pastilla de 44 + 6 de aire). */
+const ALTO_INDICADOR = 50
 
 /** La cinta del marcador cae con un pequeño balanceo (la animación no se puede poner en línea). */
 function ponerEstilosLector() {
@@ -90,7 +104,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   const control = useRef<ControlLector>(null)
   useEffect(() => ponerEstilosLector(), [])
   /* Los avisos suben por encima de la barra de abajo del lector (QA RW-04). */
-  useEffect(() => elevarAvisos(76), [])
+  useEffect(() => elevarAvisos(ALTO_BARRA_ABAJO + 12), [])
 
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [inicial, setInicial] = useState<Destino | null>(null)
@@ -117,6 +131,9 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   const [resultados, setResultados] = useState<ResultadoBusqueda[] | null>(null)
   const [buscando, setBuscando] = useState(false)
   const [irPct, setIrPct] = useState('')
+  /* La pista de la primera vez («toca el centro»): null = aún no se sabe si ya se vio. */
+  const [pistaPendiente, setPistaPendiente] = useState<boolean | null>(null)
+  const [verPista, setVerPista] = useState(false)
   // Traducir una selección (hoja) y «Ver en español» por capítulo.
   const [trSel, setTrSel] = useState<{
     seleccion: Seleccion
@@ -184,6 +201,22 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
     setCromo(true)
     ocultarLuego(LECTOR_PAPEL.barraSeVaMs + 1500)
   }, [ocultarLuego])
+  /* La primera vez que la barra se esconde sola, se enseña el gesto para traerla (una vez por dispositivo). */
+  useEffect(() => {
+    let vivo = true
+    pistaVista().then((vista) => vivo && setPistaPendiente(!vista))
+    return () => {
+      vivo = false
+    }
+  }, [])
+  useEffect(() => {
+    if (!listo || cromo || !pistaPendiente) return
+    setPistaPendiente(false)
+    setVerPista(true)
+    marcarPistaVista()
+  }, [listo, cromo, pistaPendiente])
+  const cerrarPista = useCallback(() => setVerPista(false), [])
+
   /* Con una hoja, la selección o el aviso abiertos la barra se queda. */
   const ocupado = !!hoja || !!seleccion || !!ofrecer || vistaPrevia != null
   useEffect(() => {
@@ -487,6 +520,33 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
     (cap: number) => libro?.capitulos.find((c) => c.indice === cap)?.minutos ?? null,
     [libro],
   )
+  /* Dónde vas dentro del capítulo, y los capítulos de al lado. */
+  const tramos = useMemo(() => tramosDeCapitulos(info.secciones), [info.secciones])
+  const posCap = ubic ? capituloEn(ubic.fraccionInicio ?? ubic.fraccion, tramos) : null
+  /* Lo que queda del capítulo entero (con sus trozos «parte k de n»), no solo del trozo. */
+  const minutosCap = ubic ? minutosQuedanCapitulo(ubic.minutosRestantes, ubic.capitulo, libro?.capitulos ?? []) : null
+  const { anterior: capAnterior, siguiente: capSiguiente } = vecinos(tramos, posCap?.tramo ?? null)
+  const irACapitulo = (t: TramoCapitulo | null) => {
+    if (!t) return
+    control.current?.irA(t.href ? { href: t.href } : { fraccion: t.inicio })
+    // La barra se queda un rato para poder seguir saltando.
+    mostrarBarra()
+  }
+  const listaIndice = info.indice.length
+    ? info.indice
+    : (libro?.capitulos.map((c) => ({ titulo: c.titulo, href: '', nivel: 0 })) ?? [])
+  const actualIndice = entradaActual(listaIndice, posCap?.tramo ?? null, ubic?.etiqueta)
+  /* Al abrir el índice, el capítulo de ahora queda a la vista (en medio). */
+  useEffect(() => {
+    if (hoja !== 'indice' || Platform.OS !== 'web' || typeof document === 'undefined') return
+    const t = setTimeout(() => {
+      document
+        .querySelector('[data-testid="indice-actual"]')
+        ?.scrollIntoView({ block: 'center', behavior: reducirMovimiento() ? 'auto' : 'smooth' })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [hoja])
+
   /* El modo de esta ventana (Pasar páginas · Hojas · Libro abierto): lo elegido o, si no, el que le va. */
   const modo = modoEfectivo(prefs, width, height)
   const prefsLector = useMemo(() => ({ ...prefs, modo }), [prefs, modo])
@@ -498,7 +558,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
         ancho: width,
         alto: height,
         arriba: cromo ? ALTO_BARRA_LECTOR : 0,
-        abajo: pieAbajo + (cromo ? 60 : 0),
+        abajo: pieAbajo + (cromo ? ALTO_BARRA_ABAJO : ALTO_INDICADOR),
       })
     : null
 
@@ -518,9 +578,16 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <View style={[styles.flex, { backgroundColor: papel.fondo }]} testID="pantalla-lector">
-      {/* El libro acaba encima del mini reproductor: así nunca tapa la última línea. */}
+      {/* El libro queda dentro de la zona segura del iPhone (muesca arriba, barra de inicio abajo) y,
+          si suena la voz, encima del mini reproductor: así nunca tapa la primera ni la última línea. */}
       <View
-        style={[styles.flex, hayMini && web({ paddingBottom: `calc(${ALTO_MINI}px + env(safe-area-inset-bottom))` })]}
+        style={[
+          styles.flex,
+          web({
+            paddingTop: 'env(safe-area-inset-top)',
+            paddingBottom: `calc(${pieAbajo}px + env(safe-area-inset-bottom))`,
+          }),
+        ]}
       >
         <View style={styles.flex}>
           <LectorFoliate
@@ -541,12 +608,13 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
             onSiguiendoVoz={setSiguiendoVoz}
             onPuedeVolver={setPuedeVolver}
             onError={setError}
-            onToqueCentro={() =>
+            onToqueCentro={() => {
+              setVerPista(false)
               setCromo((c) => {
                 if (!c) ocultarLuego(LECTOR_PAPEL.barraSeVaMs + 1500)
                 return !c
               })
-            }
+            }}
           />
           {/* La cinta del marcador: cuelga de la página marcada. Tocarla la quita. */}
           {marcadorAqui ? (
@@ -617,6 +685,8 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
             top: 0,
             left: 0,
             right: 0,
+            height: `calc(${ALTO_BARRA_LECTOR}px + env(safe-area-inset-top))`,
+            paddingTop: 'env(safe-area-inset-top)',
             backdropFilter: 'blur(8px)',
             transform: cromo ? 'translateY(0)' : 'translateY(-100%)',
             opacity: cromo ? 0.98 : 0,
@@ -840,7 +910,13 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
       <View
         style={[
           styles.flotantes,
-          web({ position: 'absolute', bottom: pieAbajo + (cromo ? 76 : 20), left: 0, right: 0, ...suave }),
+          web({
+            position: 'absolute',
+            bottom: `calc(${pieAbajo + (cromo ? ALTO_BARRA_ABAJO + 16 : ALTO_INDICADOR + 14)}px + env(safe-area-inset-bottom))`,
+            left: 0,
+            right: 0,
+            ...suave,
+          }),
         ]}
         pointerEvents="box-none"
       >
@@ -866,7 +942,22 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
         ) : null}
       </View>
 
-      {/* Barra de abajo: avance con vista previa del capítulo. También se va sola. */}
+      {/* Dónde vas en el capítulo: siempre a la vista mientras la barra está escondida. Tocarlo abre el índice. */}
+      {ubic ? (
+        <IndicadorCapitulo
+          pos={posCap}
+          minutos={minutosCap}
+          fraccionLibro={ubic.fraccion}
+          papel={papel}
+          visible={!cromo}
+          abajo={pieAbajo}
+          onPress={() => setHoja('indice')}
+        />
+      ) : null}
+
+      <PistaLector visible={verPista} papel={papel} onCerrar={cerrarPista} />
+
+      {/* Barra de abajo: el capítulo (‹ anterior · dónde vas · siguiente ›) y el avance del libro. También se va sola. */}
       <View
         aria-hidden={!cromo}
         pointerEvents={cromo ? 'auto' : 'none'}
@@ -887,7 +978,22 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
       >
         {vistaPrevia != null ? (
           <Text style={[styles.previa, { color: papel.tinta }]}>{etiquetaDe(vistaPrevia)}</Text>
-        ) : null}
+        ) : (
+          <FilaCapitulo
+            pos={posCap}
+            minutos={minutosCap}
+            fraccionLibro={ubic?.fraccion ?? 0}
+            pagina={ubic?.pagina ?? null}
+            paginas={ubic?.paginas ?? null}
+            compacto={width < 480}
+            anterior={capAnterior}
+            siguiente={capSiguiente}
+            papel={papel}
+            onAnterior={() => irACapitulo(capAnterior)}
+            onSiguiente={() => irACapitulo(capSiguiente)}
+            onIndice={() => setHoja('indice')}
+          />
+        )}
         <View style={styles.fila}>
           <BotonIcono
             icono="left"
@@ -923,28 +1029,36 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* Índice. */}
       <Hoja visible={hoja === 'indice'} titulo="Índice" onCerrar={() => setHoja(null)}>
-        {(info.indice.length
-          ? info.indice
-          : libro.capitulos.map((c) => ({ titulo: c.titulo, href: '', nivel: 0, indice: c.indice }))
-        ).map((i, n) => (
-          <Pressable
-            key={`${i.href}-${n}`}
-            onPress={() => {
-              setHoja(null)
-              if (i.href) control.current?.irA({ href: i.href })
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Ir a ${i.titulo}`}
-            style={[styles.itemIndice, { paddingLeft: 8 + i.nivel * 18, borderBottomColor: colors.border }]}
-          >
-            <Text
-              style={[styles.itemIndiceTexto, { color: ubic?.etiqueta === i.titulo ? colors.primary : colors.text }]}
+        {listaIndice.map((i, n) => {
+          const aqui = n === actualIndice
+          const pct = posCap ? ` · ${Math.round(posCap.avance * 100)} %` : ''
+          return (
+            <Pressable
+              key={`${i.href}-${n}`}
+              onPress={() => {
+                setHoja(null)
+                if (i.href) control.current?.irA({ href: i.href })
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={aqui ? `${i.titulo}, aquí estás${pct}` : `Ir a ${i.titulo}`}
+              accessibilityState={aqui ? { selected: true } : undefined}
+              testID={aqui ? 'indice-actual' : undefined}
+              style={[
+                styles.itemIndice,
+                { paddingLeft: 8 + i.nivel * 18, borderBottomColor: colors.border },
+                aqui && [
+                  styles.itemIndiceActual,
+                  { borderLeftColor: colors.primary, backgroundColor: colors.surfaceLight },
+                ],
+              ]}
             >
-              {ubic?.etiqueta === i.titulo ? '▸ ' : ''}
-              {i.titulo}
-            </Text>
-          </Pressable>
-        ))}
+              <Text style={[styles.itemIndiceTexto, { color: aqui ? colors.primary : colors.text }]}>{i.titulo}</Text>
+              {aqui ? (
+                <Text style={[styles.itemIndiceAqui, { color: colors.textSecondary }]}>{`Aquí estás${pct}`}</Text>
+              ) : null}
+            </Pressable>
+          )
+        })}
       </Hoja>
 
       {/* Buscar. Al cerrar sin elegir, las marcas se van (UX-13). */}
@@ -1276,6 +1390,8 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   itemIndice: { minHeight: 48, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
+  itemIndiceActual: { borderLeftWidth: 3, borderRadius: 6 },
+  itemIndiceAqui: { fontFamily: fuentes.ui, fontSize: fontSize.xs, marginTop: 2 },
   itemIndiceTexto: { fontFamily: fuentes.titulo, fontSize: fontSize.md, fontVariant: ['lining-nums'] },
   resultado: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, minHeight: 48 },
   resultadoTexto: { fontFamily: fuentes.lectura, fontSize: fontSize.sm, lineHeight: 21 },

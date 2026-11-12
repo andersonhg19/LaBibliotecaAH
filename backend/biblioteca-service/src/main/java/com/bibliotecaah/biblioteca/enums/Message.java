@@ -69,6 +69,15 @@ public final class Message {
         traductorOcupado,
         libroAunSinConvertir,
         capituloSinTexto,
-        traduccionFallida
+        traduccionFallida,
+        // Carpetas del archivador (contratos v1.6).
+        carpetaNoEncontrada,
+        carpetaDuplicada,
+        carpetaDentroDeSiMisma,
+        carpetaDemasiadoProfunda,
+        demasiadasCarpetas,
+        carpetaSoloDocumentos,
+        soloDocumentosEnCarpetas,
+        carpetaNoVacia
     }
 }

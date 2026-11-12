@@ -19,8 +19,10 @@ class RepoFalso:
         self.latidos = 0
         self.reinicios: list = []
 
-    def tomar(self, tipos):
+    def tomar(self, tipos, prioridad_max=None):
         pend = [t for t in self.trabajos if t["estado"] == "PENDIENTE" and t["tipo"] in tipos]
+        if prioridad_max is not None:
+            pend = [t for t in pend if t["prioridad"] <= prioridad_max]
         if not pend:
             return None
         t = sorted(pend, key=lambda x: (x["prioridad"], x["creado"]))[0]
@@ -66,6 +68,14 @@ class RepoFalso:
 
     def archivo_estado(self, aid, estado, error):
         self.archivos[aid] = {"estado": estado, "error": error}
+
+    def archivo_materias(self, aid, materias):
+        a = self.archivos.get(aid)
+        if aid in self.retirados or not a or a.get("estado") != "LISTO":
+            return False
+        a.setdefault("metadatos", {})["materias"] = materias
+        a["aplicados"] = False
+        return True
 
     def audio_estado(self, aid, voz, cap, estado, duracion=None, error=None):
         if aid in self.retirados:
@@ -168,7 +178,7 @@ def test_convertir_actualiza_archivo(tmp_path, txt_prueba):
     assert procesar(repo.tomar(["CONVERTIR"]), ManejadorConvertir(rutas, aislar=False), repo, 3) == "HECHO"
     a = repo.archivos["a1"]
     assert a["estado"] == "LISTO" and a["n_capitulos"] == 3 and a["version"] == 1 and a["n_palabras"] > 10
-    assert set(a["metadatos"]) == {"titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis"}
+    assert set(a["metadatos"]) == {"titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis", "materias"}
     assert (rutas.normalizados("a1") / "libro.epub").exists()
 
 

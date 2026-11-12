@@ -1,6 +1,13 @@
 import { buscarFrase, buscarPalabra, capituloDeFrase, indiceDeFrase, inicioFraseSiguiente } from '@logica/tiempos'
 import { normalizarVelocidad, planDeVelocidad, resaltaPalabra, tiempoEn1x, tiempoEnArchivo } from '@logica/velocidad'
-import type { CapituloResumen, EstadoAudioDTO, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
+import type {
+  CapituloResumen,
+  EstadoAudioDTO,
+  PartesCapitulo,
+  ProgresoDTO,
+  ResultDTO,
+  TiemposCapitulo,
+} from '@tipos'
 import { MENSAJES } from '@utils/mensajes'
 
 /*
@@ -26,7 +33,17 @@ import { MENSAJES } from '@utils/mensajes'
  * vez de saltárselo.
  *
  * CAMBIAR DE VOZ NO CALLA (QA LV-07): si suena, la voz actual sigue hasta que
- * la nueva está LISTA; entonces se cambia en la misma frase.
+ * la nueva está lista (entera o, v1.5, con partes hasta la frase que suena);
+ * entonces se cambia en la misma frase.
+ *
+ * SUENA ANTES DE ESTAR ENTERO (v1.5, contratos §6 bis). Mientras el taller
+ * genera un capítulo va dejando PARTES reproducibles (la primera, de 3 frases,
+ * a los pocos segundos) y un manifiesto con sus tiempos. El motor las encadena
+ * en el MISMO <audio> (al acabar una parte se le cambia el `src`, como entre
+ * capítulos: la pantalla bloqueada del iPhone lo permite) y, cuando el capítulo
+ * entero está LISTO, pasa al archivo completo al terminar la parte en curso (o
+ * ya, si está en pausa o el usuario salta). La línea de tiempo es siempre la
+ * del capítulo: posición = t0 de la parte + currentTime.
  */
 
 type AudioExtendido = HTMLAudioElement & {
@@ -101,6 +118,8 @@ export interface DependenciasMotor {
   ahora: () => number
   /** Avisa cuando vuelve la red (window 'online'); devuelve cómo dejar de escuchar. */
   alVolverLaRed?: (fn: () => void) => () => void
+  /** v1.5: lee cap-NNN.partes.json. Sin ella, se espera al capítulo entero como antes. */
+  cargarPartes?: (url: string) => Promise<PartesCapitulo | null>
 }
 
 /** Silencio WAV de 0,1 s: lo que suena en el primer toque para "desbloquear" el <audio> en iOS. */
@@ -117,6 +136,7 @@ export const TEXTOS_VOZ = {
   vozNueva: (nueva: string, actual: string) => `Sigue sonando ${actual} mientras se prepara la voz de ${nueva}`,
   vozNuevaNoLista: (nueva: string, actual: string) => `La voz de ${nueva} no se pudo preparar; sigue ${actual}.`,
   tardaMas: 'tarda más de lo normal: puede haber otros libros en la cola',
+  continuacion: 'Preparando la continuación…',
 }
 
 const SALTO_SEG = 15
@@ -125,6 +145,11 @@ const FUNDIDO_MS = 10_000
 const CADA_LOCAL_MS = 5_000
 const CADA_SERVIDOR_MS = 15_000
 const SONDEO_MS = 3_000
+/** Al principio de una espera se pregunta más a menudo: la primera parte suele estar en 2–4 s (v1.5). */
+const SONDEO_RAPIDO_MS = 700
+const RAPIDO_DURANTE_MS = 60_000
+/** Mientras suena por partes, cada cuánto se mira si hay más partes o si el capítulo ya está entero. */
+const SONDEO_PARTES_MS = 2_500
 /** Esperas entre reintentos automáticos sin red (después se queda en la última). */
 const REINTENTOS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
 
@@ -208,6 +233,15 @@ export class MotorAudio {
   private quiereSonar = false
   /** El capítulo que se pidió cargar por última vez, para reintentarlo igual. */
   private pedido: { capitulo: number; posicion: number; fraseId: string | null } | null = null
+  /** v1.5: el manifiesto de partes del capítulo que se genera (URL absoluta con token) y la parte que suena. */
+  private partes: { url: string; m: PartesCapitulo } | null = null
+  private parteActual = -1
+  /** Se acabó la última parte escrita y la siguiente aún no está: se espera sin soltar el ▶. */
+  private esperandoParte = false
+  /** El capítulo falló (ERROR) mientras sonaban sus partes: se dice al llegar al final de lo que hay. */
+  private errorEnPartes: string | null = null
+  /** Pregunta ya al servidor (sin esperar al siguiente sondeo). */
+  private sondearYa: (() => void) | null = null
 
   constructor(private deps: DependenciasMotor) {
     deps.alVolverLaRed?.(() => {
@@ -241,7 +275,25 @@ export class MotorAudio {
     this.oyentesFrase.forEach((f) => f(ev))
   }
   private fallar(tipo: TipoError, mensaje: string) {
+    this.esperandoParte = false
     this.poner({ fase: 'error', tipoError: tipo, mensaje, preparacion: null })
+  }
+
+  /** Hay algo que sonar: el capítulo entero o, mientras se genera, sus partes. */
+  private hayAudio(): boolean {
+    return !!this.urls.u1 || this.parteActual >= 0
+  }
+
+  /** Suena (o está cargada) una parte, no el archivo entero. */
+  private enPartes(): boolean {
+    return this.parteActual >= 0 && !!this.partes
+  }
+
+  private olvidarPartes() {
+    this.partes = null
+    this.parteActual = -1
+    this.esperandoParte = false
+    this.errorEnPartes = null
   }
 
   /** El tiempo de la frase pedida en el capítulo cargado (para "escuchar desde aquí"). */
@@ -280,7 +332,9 @@ export class MotorAudio {
     })
     el.addEventListener('loadedmetadata', this.alCargarMetadatos)
     el.addEventListener('error', () => {
-      if (el.src && el.src !== SILENCIO && this.estado.libro && this.urls.u1) {
+      if (el.src && el.src !== SILENCIO && this.estado.libro && this.hayAudio()) {
+        // Una parte que ya no está (el capítulo se terminó y se limpió): se sigue en el archivo entero.
+        if (this.enPartes() && this.urls.u1) return this.aCompleto(this.posicion(), this.quiereSonar)
         this.fallar('audio', TEXTOS_VOZ.audioFallo)
       }
     })
@@ -369,6 +423,7 @@ export class MotorAudio {
     this.pedido = { capitulo, posicion, fraseId }
     this.tiempos = null
     this.urls = { u1: null, u2: null }
+    this.olvidarPartes()
     this.fraseObjetivo = fraseId
     this.palabraActual = null
     this.poner({
@@ -384,8 +439,11 @@ export class MotorAudio {
     this.el?.pause()
     const minutos = l.capitulos.find((c) => c.indice === capitulo)?.minutos
     let primera = true
+    const desde = this.deps.ahora()
     const pedir = async (): Promise<void> => {
       if (turno !== this.turno) return
+      if (this.sondeo) clearTimeout(this.sondeo)
+      this.sondeo = null
       let r: ResultDTO<EstadoAudioDTO>
       try {
         // Solo la primera petición de un reintento explícito lleva la marca: los sondeos no.
@@ -409,6 +467,7 @@ export class MotorAudio {
       const e = r.object
       if (e.estado === 'LISTO') {
         this.urls = { u1: this.deps.resolverUrl(e.url1x), u2: this.deps.resolverUrl(e.url2x) }
+        this.errorEnPartes = null
         this.poner({ preparacion: null, ...(e.duracionSeg ? { duracion: e.duracionSeg } : {}) })
         const ut = this.deps.resolverUrl(e.urlTiempos)
         if (ut) {
@@ -427,15 +486,37 @@ export class MotorAudio {
             })
             .catch(() => {})
         }
+        if (this.enPartes()) {
+          // Sonando por partes: se pasa al archivo entero al acabar la parte en curso (sin cortar una frase);
+          // si está en pausa o esperando la siguiente parte, ya.
+          if (this.esperandoParte) this.aCompleto(this.posicion(), this.quiereSonar)
+          else if (this.el?.paused) this.aCompleto(this.posicion(), false)
+          return
+        }
         this.ponerFuente(posicion, this.quiereSonar)
         return
       }
       if (e.estado === 'ERROR') {
-        this.fallar('capitulo', e.error ? `${TEXTOS_VOZ.capituloFallo} ${e.error}` : MENSAJES.vozFallo)
+        const motivo = e.error ? `${TEXTOS_VOZ.capituloFallo} ${e.error}` : MENSAJES.vozFallo
+        if (this.enPartes() && !this.esperandoParte) {
+          // Lo ya generado sigue sonando; el fallo se dice al llegar al final de lo que hay.
+          this.errorEnPartes = motivo
+          return
+        }
+        this.fallar('capitulo', motivo)
         return
       }
       if (e.estado === 'ERROR_CONVERSION') {
         this.fallar('conversion', MENSAJES.libroNoConvertido)
+        return
+      }
+      if (e.urlPartes && this.deps.cargarPartes && (await this.usarPartes(e.urlPartes, turno))) {
+        if (turno === this.turno) this.sondeo = setTimeout(pedir, SONDEO_PARTES_MS)
+        return
+      }
+      if (turno !== this.turno) return
+      if (this.enPartes()) {
+        this.sondeo = setTimeout(pedir, SONDEO_PARTES_MS)
         return
       }
       const previa = this.estado.preparacion
@@ -453,9 +534,111 @@ export class MotorAudio {
                   : (previa?.estimadoSeg ?? estimarPreparacion(minutos)),
               },
       })
-      this.sondeo = setTimeout(pedir, SONDEO_MS)
+      const rapido = this.deps.ahora() - desde < RAPIDO_DURANTE_MS
+      this.sondeo = setTimeout(pedir, rapido ? SONDEO_RAPIDO_MS : SONDEO_MS)
+    }
+    this.sondearYa = () => {
+      if (turno === this.turno) pedir()
     }
     await pedir()
+  }
+
+  // ------------------------------------------------------------ partes (v1.5)
+  /**
+   * Lee el manifiesto de partes y, si se puede, empieza a sonar por partes (o
+   * encadena la siguiente si se estaba esperando). Devuelve si suena por partes.
+   */
+  private async usarPartes(ruta: string, turno: number): Promise<boolean> {
+    const url = this.deps.resolverUrl(ruta)
+    const cargar = this.deps.cargarPartes
+    if (!url || !cargar) return this.enPartes()
+    const quedan = (this.partes?.m.partes.length ?? 0) - 1 - this.parteActual
+    // Solo se relee cuando hace falta: al empezar, al esperar una parte o si queda poco por delante.
+    if (this.enPartes() && !this.esperandoParte && quedan > 1 && !this.fraseObjetivo) return true
+    let m: PartesCapitulo | null = null
+    try {
+      m = await cargar(url)
+    } catch {
+      m = null
+    }
+    if (turno !== this.turno) return false
+    if (!m || !Array.isArray(m.partes) || !m.partes.length) return this.enPartes()
+    this.partes = { url, m }
+    if (!this.urls.u1) {
+      this.tiempos = { capitulo: m.capitulo, vozId: m.vozId, duracion: m.duracionEstimada, frases: m.frases ?? [] }
+      if (m.duracionEstimada > 0) this.poner({ duracion: m.duracionEstimada })
+    }
+    if (!this.enPartes()) {
+      let pos = this.pedido?.posicion ?? 0
+      if (this.fraseObjetivo) {
+        const t0 = this.inicioDeFrase(this.fraseObjetivo)
+        if (t0 == null) return false // esa frase aún no se generó: se sigue preparando
+        pos = t0
+      }
+      const i = this.indiceParte(pos)
+      if (i < 0) return false // aún no se llegó hasta ahí
+      this.fraseObjetivo = null
+      this.ponerParte(i, pos, this.quiereSonar)
+      return true
+    }
+    if (this.fraseObjetivo) {
+      const t0 = this.inicioDeFrase(this.fraseObjetivo)
+      if (t0 != null && this.indiceParte(t0) >= 0) {
+        this.fraseObjetivo = null
+        this.buscar(t0)
+      }
+    }
+    if (this.esperandoParte && this.parteActual + 1 < m.partes.length) {
+      const sig = m.partes[this.parteActual + 1]
+      this.ponerParte(this.parteActual + 1, sig.t0, this.quiereSonar)
+    } else if (this.esperandoParte && m.completo) {
+      // Era la última parte y el capítulo ya está entero: se sigue como al acabar un capítulo.
+      this.esperandoParte = false
+      this.alTerminar()
+    }
+    return true
+  }
+
+  /** La parte que contiene `pos` (en una pausa entre dos, la siguiente), o -1 si aún no se ha generado. */
+  private indiceParte(pos: number): number {
+    const l = this.partes?.m.partes ?? []
+    let i = -1
+    for (let k = 0; k < l.length; k++) if (l[k].t0 <= pos + 0.001) i = k
+    if (i < 0) return l.length ? 0 : -1
+    if (pos < l[i].t1 - 0.05) return i
+    return i + 1 < l.length ? i + 1 : -1
+  }
+
+  /** Pone una parte en el MISMO <audio>, en la posición `pos1x` del capítulo. */
+  private ponerParte(i: number, pos1x: number, reproducir: boolean) {
+    const el = this.audio()
+    const p = this.partes
+    if (!el || !p) return
+    const parte = p.m.partes[i]
+    this.parteActual = i
+    this.esperandoParte = false
+    this.factor = 1
+    this.rate = Math.min(this.estado.velocidad, 4)
+    this.posPendiente = Math.max(parte.t0, Math.min(pos1x, parte.t1))
+    el.src = p.url.replace(/cap-\d{3}\.partes\.json/, parte.archivo)
+    el.playbackRate = this.rate
+    el.defaultPlaybackRate = this.rate
+    ;(el as AudioExtendido).preservesPitch = true
+    try {
+      el.load?.()
+    } catch {
+      /* nada */
+    }
+    if (reproducir) this.reproducir()
+    else if (this.estado.fase === 'cargando' || this.estado.fase === 'preparando')
+      this.poner({ fase: 'pausado', mensaje: null, preparacion: null })
+    this.sesionMedios()
+  }
+
+  /** De las partes al archivo entero, en la misma posición. */
+  private aCompleto(pos1x: number, reproducir: boolean) {
+    this.olvidarPartes()
+    this.ponerFuente(pos1x, reproducir)
   }
 
   /** Sin red: se vuelve a pedir solo, cada vez esperando un poco más. */
@@ -535,7 +718,8 @@ export class MotorAudio {
     if (!el) return
     if (this.posPendiente != null) {
       try {
-        el.currentTime = tiempoEnArchivo(this.posPendiente, this.factor)
+        const parte = this.enPartes() ? this.partes?.m.partes[this.parteActual] : null
+        el.currentTime = parte ? Math.max(0, this.posPendiente - parte.t0) : tiempoEnArchivo(this.posPendiente, this.factor)
       } catch {
         /* nada */
       }
@@ -543,7 +727,7 @@ export class MotorAudio {
     }
     el.defaultPlaybackRate = this.rate
     el.playbackRate = this.rate
-    if (!this.estado.duracion && Number.isFinite(el.duration))
+    if (!this.estado.duracion && Number.isFinite(el.duration) && !this.enPartes())
       this.poner({ duracion: tiempoEn1x(el.duration, this.factor) })
   }
 
@@ -557,7 +741,8 @@ export class MotorAudio {
       if (this.estado.tipoError !== 'conversion') this.reintentar()
       return
     }
-    if (!this.urls.u1) return // aún preparando: sonará en cuanto esté
+    if (!this.hayAudio()) return // aún preparando: sonará en cuanto esté
+    if (this.esperandoParte) return // sonará en cuanto llegue la siguiente parte
     if (this.ultimaPausa && this.deps.ahora() - this.ultimaPausa > PAUSA_LARGA_MS && this.tiempos) {
       // Tras una pausa larga se vuelve una frase atrás, para retomar el hilo.
       const i = buscarFrase(this.tiempos.frases, this.posicion())
@@ -588,16 +773,31 @@ export class MotorAudio {
   /** Posición actual en la línea de tiempo 1x. */
   posicion(): number {
     const el = this.el
-    if (!el || !this.urls.u1) return this.estado.posicion
+    if (!el || !this.hayAudio()) return this.estado.posicion
     if (this.posPendiente != null) return this.posPendiente
+    const parte = this.enPartes() ? this.partes?.m.partes[this.parteActual] : null
+    if (parte) return parte.t0 + (el.currentTime || 0)
     return tiempoEn1x(el.currentTime || 0, this.factor)
   }
 
   buscar(pos1x: number) {
     const el = this.el
     const max = this.estado.duracion || Number.MAX_SAFE_INTEGER
-    const p = Math.max(0, Math.min(max - 0.05, pos1x))
-    if (el && this.urls.u1) {
+    let p = Math.max(0, Math.min(max - 0.05, pos1x))
+    if (el && this.enPartes()) {
+      const sonando = this.estado.fase === 'reproduciendo' || this.esperandoParte
+      if (this.urls.u1) return this.aCompleto(p, sonando)
+      const l = this.partes?.m.partes ?? []
+      let i = this.indiceParte(p)
+      if (i < 0) {
+        // Más allá de lo generado: se va a lo último que hay.
+        i = l.length - 1
+        p = Math.max(l[i].t0, l[i].t1 - 1)
+      }
+      if (i !== this.parteActual || this.esperandoParte) this.ponerParte(i, p, sonando)
+      else if (this.posPendiente != null) this.posPendiente = Math.max(l[i].t0, p)
+      else el.currentTime = Math.max(0, p - l[i].t0)
+    } else if (el && this.urls.u1) {
       if (this.posPendiente != null) this.posPendiente = p
       else el.currentTime = tiempoEnArchivo(p, this.factor)
     }
@@ -615,6 +815,8 @@ export class MotorAudio {
   fraseSiguiente() {
     if (!this.tiempos) return this.adelante15()
     const t = inicioFraseSiguiente(this.tiempos.frases, this.posicion())
+    // Por partes, «después de lo generado» no es el final del capítulo.
+    if (t == null && this.enPartes() && !this.urls.u1 && !this.partes?.m.completo) return
     if (t == null) this.capituloSiguiente()
     else this.buscar(t)
   }
@@ -673,7 +875,15 @@ export class MotorAudio {
     const pos = this.posicion()
     const sonando = this.estado.fase === 'reproduciendo'
     this.poner({ velocidad: nueva })
-    if (!this.el || !this.urls.u1) return
+    if (!this.el || !this.hayAudio()) return
+    if (this.enPartes()) {
+      // Las partes solo existen a 1x: se acelera el propio archivo.
+      this.rate = Math.min(nueva, 4)
+      this.el.defaultPlaybackRate = this.rate
+      this.el.playbackRate = this.rate
+      this.posicionSesion()
+      return
+    }
     if (antes.variante !== despues.variante) this.ponerFuente(pos, sonando)
     else {
       this.rate = this.factor === 2 ? despues.rate : Math.min(nueva, 4)
@@ -708,7 +918,7 @@ export class MotorAudio {
       this.poner({ vozId, nombreVoz })
       return
     }
-    const sonando = this.estado.fase === 'reproduciendo' && !!this.urls.u1
+    const sonando = this.estado.fase === 'reproduciendo' && this.hayAudio()
     if (sonando) {
       this.cancelarVozPendiente()
       const minutos = this.estado.libro.capitulos.find((c) => c.indice === this.estado.capitulo)?.minutos
@@ -759,6 +969,21 @@ export class MotorAudio {
       this.cargar(this.estado.capitulo, frase ? 0 : pos, sonar, frase)
       return
     }
+    if (e?.urlPartes && this.deps.cargarPartes && capitulo === this.estado.capitulo) {
+      // v1.5: si las partes de la voz nueva ya llegan a la frase que suena, se cambia ya (sin esperar al final).
+      const url = this.deps.resolverUrl(e.urlPartes)
+      const m = url ? await this.deps.cargarPartes(url).catch(() => null) : null
+      if (turno !== this.turnoVoz || this.estado.vozPendiente?.id !== p.id) return
+      const frase = this.estado.fraseId
+      const ultima = m?.partes?.length ? m.partes[m.partes.length - 1].t1 : -1
+      const t0 = frase ? m?.frases?.find((f) => f.id === frase)?.t0 : undefined
+      if (frase && t0 != null && t0 < ultima - 0.05) {
+        const sonar = this.quiereSonar || this.estado.fase === 'reproduciendo'
+        this.poner({ vozId: p.id, nombreVoz: p.nombre, vozPendiente: null })
+        this.cargar(this.estado.capitulo, 0, sonar, frase)
+        return
+      }
+    }
     if (e?.estimadoSeg) this.poner({ vozPendiente: { ...p, estimadoSeg: estimarPreparacion(null, e.estimadoSeg) } })
     this.sondeoVoz = setTimeout(() => this.sondearVozPendiente(), SONDEO_MS)
   }
@@ -791,7 +1016,7 @@ export class MotorAudio {
   // ------------------------------------------------------------ eventos del audio
   private alAvanzar = () => {
     const el = this.el
-    if (!el || el.src === SILENCIO || !this.urls.u1) return
+    if (!el || el.src === SILENCIO || !this.hayAudio()) return
     const pos = this.posicion()
     if (Math.abs(pos - this.ultimaPosSesion) >= 1) {
       this.ultimaPosSesion = pos
@@ -807,7 +1032,25 @@ export class MotorAudio {
 
   private alTerminar = () => {
     const l = this.estado.libro
-    if (!l || !this.urls.u1) return
+    if (!l || !this.hayAudio()) return
+    const p = this.enPartes() ? this.partes?.m : null
+    if (p) {
+      const ultima = this.parteActual >= p.partes.length - 1
+      const finDelCapitulo = ultima && (p.completo || !!this.urls.u1)
+      if (!finDelCapitulo) {
+        const siguiente = p.partes[this.parteActual + 1]
+        // El capítulo entero ya está: se sigue en él desde la próxima frase.
+        if (this.urls.u1) return this.aCompleto(siguiente?.t0 ?? p.partes[this.parteActual].t1, true)
+        if (siguiente) return this.ponerParte(this.parteActual + 1, siguiente.t0, true)
+        if (this.errorEnPartes) return this.fallar('capitulo', this.errorEnPartes)
+        // La siguiente parte aún no está: se espera con el ▶ puesto y se pregunta ya.
+        this.esperandoParte = true
+        this.quiereSonar = true
+        this.poner({ fase: 'preparando', mensaje: TEXTOS_VOZ.continuacion, preparacion: null })
+        this.sondearYa?.()
+        return
+      }
+    }
     if (this.estado.temporizador?.tipo === 'capitulo') {
       this.quiereSonar = false
       this.poner({ temporizador: null, fase: 'pausado', mensaje: MENSAJES.vozFinCapitulo })
@@ -885,7 +1128,7 @@ export class MotorAudio {
 
   guardar(servidor: boolean) {
     const p = this.progresoActual()
-    if (!p || !this.urls.u1) return
+    if (!p || !this.hayAudio()) return
     const ahora = this.deps.ahora()
     this.ultimoLocal = ahora
     this.deps.guardarLocal(p).catch?.(() => {})
@@ -911,6 +1154,8 @@ export class MotorAudio {
     this.pedido = null
     // Sin URLs antes de pausar: el 'pause' ya no guarda (con la sesión caducada daría 401).
     this.urls = { u1: null, u2: null }
+    this.olvidarPartes()
+    this.sondearYa = null
     this.tiempos = null
     this.el?.pause()
     this.poner({ ...inicial })

@@ -28,6 +28,9 @@ public class Topes {
     /** Colecciones por usuario, sin contar Favoritos (BIBLIOTECA_MAX_ESTANTES). */
     private int estantesPorUsuario;
 
+    /** (v1.6) Carpetas del archivador por usuario (BIBLIOTECA_MAX_CARPETAS). */
+    private int carpetasPorUsuario;
+
     /** Para los mensajes: lo que ya hace cumplir Tomcat (spring.servlet.multipart.*). */
     private DataSize maxArchivo;
     private DataSize maxSubida;
@@ -35,11 +38,13 @@ public class Topes {
     public Topes(@Value("${biblioteca.limites.archivos-por-subida:20}") int archivosPorSubida,
                  @Value("${biblioteca.limites.espacio-libre-minimo-mb:1024}") long espacioLibreMinimoMb,
                  @Value("${biblioteca.limites.estantes-por-usuario:100}") int estantesPorUsuario,
+                 @Value("${biblioteca.limites.carpetas-por-usuario:500}") int carpetasPorUsuario,
                  @Value("${spring.servlet.multipart.max-file-size:300MB}") DataSize maxArchivo,
                  @Value("${spring.servlet.multipart.max-request-size:1GB}") DataSize maxSubida) {
         this.archivosPorSubida = archivosPorSubida;
         this.espacioLibreMinimoBytes = DataSize.ofMegabytes(espacioLibreMinimoMb).toBytes();
         this.estantesPorUsuario = estantesPorUsuario;
+        this.carpetasPorUsuario = carpetasPorUsuario;
         this.maxArchivo = maxArchivo;
         this.maxSubida = maxSubida;
     }

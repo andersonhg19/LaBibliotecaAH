@@ -18,6 +18,11 @@ SQL_TOMAR = (
     "WHERE id = (SELECT id FROM bah_lib_trabajo WHERE estado='PENDIENTE' AND tipo = ANY(%(tipos)s) "
     "ORDER BY prioridad, creado FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *"
 )
+# (v1.5) Igual, pero solo hasta una prioridad: el hilo de voz reservado al capítulo que alguien está escuchando
+# (prioridad 10) no se queda ocupado con precargas y atiende al momento lo que se pide.
+SQL_TOMAR_HASTA = SQL_TOMAR.replace(
+    "AND tipo = ANY(%(tipos)s) ", "AND tipo = ANY(%(tipos)s) AND prioridad <= %(prioridad_max)s "
+)
 # Devuelve a PENDIENTE los trabajos EN_CURSO de los tipos del taller sin latido desde hace `segundos` (0 = todos,
 # al arrancar: con un único taller por base de datos, lo que estaba EN_CURSO murió con el proceso anterior, QA
 # DA-01). También deja en PENDIENTE el archivo (PROCESANDO) o el audio (GENERANDO) de esos trabajos, para que nadie
@@ -50,6 +55,13 @@ SQL_ARCHIVO_ESTADO = (
     "UPDATE bah_lib_archivo SET estado_conversion=%(estado)s, error_conversion=%(error)s, actualizado=now() "
     "WHERE id=%(id)s"
 )
+# (v1.4) RELEER_METADATOS: añade las materias a los metadatos de un archivo ya LISTO (sin tocar lo demás) y lo deja
+# para que biblioteca-service rellene los géneros vacíos de sus obras (TareaMetadatos mira metadatos_aplicados).
+SQL_ARCHIVO_MATERIAS = (
+    "UPDATE bah_lib_archivo SET metadatos = COALESCE(metadatos, '{}'::jsonb) "
+    "|| jsonb_build_object('materias', %(materias)s::jsonb), metadatos_aplicados = FALSE, actualizado = now() "
+    "WHERE id = %(id)s AND estado_conversion = 'LISTO'"
+)
 # Solo si el archivo sigue existiendo: un libro retirado no deja filas de audio huérfanas (QA DA-28).
 SQL_AUDIO_UPSERT = (
     "INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado, duracion_seg, error, actualizado) "
@@ -61,7 +73,7 @@ SQL_AUDIO_UPSERT = (
 
 
 class Repositorio(Protocol):
-    def tomar(self, tipos: list[str]) -> dict[str, Any] | None: ...
+    def tomar(self, tipos: list[str], prioridad_max: int | None = None) -> dict[str, Any] | None: ...
     def reiniciar_atascados(self, segundos: int, tipos: list[str]) -> int: ...
     def marcar_hecho(self, trabajo_id: Any) -> None: ...
     def marcar_fallo(self, trabajo_id: Any, mensaje: str, definitivo: bool) -> None: ...
@@ -78,6 +90,7 @@ class Repositorio(Protocol):
         version_texto: int,
     ) -> bool: ...
     def archivo_estado(self, archivo_id: str, estado: str, error: str | None) -> None: ...
+    def archivo_materias(self, archivo_id: str, materias: list[str]) -> bool: ...
     def audio_estado(
         self,
         archivo_id: str,
@@ -121,8 +134,12 @@ class RepositorioPg:
     def _filas(self, sql: str, params: dict[str, Any]) -> bool:
         return int(self._ejecutar(sql, params)) > 0
 
-    def tomar(self, tipos: list[str]) -> dict[str, Any] | None:
-        fila: dict[str, Any] | None = self._ejecutar(SQL_TOMAR, {"tipos": list(tipos)}, devolver=True)
+    def tomar(self, tipos: list[str], prioridad_max: int | None = None) -> dict[str, Any] | None:
+        if prioridad_max is None:
+            fila: dict[str, Any] | None = self._ejecutar(SQL_TOMAR, {"tipos": list(tipos)}, devolver=True)
+        else:
+            params = {"tipos": list(tipos), "prioridad_max": prioridad_max}
+            fila = self._ejecutar(SQL_TOMAR_HASTA, params, devolver=True)
         return fila
 
     def reiniciar_atascados(self, segundos: int, tipos: list[str]) -> int:
@@ -171,6 +188,12 @@ class RepositorioPg:
     def archivo_estado(self, archivo_id: str, estado: str, error: str | None) -> None:
         self._ejecutar(
             SQL_ARCHIVO_ESTADO, {"id": archivo_id, "estado": estado, "error": error[:4000] if error else None}
+        )
+
+    def archivo_materias(self, archivo_id: str, materias: list[str]) -> bool:
+        """False si el archivo ya no existe o no está LISTO."""
+        return self._filas(
+            SQL_ARCHIVO_MATERIAS, {"id": archivo_id, "materias": json.dumps(materias, ensure_ascii=False)}
         )
 
     def audio_estado(

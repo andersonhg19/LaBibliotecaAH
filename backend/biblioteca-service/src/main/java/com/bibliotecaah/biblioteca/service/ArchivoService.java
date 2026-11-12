@@ -18,5 +18,11 @@ public interface ArchivoService {
 
     Binario audio(UUID archivoId, String vozId, String fichero);
 
+    /** (v1.5) normalizados/{archivoId}/frases/cap-NNN.json: el texto del capitulo por frases (contratos §5). */
+    Binario frases(UUID archivoId, String fichero);
+
+    /** (v1.6) normalizados/{archivoId}/hoja.json: la hoja de calculo para el visor (contratos §11). */
+    Binario hoja(UUID archivoId);
+
     Binario muestra(String vozId);
 }

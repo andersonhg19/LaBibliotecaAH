@@ -4,8 +4,8 @@
 - GET /voces  → catálogo de voces (contratos.md §8).
 Al arrancar: devuelve a PENDIENTE TODOS los trabajos EN_CURSO del taller (con un único taller por base de datos,
 lo que estaba EN_CURSO murió con el proceso anterior; QA DA-01), inicia un hilo para CONVERTIR y `hilos_voz` para
-VOZ_CAPITULO, un barrendero que cada minuto devuelve a PENDIENTE los EN_CURSO sin latido, y genera en otro hilo
-las muestras de voz que falten.
+VOZ_CAPITULO (más uno reservado al capítulo que se escucha, v1.5), un barrendero que cada minuto devuelve a
+PENDIENTE los EN_CURSO sin latido, y genera en otro hilo las muestras de voz que falten.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from fastapi import FastAPI
 
 from .. import __version__
 from ..cola.repositorio import Repositorio, RepositorioPg
-from ..cola.trabajador import Barrendero, ManejadorConvertir, ManejadorVoz, Trabajador
+from ..cola.trabajador import Barrendero, ManejadorConvertir, ManejadorMetadatos, ManejadorVoz, Trabajador
 from ..config.ajustes import Ajustes
 from ..config.rutas import Rutas
 from ..dominio.voces import listar_voces
@@ -58,8 +58,9 @@ class Taller:
         conversion = ManejadorConvertir(
             self.rutas, a.aislar_conversion, a.memoria_conversion_mb, a.tiempo_conversion_seg
         )
-        voz = ManejadorVoz(self.rutas, a.concurrencia_voz)
-        tipos = [*conversion.tipos, *voz.tipos]
+        voz = ManejadorVoz(self.rutas, a.concurrencia_voz, a.concurrencia_voz_urgente, a.prioridad_urgente)
+        releer = ManejadorMetadatos(self.rutas)
+        tipos = [*conversion.tipos, *voz.tipos, *releer.tipos]
         self.barrendero = Barrendero(
             self.fabrica_repo, tipos, a.minutos_atascado * 60, a.intervalo_barrido_seg, self.parar
         )
@@ -69,13 +70,26 @@ class Taller:
         except Exception:
             log.exception("No se pudieron reabrir los trabajos interrumpidos (el barrido periódico lo reintentará)")
         self.trabajadores = [
-            Trabajador("conversion", conversion, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar)
+            Trabajador("conversion", conversion, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar),
+            Trabajador("metadatos", releer, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar),
         ]
         nombres_voz = ["voz"] + [f"voz-{k}" for k in range(2, a.hilos_voz + 1)]
         self.trabajadores += [
-            Trabajador(nombre, voz, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar)
+            Trabajador(nombre, voz, self.fabrica_repo, a.intervalo_voz_seg, a.max_intentos, self.parar)
             for nombre in nombres_voz
         ]
+        if a.hilo_voz_urgente:
+            self.trabajadores.append(
+                Trabajador(
+                    "voz-urgente",
+                    voz,
+                    self.fabrica_repo,
+                    a.intervalo_voz_seg,
+                    a.max_intentos,
+                    self.parar,
+                    prioridad_max=a.prioridad_urgente,
+                )
+            )
         for t in self.trabajadores:
             t.start()
         self.barrendero.start()

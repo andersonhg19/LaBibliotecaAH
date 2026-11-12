@@ -9,6 +9,7 @@ import com.bibliotecaah.biblioteca.repository.EjemplarRepository;
 import com.bibliotecaah.biblioteca.repository.TrabajoRepository;
 import com.bibliotecaah.biblioteca.service.AudioService;
 import com.bibliotecaah.biblioteca.service.VozService;
+import com.bibliotecaah.biblioteca.util.AlmacenDeArchivos;
 import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.SecurityUtils;
 import com.bibliotecaah.biblioteca.util.ValidationUtils;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Files;
 import java.util.Map;
 
 /**
@@ -23,12 +25,17 @@ import java.util.Map;
  * CONVIRTIENDO / ERROR_CONVERSION si el libro aun no esta (o no pudo quedar) LISTO. Si falta (o fallo) se encola con prioridad
  * 10 y, siempre, los 2 siguientes con prioridad 20 si no estan ya: asi al
  * terminar un capitulo el siguiente suele estar listo.
+ *
+ * (v1.5) El capitulo pedido pasa por delante de las precargas y de lo que se
+ * pidio antes de ese libro, y mientras se genera se anuncia urlPartes en cuanto
+ * el taller escribio la primera parte reproducible (contratos §6 bis).
  */
 @Service
 public class AudioServiceImpl implements AudioService {
 
     static final String PENDIENTE = "PENDIENTE";
     static final String LISTO = "LISTO";
+    static final String GENERANDO = "GENERANDO";
     static final String ERROR = "ERROR";
     static final String CONVIRTIENDO = "CONVIRTIENDO";
     static final String ERROR_CONVERSION = "ERROR_CONVERSION";
@@ -38,13 +45,15 @@ public class AudioServiceImpl implements AudioService {
     private final TrabajoRepository trabajos;
     private final String prefijo;
     private final VozService voces;
+    private final AlmacenDeArchivos almacen;
 
     public AudioServiceImpl(EjemplarRepository ejemplares, TrabajoRepository trabajos, VozService voces,
-                            @Value("${biblioteca.prefijo-publico}") String prefijo) {
+                            AlmacenDeArchivos almacen, @Value("${biblioteca.prefijo-publico}") String prefijo) {
         this.ejemplares = ejemplares;
         this.trabajos = trabajos;
         this.prefijo = prefijo;
         this.voces = voces;
+        this.almacen = almacen;
     }
 
     @Override
@@ -88,18 +97,30 @@ public class AudioServiceImpl implements AudioService {
                     TrabajoRepository.PRIORIDAD_CAPITULO_PEDIDO);
             if (estado == null || encolado) estado = PENDIENTE;
         }
-        for (int s = 1; s <= SIGUIENTES; s++) {
+        trabajos.priorizarVoz(a.getId(), voz, capitulo);
+
+        AudioEstadoDTO dto = AudioEstadoDTO.builder().estado(estado).error(error).build();
+        String base = prefijo + "/v1/archivos/" + a.getId() + "/audio/" + voz + "/" + String.format("cap-%03d", capitulo);
+        boolean esperandoPrimerAudio = PENDIENTE.equals(estado) || GENERANDO.equals(estado);
+        if (esperandoPrimerAudio) {
+            String partes = String.format("cap-%03d.partes.json", capitulo);
+            if (Files.isRegularFile(almacen.audio(a.getId(), voz, partes))) {
+                dto.setUrlPartes(base + ".partes.json");
+                esperandoPrimerAudio = false;
+            }
+        }
+        /* (v1.5) La precarga de los siguientes espera a que el pedido ya suene
+           (LISTO o con su primera parte): asi no le quita voz al servicio en
+           los primeros segundos, que son los que se notan. */
+        for (int s = 1; s <= SIGUIENTES && !esperandoPrimerAudio; s++) {
             int siguiente = capitulo + s;
             if (total == null || siguiente < total) {
                 trabajos.encolarVozSiFalta(a.getId(), voz, siguiente, TrabajoRepository.PRIORIDAD_CAPITULO_SIGUIENTE);
             }
         }
-
-        AudioEstadoDTO dto = AudioEstadoDTO.builder().estado(estado).error(error).build();
         if (LISTO.equals(estado)) {
             Object duracion = fila.get("duracion_seg");
             dto.setDuracionSeg(duracion == null ? null : ((Number) duracion).doubleValue());
-            String base = prefijo + "/v1/archivos/" + a.getId() + "/audio/" + voz + "/" + String.format("cap-%03d", capitulo);
             dto.setUrl1x(base + ".m4a");
             dto.setUrl2x(base + "-2x.m4a");
             dto.setUrlTiempos(base + ".tiempos.json");

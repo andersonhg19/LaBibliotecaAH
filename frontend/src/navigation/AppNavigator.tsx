@@ -20,6 +20,7 @@ import LoginScreen from '@pantallas/auth/LoginScreen'
 import RegisterScreen from '@pantallas/auth/RegisterScreen'
 import BibliotecaScreen from '@pantallas/biblioteca/BibliotecaScreen'
 import DocumentosScreen from '@pantallas/biblioteca/DocumentosScreen'
+import HojaScreen from '@pantallas/hoja/HojaScreen'
 import LectorScreen from '@pantallas/lector/LectorScreen'
 import LibroScreen from '@pantallas/libro/LibroScreen'
 import NotasScreen from '@pantallas/notas/NotasScreen'
@@ -61,6 +62,7 @@ const TITULOS: Partial<Record<keyof Rutas, string>> = {
   Libro: 'Ficha del libro',
   Leer: 'Leyendo',
   Escuchar: 'Escuchando',
+  Hoja: 'Hoja de cálculo',
   Documentos: 'Mis documentos',
   Notas: 'Mis notas',
   Ajustes: 'Ajustes',
@@ -71,7 +73,7 @@ const TITULOS: Partial<Record<keyof Rutas, string>> = {
 }
 
 /** Salas en las que no se pinta el mini reproductor (tienen sus propios controles). */
-const SIN_MINI = new Set<string>(['Escuchar', 'Entrar', 'Registro'])
+const SIN_MINI = new Set<string>(['Escuchar', 'Hoja', 'Entrar', 'Registro'])
 
 const AppNavigator: React.FC = () => {
   const { colors, isDark } = useTheme()
@@ -122,6 +124,7 @@ const AppNavigator: React.FC = () => {
               <Pila.Screen name="Libro" component={pantalla(LibroScreen)} />
               <Pila.Screen name="Leer" component={pantalla(LectorScreen)} />
               <Pila.Screen name="Escuchar" component={pantalla(ReproductorScreen)} />
+              <Pila.Screen name="Hoja" component={pantalla(HojaScreen)} />
               <Pila.Screen name="Documentos" component={pantalla(DocumentosScreen)} />
               <Pila.Screen name="Notas" component={pantalla(NotasScreen)} />
               <Pila.Screen name="Ajustes" component={pantalla(AjustesScreen)} />

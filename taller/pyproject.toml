@@ -44,6 +44,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20", "B011"]
+"tests/corpus_documentos.py" = ["E501"]  # XML de ejemplo en cadenas largas
 
 [tool.ruff.format]
 quote-style = "double"
@@ -59,5 +60,5 @@ check_untyped_defs = true
 disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pymupdf", "pymupdf.*", "edge_tts", "edge_tts.*", "mammoth", "docx", "docx.*", "charset_normalizer"]
+module = ["pymupdf", "pymupdf.*", "edge_tts", "edge_tts.*", "mammoth", "docx", "docx.*", "charset_normalizer", "openpyxl", "openpyxl.*", "xlrd", "xlrd.*"]
 ignore_missing_imports = true

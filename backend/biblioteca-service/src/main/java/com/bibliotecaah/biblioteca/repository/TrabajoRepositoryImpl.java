@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -61,6 +62,22 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
     }
 
     @Override
+    public int priorizarVoz(UUID archivoId, String vozId, int capitulo) {
+        String deEseLibro = "WHERE tipo = ? AND estado = 'PENDIENTE' AND archivo_id = ? AND payload->>'vozId' = ? ";
+        int subidos = jdbc.update("UPDATE bah_lib_trabajo SET prioridad = ? " + deEseLibro
+                        + "AND (payload->>'capitulo')::int = ? AND prioridad > ?",
+                PRIORIDAD_CAPITULO_PEDIDO, VOZ_CAPITULO, archivoId, vozId, capitulo, PRIORIDAD_CAPITULO_PEDIDO);
+        int bajados = jdbc.update("UPDATE bah_lib_trabajo SET prioridad = ? " + deEseLibro
+                        + "AND (payload->>'capitulo')::int <> ? AND prioridad < ?",
+                PRIORIDAD_CAPITULO_SIGUIENTE, VOZ_CAPITULO, archivoId, vozId, capitulo, PRIORIDAD_CAPITULO_SIGUIENTE);
+        if (subidos + bajados > 0) {
+            log.info("Voz {} capitulo {} del archivo {}: {} trabajo(s) adelantado(s), {} atrasado(s)", vozId,
+                    capitulo, archivoId, subidos, bajados);
+        }
+        return subidos + bajados;
+    }
+
+    @Override
     public Map<String, Object> estadoDelAudio(UUID archivoId, String vozId, int capitulo) {
         List<Map<String, Object>> filas = jdbc.queryForList(
                 "SELECT estado, duracion_seg, error FROM bah_lib_audio WHERE archivo_id = ? AND voz_id = ? AND capitulo = ?",
@@ -79,5 +96,26 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
         List<String> filas = jdbc.queryForList(
                 "SELECT metadatos::text FROM bah_lib_archivo WHERE id = ?", String.class, archivoId);
         return filas.isEmpty() ? null : filas.get(0);
+    }
+
+    @Override
+    public int encolarRelecturaDeMaterias() {
+        int n = jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
+                + "SELECT gen_random_uuid(), ?, a.id, '{}'::jsonb, ? FROM bah_lib_archivo a "
+                + "WHERE a.estado_conversion = 'LISTO' AND a.metadatos -> 'materias' IS NULL "
+                + "AND EXISTS (SELECT 1 FROM bah_lib_ejemplar e JOIN bah_lib_obra o ON o.id = e.obra_id "
+                + "WHERE e.archivo_id = a.id AND cardinality(o.generos) = 0) "
+                + "AND NOT EXISTS (SELECT 1 FROM bah_lib_trabajo t WHERE t.archivo_id = a.id AND t.tipo = ? "
+                + "AND t.estado IN ('PENDIENTE', 'EN_CURSO'))",
+                RELEER_METADATOS, PRIORIDAD_RELEER, RELEER_METADATOS);
+        log.info("Encolada la relectura de materias de {} archivo(s)", n);
+        return n;
+    }
+
+    @Override
+    public int contarObrasSinGenero() {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_ejemplar e JOIN bah_lib_obra o ON o.id = e.obra_id "
+                + "WHERE e.archivo_id IS NOT NULL AND cardinality(o.generos) = 0", Integer.class);
+        return Objects.requireNonNullElse(n, 0);
     }
 }

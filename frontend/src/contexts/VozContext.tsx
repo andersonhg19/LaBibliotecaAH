@@ -4,7 +4,7 @@ import { Platform } from 'react-native'
 
 import { urlBinaria } from '@servicios/archivos'
 import { audioService, progresoService } from '@servicios/bibliotecaService'
-import type { TiemposCapitulo } from '@tipos'
+import type { PartesCapitulo, TiemposCapitulo } from '@tipos'
 import { MotorAudio } from '@utils/motorAudio'
 import { esteDispositivo, guardarProgresoLocal } from '@utils/progresoLocal'
 
@@ -31,6 +31,11 @@ export const motor = new MotorAudio({
     const r = await fetch(url)
     if (!r.ok) return null
     return (await r.json()) as TiemposCapitulo
+  },
+  cargarPartes: async (url) => {
+    const r = await fetch(url, { cache: 'no-store' })
+    if (!r.ok) return null
+    return (await r.json()) as PartesCapitulo
   },
   guardarServidor: (p) => progresoService.guardar(p),
   guardarLocal: (p) => guardarProgresoLocal(p),

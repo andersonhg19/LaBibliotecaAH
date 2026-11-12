@@ -17,6 +17,7 @@ from ..dominio.mensajes import Msj
 from ..dominio.modelo import AlmacenImagenes, Capitulo, ErrorDefinitivo, Libro, NodoToc
 from .html_util import Elemento, buscar_body, limpiar_cuerpo, nombre_local, parsear_xhtml, texto_de, texto_plano
 from .limites import revisar_zip
+from .metadatos import limpiar_materias
 
 log = logging.getLogger(__name__)
 
@@ -115,7 +116,43 @@ def _revisar_drm(z: zipfile.ZipFile) -> None:
             raise ErrorDefinitivo(Msj.EPUB_CON_DRM)
 
 
-def _convertir(z: zipfile.ZipFile) -> Libro:
+def materias_epub(ruta: Path) -> list[str]:
+    """(v1.4) Solo las materias (dc:subject) del OPF, sin convertir nada: para releer libros ya convertidos."""
+    try:
+        z = zipfile.ZipFile(ruta)
+    except zipfile.BadZipFile as e:
+        raise ErrorDefinitivo(Msj.EPUB_DANADO) from e
+    with z:
+        revisar_zip(z)
+        _ruta, opf = _abrir_opf(z)
+    libro = Libro()
+    _metadatos(opf, libro)
+    return list(libro.metadatos["materias"])
+
+
+_DECLARACION = re.compile(rb"^\s*(?:\xef\xbb\xbf)?\s*<\?xml[^>]*?encoding\s*=\s*[\"']([A-Za-z0-9._-]+)[\"']")
+
+
+def _opf_utf8(datos: bytes) -> bytes:
+    """Un OPF que dice ser UTF-8 (o no dice nada) pero viene en Windows-1252/Latin-1 se recodifica a UTF-8.
+
+    Sin esto, lxml (recover=True) cambia cada «á» por U+FFFD y llegan materias como «Rom?ntico» (con U+FFFD).
+    """
+    if datos.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return datos  # UTF-16 con BOM: lxml lo detecta solo
+    m = _DECLARACION.match(datos)
+    declarada = m.group(1).decode("ascii").lower().replace("_", "-") if m else "utf-8"
+    if declarada not in ("utf-8", "utf8"):
+        return datos  # otra codificación declarada: lxml la respeta
+    try:
+        datos.decode("utf-8")
+        return datos
+    except UnicodeDecodeError:
+        log.warning("El OPF dice ser UTF-8 pero no lo es: se lee como Windows-1252")
+        return datos.decode("cp1252", errors="replace").encode("utf-8")
+
+
+def _abrir_opf(z: zipfile.ZipFile) -> tuple[str, Elemento]:
     container = _leer(z, "META-INF/container.xml")
     if container is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_CONTAINER)
@@ -129,10 +166,14 @@ def _convertir(z: zipfile.ZipFile) -> Libro:
     datos_opf = _leer(z, ruta_opf) if ruta_opf else None
     if datos_opf is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_OPF)
-    opf = _xml(datos_opf)
+    opf = _xml(_opf_utf8(datos_opf))
     if opf is None:
         raise ErrorDefinitivo(Msj.EPUB_SIN_OPF)
+    return ruta_opf, opf
 
+
+def _convertir(z: zipfile.ZipFile) -> Libro:
+    ruta_opf, opf = _abrir_opf(z)
     libro = Libro()
     _metadatos(opf, libro)
 
@@ -345,6 +386,8 @@ def _metadatos(opf: Elemento, libro: Libro) -> None:
         md["sinopsis"] = desc[:5000]
     ids = [t for t in (_texto(i) for i in meta.iterfind("dc:identifier", NS)) if t]
     md["isbn"] = _isbn(ids)
+    # (v1.4) dc:subject (EPUB 2 y 3), uno o varios y a veces «Novela; Fantástico; Juvenil» en uno solo
+    md["materias"] = limpiar_materias(_texto(s) for s in meta.iterfind("dc:subject", NS))
 
 
 def _ruta_portada(opf: Elemento, manifiesto: dict[str, _Item]) -> str | None:

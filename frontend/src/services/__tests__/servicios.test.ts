@@ -115,12 +115,12 @@ describe('La API de biblioteca-service sigue el contrato (§9)', () => {
 describe('Las URL de los binarios llevan el token en ?t=', () => {
   it('normaliza las rutas que da el servidor', () => {
     expect(urlBinaria('/v1/archivos/a/audio/v/cap-000.m4a', 'TOK')).toBe(
-      'http://localhost:8920/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/a/audio/v/cap-000.m4a?t=TOK',
+      'http://localhost:9920/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/a/audio/v/cap-000.m4a?t=TOK',
     )
     expect(urlBinaria('/BIBLIOTECA-SERVICE/biblioteca/v1/x?y=1', 'TOK')).toBe(
-      'http://localhost:8920/BIBLIOTECA-SERVICE/biblioteca/v1/x?y=1&t=TOK',
+      'http://localhost:9920/BIBLIOTECA-SERVICE/biblioteca/v1/x?y=1&t=TOK',
     )
-    expect(urlBinaria('/biblioteca/v1/x', 'TOK')).toBe('http://localhost:8920/BIBLIOTECA-SERVICE/biblioteca/v1/x?t=TOK')
+    expect(urlBinaria('/biblioteca/v1/x', 'TOK')).toBe('http://localhost:9920/BIBLIOTECA-SERVICE/biblioteca/v1/x?t=TOK')
     expect(urlBinaria('https://otro/x?t=YA', 'TOK')).toBe('https://otro/x?t=YA')
     expect(urlBinaria(null, 'TOK')).toBeNull()
   })
@@ -133,7 +133,7 @@ describe('Las URL de los binarios llevan el token en ?t=', () => {
 
 describe('El entorno se valida al arrancar', () => {
   it('valores por defecto', () =>
-    expect(validarEntorno({})).toEqual({ EXPO_PUBLIC_API_URL: 'http://localhost:8920', EXPO_PUBLIC_MOCK: false }))
+    expect(validarEntorno({})).toEqual({ EXPO_PUBLIC_API_URL: 'http://localhost:9920', EXPO_PUBLIC_MOCK: false }))
   it('modo demostración y barra final', () =>
     expect(validarEntorno({ EXPO_PUBLIC_API_URL: 'https://casa:7051/', EXPO_PUBLIC_MOCK: '1' })).toEqual({
       EXPO_PUBLIC_API_URL: 'https://casa:7051',

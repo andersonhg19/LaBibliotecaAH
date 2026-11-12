@@ -20,6 +20,9 @@ class AjustesBasicos(BaseSettings):
     datos: Path = Field(default=Path("./datos-dev"), description="Raíz del volumen /datos")
     log: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARNING|ERROR)$")
     concurrencia_voz: int = Field(default=4, ge=1, le=16)
+    # (v1.5) síntesis simultáneas del capítulo que alguien escucha (prioridad <= prioridad_urgente): medido en QA,
+    # con 8 la primera parte sale antes y el capítulo tarda la mitad; las precargas siguen con concurrencia_voz.
+    concurrencia_voz_urgente: int = Field(default=8, ge=1, le=16)
 
 
 class Ajustes(AjustesBasicos):
@@ -33,6 +36,11 @@ class Ajustes(AjustesBasicos):
     minutos_atascado: int = Field(default=5, ge=2)
     intervalo_barrido_seg: float = Field(default=60.0, gt=0, le=3600)
     hilos_voz: int = Field(default=2, ge=1, le=8, description="trabajos de voz simultáneos (QA DA-19)")
+    # (v1.5) un hilo de voz más, reservado al capítulo que alguien escucha (prioridad <= prioridad_urgente): no
+    # espera detrás de precargas ni de otros libros. Sondea la cola más a menudo que los demás.
+    hilo_voz_urgente: bool = True
+    prioridad_urgente: int = Field(default=10, ge=0)
+    intervalo_voz_seg: float = Field(default=0.5, gt=0, le=60)
     # conversión en subproceso acotado (QA SE-01)
     aislar_conversion: bool = True
     memoria_conversion_mb: int = Field(default=1536, ge=256)

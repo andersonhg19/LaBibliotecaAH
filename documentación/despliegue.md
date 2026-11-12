@@ -36,6 +36,37 @@ Volver atrás: poner el `TAG` anterior en `.env` (hay copia en `.env.antes-0.2.0
 viejas siguen en casa.
 Flyway solo avanza: si la versión nueva trajo migraciones, restaurar antes el respaldo de la base (abajo).
 
+## Relleno de géneros tras desplegar la v1.4 (una vez; se puede repetir sin riesgo)
+
+Los libros convertidos antes de la v1.4 no tienen las materias del archivo (`dc:subject`) y sus obras llegan sin
+género. Tras levantar la versión nueva, una cuenta **ADMIN** pide el relleno:
+
+```bash
+# Desde la consola (Git Bash). 1) credenciales de una cuenta ADMIN en un fichero temporal en casa
+echo '{"usuario":"admin@biblioteca.ah","password":"<SEED_ADMIN_PASSWORD del .env>"}' > /tmp/la.json
+scp -q /tmp/la.json casa:C:/srv/biblioteca-ah/login-admin.json; rm /tmp/la.json
+# 2) token y relleno (probado tal cual contra QA, puerto 9920, el 2026-11-12)
+T=$(ssh casa "curl.exe -s -X POST http://127.0.0.1:8920/AUTH-SERVICE/biblioteca/v1/auth/login -H 'Content-Type: application/json' --data-binary '@C:\srv\biblioteca-ah\login-admin.json'" | sed -E 's/.*"token":"([^"]+)".*/\1/')
+ssh casa "curl.exe -s -X POST http://127.0.0.1:8920/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/rellenar-generos -H 'Authorization: Bearer $T'"
+# -> {"correct":true,...,"object":{"archivosEncolados":N,"obrasSinGenero":M}}
+ssh casa 'Remove-Item C:\srv\biblioteca-ah\login-admin.json'
+```
+
+Qué hace: encola un trabajo `RELEER_METADATOS` (prioridad 200, detrás de cualquier conversión) por cada archivo `LISTO`
+con alguna obra sin géneros cuyas materias aún no se leyeron. El taller **solo abre el OPF** (o las palabras clave de
+PDF/DOCX) del original: no reconvierte, no toca el EPUB normalizado, títulos, autores ni portadas. Después
+biblioteca-service rellena los géneros de las obras que **no tienen ninguno** (lo editado a mano no se pisa) y añade
+forma/público («Novela», «Juvenil») a las etiquetas. En unos segundos por libro:
+
+```bash
+ssh casa "docker logs --since 10m biblioteca-ah-taller-1 2>&1" | grep "Materias releídas"          # una línea por archivo
+ssh casa "docker logs --since 10m biblioteca-ah-biblioteca-service-1 2>&1" | grep "generos rellenados"  # cuántas obras por archivo
+```
+
+Idempotente: un archivo ya releído (con `materias` en sus metadatos, aunque sea `[]`) no vuelve a encolarse, y
+mientras sus trabajos están pendientes tampoco; una segunda llamada responde `archivosEncolados: 0`. Un usuario sin
+rol ADMIN recibe HTTP 403. Los libros sin `dc:subject` siguen sin género (clasificarlos queda pendiente).
+
 ## Primera instalación (hecha el 2026-11-10)
 
 1. Carpetas `C:\srv\biblioteca-ah`, `E:\LaBibliotecaAH\datos`, `D:\respaldos\biblioteca`.

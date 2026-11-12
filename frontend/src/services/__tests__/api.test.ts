@@ -4,7 +4,7 @@ import api, { TOKEN_KEY } from '@servicios/api'
 
 describe('api service', () => {
   it('creates axios instance with correct baseURL', () => {
-    expect(api.defaults.baseURL).toBe('http://localhost:8920')
+    expect(api.defaults.baseURL).toBe('http://localhost:9920')
   })
 
   it('has Content-Type header set to application/json', () => {

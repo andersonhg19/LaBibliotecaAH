@@ -45,6 +45,10 @@ export const urlPortada = (archivoId: string): string =>
 export const urlOriginal = (archivoId: string): string =>
   MODO_DEMO ? `/demo/libros/${archivoId}/libro.epub` : conToken(`${base(archivoId)}/original`)
 
+/** (v1.6) Una hoja de cálculo ya leída por el taller (hoja.json), para el visor de hojas. */
+export const urlHoja = (archivoId: string): string =>
+  MODO_DEMO ? `/demo/libros/${archivoId}/hoja.json` : conToken(`${base(archivoId)}/hoja.json`)
+
 /** La muestra de una voz (10 s). */
 export const urlMuestraVoz = (vozId: string): string =>
   MODO_DEMO
@@ -53,3 +57,12 @@ export const urlMuestraVoz = (vozId: string): string =>
 
 /** Índice de capítulo con tres dígitos, como en los nombres de archivo (cap-007). */
 export const nnn = (n: number) => String(n).padStart(3, '0')
+
+/**
+ * El texto de un capítulo frase a frase (`frases/cap-NNN.json`, contratos §5):
+ * lo usa el panel «Ver texto» del reproductor para seguir la voz.
+ */
+export const urlFrasesCapitulo = (archivoId: string, capitulo: number): string =>
+  MODO_DEMO
+    ? `/demo/libros/${archivoId}/frases/cap-${nnn(capitulo)}.json`
+    : conToken(`${base(archivoId)}/frases/cap-${nnn(capitulo)}.json`)

@@ -125,7 +125,8 @@ class LibrosTest extends PostgresDeVerdad {
             assertThat(r.get("correct").asBoolean()).isFalse();
             assertThat(r.get("errorCode").asInt()).isEqualTo(120);
             assertThat(r.get("message").asText()).isEqualTo("No se pudo agregar ningún archivo: "
-                    + "\"virus.exe\": formato no soportado. Se aceptan EPUB, PDF, DOCX, DOC y TXT.");
+                    + "\"virus.exe\": formato no soportado. Se aceptan libros (EPUB, PDF), documentos (DOCX, DOC, ODT, RTF, "
+                    + "TXT, MD, HTML, PPTX, JSON, YAML, LOG) y hojas de cálculo (XLSX, XLS, ODS, CSV).");
         }
 
         @Test
@@ -147,7 +148,7 @@ class LibrosTest extends PostgresDeVerdad {
             byte[] ole = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1, 9};
             JsonNode r = subir(ANDERSON, "LIBRO",
                     new MockMultipartFile("archivos", "viejo.doc", "application/msword", ole),
-                    new MockMultipartFile("archivos", "nuevo.docx", "application/octet-stream", epub("docx")),
+                    new MockMultipartFile("archivos", "nuevo.docx", "application/octet-stream", com.bibliotecaah.biblioteca.Ficheros.docx("docx")),
                     new MockMultipartFile("archivos", "binario.txt", "text/plain", new byte[]{65, 0, 66}));
 
             assertThat(r.get("object")).hasSize(2);

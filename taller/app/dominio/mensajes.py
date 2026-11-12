@@ -16,7 +16,6 @@ class Msj(StrEnum):
     ORIGINAL_NO_ENCONTRADO = "No se encontró el archivo original en el disco de la biblioteca."
     ARCHIVO_RETIRADO = "El libro se retiró de la biblioteca mientras se procesaba; no se guardó nada."
     FORMATO_NO_SOPORTADO = "El formato .{extension} todavía no se puede convertir."
-    RTF_PENDIENTE = "Los archivos RTF aún no se pueden convertir (llegará en una ola posterior)."
     SIN_TEXTO = "El documento no contiene texto legible."
     LIBRO_DEMASIADO_GRANDE = "El libro es demasiado grande para convertirlo: {motivo}."
     ARCHIVO_SOSPECHOSO = (
@@ -49,9 +48,17 @@ class Msj(StrEnum):
     PDF_ESCANEADO = "PDF escaneado: el OCR llegará en una ola posterior"
     WORD_DANADO = "El documento Word está dañado o no se puede leer."
     WORD_VACIO = "El documento Word está vacío."
-    DOC_SIN_LIBREOFFICE = "No se pueden convertir archivos .doc: LibreOffice no está instalado en el taller."
+    DOC_SIN_LIBREOFFICE = "No se pueden convertir archivos .{extension}: LibreOffice no está instalado en el taller."
     DOC_NO_CONVERTIBLE = "No se pudo convertir el archivo .doc antiguo a un formato moderno."
     TXT_VACIO = "El archivo de texto está vacío."
+    # (v1.6) documentos de texto, ofimática y hojas de cálculo
+    OFIMATICA_NO_CONVERTIBLE = "No se pudo convertir el documento .{extension}: está dañado o no se puede leer."
+    MARKDOWN_DANADO = "El archivo Markdown no se pudo leer."
+    HTML_DANADO = "El archivo HTML está dañado o no se puede leer."
+    PRESENTACION_DANADA = "La presentación de PowerPoint está dañada o no se puede leer."
+    HOJA_DANADA = "La hoja de cálculo está dañada o no se puede leer."
+    HOJA_VACIA = "La hoja de cálculo está vacía."
+    HOJA_PROTEGIDA = "La hoja de cálculo está protegida con contraseña; quítala y vuelve a subirla."
     ERROR_INTERNO_CONVERSION = (
         "No se pudo convertir el libro por un problema inesperado del taller. "
         "Quedó registrado para revisarlo; puedes volver a intentarlo más tarde."

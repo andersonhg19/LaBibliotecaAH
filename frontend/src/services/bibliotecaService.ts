@@ -2,6 +2,9 @@ import { BIBLIOTECA_PREFIJO, MODO_DEMO } from '@config'
 import api from '@servicios/api'
 import type {
   AnotacionDTO,
+  CarpetaBorradaDTO,
+  CarpetaContenidoDTO,
+  CarpetaDTO,
   ComentarioDTO,
   EjemplarDTO,
   EjemplarDetalleDTO,
@@ -10,6 +13,7 @@ import type {
   FacetasDTO,
   FiltroLibrosDTO,
   GuardarEjemplarDTO,
+  OrdenCarpeta,
   PageDTO,
   Pestana,
   ProgresoDTO,
@@ -43,7 +47,7 @@ export const librosService = {
     archivo: ArchivoParaSubir,
     tipo: 'LIBRO' | 'DOCUMENTO',
     alProgresar?: (fraccion: number) => void,
-    opciones?: { deseoId?: string },
+    opciones?: { deseoId?: string; carpetaId?: string | null },
   ): Promise<ResultDTO<EjemplarDTO[]>> => {
     const datos = new FormData()
     datos.append('archivos', archivo, archivo.name || 'archivo')
@@ -51,6 +55,8 @@ export const librosService = {
     /* "Ya lo tengo" (BI-15, contrato v1.3.2): con deseoId y UN archivo, el servidor convierte el
        deseo en el ejemplar que llega y borra el deseo; la web no tiene que borrar nada. */
     if (opciones?.deseoId) datos.append('deseoId', opciones.deseoId)
+    /* Contrato v1.6: subir directamente a una carpeta del archivador (solo documentos). */
+    if (opciones?.carpetaId) datos.append('carpetaId', opciones.carpetaId)
     const r = await api.post<ResultDTO<EjemplarDTO[]>>(`${B}/libros/subir`, datos, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 0,
@@ -97,6 +103,26 @@ export const estantesService = {
     post<boolean>(`/estantes/${encodeURIComponent(id)}/quitar`, { ejemplarId }),
   ordenar: (id: string, m: { ejemplarId: string; antesDe?: string; despuesDe?: string }) =>
     post<boolean>(`/estantes/${encodeURIComponent(id)}/ordenar`, m),
+}
+
+/*
+ * EL ARCHIVADOR (contrato v1.6): carpetas y subcarpetas de documentos. carpetaId
+ * null = la raíz. Todo POST con ResultDTO, como el resto.
+ */
+export const carpetasService = {
+  todas: () => post<CarpetaDTO[]>('/carpetas/all'),
+  contenido: (f: { carpetaId?: string | null; texto?: string; orden?: OrdenCarpeta }) =>
+    post<CarpetaContenidoDTO>('/carpetas/contenido', {
+      carpetaId: f.carpetaId ?? null,
+      ...(f.texto?.trim() ? { texto: f.texto.trim() } : {}),
+      ...(f.orden ? { orden: f.orden } : {}),
+    }),
+  guardar: (c: { id?: string; nombre: string; padreId?: string | null }) => post<CarpetaDTO>('/carpetas/save', c),
+  mover: (carpetaId: string, destinoId: string | null) => post<CarpetaDTO>('/carpetas/mover', { carpetaId, destinoId }),
+  moverDocumentos: (ejemplarIds: string[], carpetaId: string | null) =>
+    post<number>('/carpetas/mover-documentos', { ejemplarIds, carpetaId }),
+  borrar: (id: string, contenido?: 'SUBIR' | 'BORRAR') =>
+    post<CarpetaBorradaDTO>(`/carpetas/delete/${encodeURIComponent(id)}`, contenido ? { contenido } : undefined),
 }
 
 export const vocesService = {

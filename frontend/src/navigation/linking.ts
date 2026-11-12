@@ -14,7 +14,10 @@ export type Rutas = {
   Libro: { id: string }
   Leer: { id: string; frase?: string; cfi?: string }
   Escuchar: { id: string }
-  Documentos: undefined
+  /** v1.6: el visor de hojas de cálculo (id = ejemplar). */
+  Hoja: { id: string }
+  /** v1.6: el archivador; carpeta = id de la carpeta abierta (sin ella, la raíz). URL /documentos?carpeta=… */
+  Documentos: { carpeta?: string } | undefined
   Notas: undefined
   Ajustes: undefined
   AdminUsers: undefined
@@ -32,6 +35,7 @@ export const RUTAS: LinkingOptions<Rutas>['config'] = {
     Libro: 'libro/:id',
     Leer: 'leer/:id',
     Escuchar: 'escuchar/:id',
+    Hoja: 'hoja/:id',
     Documentos: 'documentos',
     Notas: 'notas',
     Ajustes: 'ajustes',

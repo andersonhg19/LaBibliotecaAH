@@ -35,6 +35,10 @@ interface Props {
   tipoInicial?: 'LIBRO' | 'DOCUMENTO'
   /** "Ya lo tengo": el archivo que llegue cumple este deseo (BI-15). */
   deseo?: EjemplarDTO | null
+  /** v1.6: subir directamente a esta carpeta del archivador (solo documentos). */
+  carpeta?: { id: string; nombre: string } | null
+  /** v1.6: desde el archivador solo se traen documentos (sin elegir libro/documento). */
+  soloDocumentos?: boolean
 }
 
 const tamano = (b: number) =>
@@ -74,7 +78,15 @@ export function mensajeDeSubida(e: unknown): string {
  * uno con su barra. Al terminar aparecen en la biblioteca "preparando…".
  * Lo que ya tenías se dice ("Ya estaba en tu biblioteca"), no "Subido".
  */
-const SubirLibros: React.FC<Props> = ({ visible, onCerrar, onSubidos, tipoInicial = 'LIBRO', deseo }) => {
+const SubirLibros: React.FC<Props> = ({
+  visible,
+  onCerrar,
+  onSubidos,
+  tipoInicial = 'LIBRO',
+  deseo,
+  carpeta,
+  soloDocumentos,
+}) => {
   const { colors } = useTheme()
   const { showToast } = useToast()
   const [tipo, setTipo] = useState<'LIBRO' | 'DOCUMENTO'>(tipoInicial)
@@ -120,7 +132,11 @@ const SubirLibros: React.FC<Props> = ({ visible, onCerrar, onSubidos, tipoInicia
           f.archivo,
           deseo ? 'LIBRO' : tipo,
           (p) => actualizar(f.clave, { progreso: p }),
-          deseo && !deseoCumplido ? { deseoId: deseo.id } : undefined,
+          deseo && !deseoCumplido
+            ? { deseoId: deseo.id }
+            : carpeta && tipo === 'DOCUMENTO'
+              ? { carpetaId: carpeta.id }
+              : undefined,
         )
         if (!r.correct) throw new Error(r.message)
         const llegado = r.object?.[0]
@@ -169,13 +185,28 @@ const SubirLibros: React.FC<Props> = ({ visible, onCerrar, onSubidos, tipoInicia
       : false
 
   return (
-    <Hoja visible={visible} titulo={deseo ? 'Ya lo tengo' : 'Traer libros'} onCerrar={cerrar} testID="hoja-subir">
+    <Hoja
+      visible={visible}
+      titulo={
+        deseo
+          ? 'Ya lo tengo'
+          : carpeta
+            ? `Subir a «${carpeta.nombre}»`
+            : soloDocumentos
+              ? 'Traer documentos'
+              : 'Traer libros'
+      }
+      onCerrar={cerrar}
+      testID="hoja-subir"
+    >
       <AppText variant="body" color={colors.textSecondary}>
         {deseo
           ? `Elige el archivo de «${deseo.titulo}». Al subirlo, el deseo se cumple y el libro entra en tu biblioteca.`
-          : 'Elige archivos EPUB, PDF, Word (DOCX o DOC) o de texto. En el iPhone puedes traerlos de iCloud Drive o Google Drive.'}
+          : soloDocumentos
+            ? 'Word, PDF, Markdown, texto, HTML, RTF, ODT o PowerPoint se leen en el lector; Excel, ODS y CSV se abren en el visor de hojas. En el iPhone puedes traerlos de iCloud Drive o Google Drive.'
+            : 'Elige archivos EPUB, PDF, Word (DOCX o DOC), Markdown o de texto. En el iPhone puedes traerlos de iCloud Drive o Google Drive.'}
       </AppText>
-      {!deseo ? (
+      {!deseo && !soloDocumentos ? (
         <View style={styles.tipos} accessibilityRole="radiogroup" accessibilityLabel="Qué vas a traer">
           <Chip rol="radio" etiqueta="Libros" icono="book" activo={tipo === 'LIBRO'} onPress={() => setTipo('LIBRO')} />
           <Chip

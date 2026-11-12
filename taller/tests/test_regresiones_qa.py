@@ -205,10 +205,10 @@ class TestDA01RecuperacionDeTrabajos:
         finally:
             taller.detener()
         # 1.º: al arrancar, sin esperar 30 min (antes: solo los de > 30 min y solo al arrancar)
-        assert repo.reinicios[0] == (0, ["CONVERTIR", "VOZ_CAPITULO"])
+        assert repo.reinicios[0] == (0, ["CONVERTIR", "VOZ_CAPITULO", "RELEER_METADATOS"])
         # después, barrido periódico de los que llevan 5 min sin latido
-        assert repo.reinicios[1] == (300, ["CONVERTIR", "VOZ_CAPITULO"])
-        assert [t.name for t in taller.trabajadores] == ["conversion", "voz", "voz-2"]
+        assert repo.reinicios[1] == (300, ["CONVERTIR", "VOZ_CAPITULO", "RELEER_METADATOS"])
+        assert [t.name for t in taller.trabajadores] == ["conversion", "metadatos", "voz", "voz-2", "voz-urgente"]
         assert taller.barrendero is not None and not taller.barrendero.is_alive()
 
     def test_el_barrendero_sobrevive_a_la_base_de_datos_caida(self):

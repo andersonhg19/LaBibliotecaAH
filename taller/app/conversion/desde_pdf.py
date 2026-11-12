@@ -29,7 +29,7 @@ from ..dominio.mensajes import Msj
 from ..dominio.modelo import Capitulo, ErrorDefinitivo, Libro, NodoToc
 from .html_util import Elemento
 from .limites import revisar_paginas
-from .metadatos import normalizar_autores, titulo_util
+from .metadatos import limpiar_materias, normalizar_autores, titulo_util
 from .normalizador import normalizar_visual, unir_dos
 
 log = logging.getLogger(__name__)
@@ -485,6 +485,17 @@ def _metadatos(doc: Any, libro: Libro) -> None:
     autores = normalizar_autores(md.get("author"))
     if autores:
         libro.metadatos["autores"] = autores
+    libro.metadatos["materias"] = limpiar_materias([md.get("keywords")])  # (v1.4)
+
+
+def materias_pdf(ruta: Path) -> list[str]:
+    """(v1.4) Solo las palabras clave del PDF, sin convertir (relleno de géneros de libros ya convertidos)."""
+    try:
+        doc = pymupdf.open(str(ruta))
+    except Exception as e:
+        raise ErrorDefinitivo(Msj.PDF_DANADO) from e
+    with doc:
+        return limpiar_materias([(doc.metadata or {}).get("keywords")])
 
 
 def _render_portada(doc: Any) -> bytes | None:

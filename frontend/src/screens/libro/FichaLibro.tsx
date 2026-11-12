@@ -22,6 +22,7 @@ import { useAccionUnica } from '@hooks/useAccionUnica'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { nombreColor, nombreTipo, ordenarAnotaciones } from '@logica/anotaciones'
 import { numerarCapitulos } from '@logica/capitulos'
+import { esHojaDeCalculo } from '@logica/documentos'
 import {
   ESTADOS,
   autoresTexto,
@@ -160,6 +161,8 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const portadaAncha = ancho >= 720
   const anchoPortada = portadaAncha ? 220 : Math.min(200, ancho * 0.52)
   const legible = sePuedeLeer(libro)
+  /* v1.6: una hoja de cálculo no se lee ni se escucha: se abre en el visor de hojas. */
+  const esHoja = esHojaDeCalculo(libro.formatoOriginal)
   const esDeseo = libro.tipo === 'DESEO'
   const leer = (frase?: string) => navigation.navigate('Leer', { id: libro.id, ...(frase ? { frase } : {}) })
   const escuchar = (desdeFrase?: string) => {
@@ -338,7 +341,20 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
             </View>
           ) : null}
           {/* Un deseo no se lee ni se escucha todavía: sus botones son «Ya lo tengo» y «Dónde conseguirlo» (QA RW-07). */}
-          {!esDeseo ? (
+          {esHoja ? (
+            <View style={styles.botones}>
+              <Button
+                title="Abrir hoja"
+                icono="rejilla"
+                onPress={() => navigation.navigate('Hoja', { id: libro.id })}
+                disabled={!legible}
+                size="large"
+                style={styles.flex}
+                testID="boton-abrir-hoja"
+              />
+            </View>
+          ) : null}
+          {!esDeseo && !esHoja ? (
             <View style={styles.botones}>
               <Button
                 title={libro.porcentaje > 0 ? 'Seguir' : 'Leer'}
@@ -387,7 +403,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       <View style={[styles.pestanas, { borderBottomColor: colors.border }]} accessibilityRole="tablist">
         {(
           [
-            ['capitulos', 'Índice'],
+            ['capitulos', esHoja ? 'Hojas' : 'Índice'],
             ['notas', `Notas${libro.nNotas ? ` (${libro.nNotas})` : ''}`],
             ['diario', 'Diario'],
             ['datos', 'Datos'],
@@ -415,7 +431,16 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               {esDeseo ? 'Un deseo aún no tiene índice.' : 'El índice aparece cuando el libro está preparado.'}
             </AppText>
           ) : null}
-          {libro.capitulos.map((c, i) => {
+          {esHoja
+            ? libro.capitulos.map((c) => (
+                <View key={c.indice} style={[styles.capitulo, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.capTitulo, { color: colors.text }]} numberOfLines={2}>
+                    {c.titulo}
+                  </Text>
+                </View>
+              ))
+            : null}
+          {(esHoja ? [] : libro.capitulos).map((c, i) => {
             const actual = libro.progreso?.capitulo === c.indice
             const numero = numeros[i]
             const nombre = numero == null ? 'la portadilla' : `el capítulo ${numero}`

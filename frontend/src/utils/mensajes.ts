@@ -33,7 +33,8 @@ export const MENSAJES = {
   subidaFallo: 'No se pudo subir',
   subidaListo: 'Ya está en la biblioteca',
   subidaPreparando: 'Lo estamos preparando: aparecerá listo para leer en un momento.',
-  formatoNoAdmitido: 'Ese formato no se admite. Sube EPUB, PDF, DOCX, DOC o TXT.',
+  formatoNoAdmitido:
+    'Ese formato no se admite. Sube EPUB o PDF, documentos (Word, ODT, RTF, Markdown, HTML, texto, PowerPoint) u hojas de cálculo (Excel, ODS, CSV).',
   deseoGuardado: 'Añadido a tus deseos',
   favoritoPuesto: 'En favoritos',
   favoritoQuitado: 'Fuera de favoritos',

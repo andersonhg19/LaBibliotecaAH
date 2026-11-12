@@ -168,7 +168,8 @@ def test_arranque_con_configuracion_lanza_uvicorn(monkeypatch, tmp_path):
 def test_manejador_voz_ok_y_errores(tmp_path, monkeypatch):
     import app.cola.trabajador as tr
 
-    async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None, seguir=None):
+    async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None, seguir=None, **opciones):
+        assert opciones == {"concurrencia": 4, "urgente": False}  # (v1.5) prioridad 100 del trabajo de prueba
         latido()
         assert seguir()
         return 12.345

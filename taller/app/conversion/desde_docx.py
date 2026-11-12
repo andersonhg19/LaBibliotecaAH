@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Any
 
 import lxml.html
 from lxml import etree
@@ -23,7 +24,7 @@ from ..dominio.modelo import AlmacenImagenes, Capitulo, ErrorDefinitivo, ErrorRe
 from . import limites
 from .html_util import Elemento, limpiar_cuerpo, texto_de
 from .limites import revisar_tamano, revisar_zip_en_disco
-from .metadatos import normalizar_autores, titulo_desde_nombre, titulo_util
+from .metadatos import limpiar_materias, normalizar_autores, titulo_desde_nombre, titulo_util
 
 log = logging.getLogger(__name__)
 
@@ -78,9 +79,23 @@ def _metadatos_docx(ruta: Path, libro: Libro, nombre: str | None) -> None:
             libro.metadatos["autores"] = autores
         if props.language:
             libro.metadatos["idioma"] = props.language[:10]
+        libro.metadatos["materias"] = materias_de_propiedades(props)
     except Exception as e:
         log.info("Sin metadatos DOCX: %s", e)
     libro.metadatos["titulo"] = titulo or (titulo_desde_nombre(nombre) if nombre else None)
+
+
+def materias_de_propiedades(props: Any) -> list[str]:
+    """(v1.4) Palabras clave y categoría de las propiedades del documento."""
+    return limpiar_materias([props.keywords, props.category])
+
+
+def materias_docx(ruta: Path) -> list[str]:
+    """(v1.4) Solo las materias del DOCX, sin convertir (relleno de géneros de libros ya convertidos)."""
+    revisar_zip_en_disco(ruta)
+    import docx
+
+    return materias_de_propiedades(docx.Document(str(ruta)).core_properties)
 
 
 def convertir_docx(ruta: Path, nombre: str | None = None) -> Libro:
@@ -224,15 +239,18 @@ def _partir_por_titulos(cuerpo: Elemento, libro: Libro) -> None:
         libro.toc.append(NodoToc(libro.capitulos[-1].titulo, indice, None, hijos_toc))
 
 
-def convertir_doc(ruta: Path) -> Libro:
-    """Word 97-2003 (.doc): LibreOffice headless lo pasa a DOCX y se sigue el camino DOCX."""
-    revisar_tamano(ruta, limites.MAX_DOC, "documento .doc")
+def convertir_doc(ruta: Path, extension: str = "doc") -> Libro:
+    """Word 97-2003 (.doc) y, desde v1.6, RTF y ODT: LibreOffice headless los pasa a DOCX y se sigue el camino DOCX."""
+    revisar_tamano(ruta, limites.MAX_DOC, f"documento .{extension}")
+    if extension == "odt":
+        revisar_zip_en_disco(ruta)
+    no_convertible = Msj.DOC_NO_CONVERTIBLE if extension == "doc" else Msj.OFIMATICA_NO_CONVERTIBLE
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
-        raise ErrorDefinitivo(Msj.DOC_SIN_LIBREOFFICE)
+        raise ErrorDefinitivo(Msj.DOC_SIN_LIBREOFFICE, extension=extension)
     with tempfile.TemporaryDirectory(prefix="bah-doc-") as tmp:
         perfil = Path(tmp) / f"perfil-{uuid.uuid4().hex}"
-        entrada = Path(tmp) / "entrada.doc"
+        entrada = Path(tmp) / f"entrada.{extension}"
         shutil.copyfile(ruta, entrada)
         try:
             r = subprocess.run(
@@ -252,9 +270,9 @@ def convertir_doc(ruta: Path) -> Libro:
                 preexec_fn=limites.liberar_limite_memoria,
             )
         except subprocess.TimeoutExpired as e:
-            raise ErrorReintentable(Msj.DOC_NO_CONVERTIBLE) from e
+            raise ErrorReintentable(no_convertible, extension=extension) from e
         salida = Path(tmp) / "entrada.docx"
         if r.returncode != 0 or not salida.exists():
             log.error("LibreOffice falló: %s", (r.stderr or r.stdout).decode("utf-8", "replace")[:500])
-            raise ErrorDefinitivo(Msj.DOC_NO_CONVERTIBLE)
+            raise ErrorDefinitivo(no_convertible, extension=extension)
         return convertir_docx(salida, nombre=ruta.stem)

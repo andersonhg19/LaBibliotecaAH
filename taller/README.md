@@ -41,6 +41,9 @@ tests/                 corpus generado por programa (corpus.py) + pruebas pytest
 | `TALLER_INTERVALO_BARRIDO_SEG` | `60` | cada cuánto se barren los EN_CURSO colgados |
 | `TALLER_HILOS_VOZ` | `2` | trabajos de voz simultáneos (un capítulo largo no bloquea a los demás) |
 | `TALLER_CONCURRENCIA_VOZ` | `4` | peticiones simultáneas a edge-tts **por hilo de voz** |
+| `TALLER_CONCURRENCIA_VOZ_URGENTE` | `8` | (v1.5) las mismas, para el capítulo que alguien escucha (prioridad ≤ 10) |
+| `TALLER_HILO_VOZ_URGENTE` | `true` | (v1.5) hilo `voz-urgente` que solo toma prioridad ≤ `TALLER_PRIORIDAD_URGENTE` (10) |
+| `TALLER_INTERVALO_VOZ_SEG` | `0.5` | (v1.5) sondeo de la cola de los hilos de voz |
 | `TALLER_AISLAR_CONVERSION` | `true` | cada conversión en un subproceso con memoria y tiempo acotados |
 | `TALLER_MEMORIA_CONVERSION_MB` | `1536` | tope de memoria virtual del subproceso de conversión |
 | `TALLER_TIEMPO_CONVERSION_SEG` | `1200` | tiempo máximo de una conversión |
@@ -53,6 +56,10 @@ Zona horaria del contenedor: `America/Bogota`. Logs: `fecha nivel=… hilo=… t
 
 Hilos: `conversion` (tipo `CONVERTIR`) y `voz`, `voz-2`… (`TALLER_HILOS_VOZ`, tipo `VOZ_CAPITULO`); la voz nunca
 bloquea conversiones y un capítulo largo no deja esperando a los demás.
+(v1.5) Más `voz-urgente`, reservado al capítulo que se escucha. Síntesis por partes (contratos §6 bis): las frases
+se piden en orden y se ensamblan mientras llegan; la primera parte (3 frases) sale a los pocos segundos y la web
+empieza a sonar con ella. Las 3 primeras frases no hacen cola y se duplican si tardan más de 2 s; mientras un
+capítulo pedido no tiene su primera parte, las precargas no empiezan frases nuevas.
 SQL de toma = el del contrato **más** `AND tipo = ANY(%(tipos)s)` en la subconsulta (ver `cola/repositorio.py`).
 Fallo: intentos < 3 → `PENDIENTE` (con el mensaje en `error`); 3.º fallo o error sin arreglo (`ErrorDefinitivo`:
 PDF escaneado, formato no soportado, archivo dañado, DRM, voz inexistente, libro desmesurado…) → `ERROR`.

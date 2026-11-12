@@ -400,9 +400,10 @@ const LectorFoliate = forwardRef<ControlLector, PropsLector>((props, ref) => {
     }
     const cabezas = r.heads ?? []
     const titulo = propsRef.current.titulo ?? ''
+    /* Con una columna, el capítulo ya lo dice el indicador del pie: arriba va el libro (como un impreso). */
     cabezas.forEach((h, i) => {
       estilo(h)
-      h.textContent = cabezas.length >= 2 ? (i === 0 ? titulo : etiqueta) : etiqueta
+      h.textContent = cabezas.length >= 2 ? (i === 0 ? titulo : etiqueta) : titulo || etiqueta
     })
     const pies = r.feet ?? []
     pies.forEach((f, i) => {
@@ -636,9 +637,18 @@ const LectorFoliate = forwardRef<ControlLector, PropsLector>((props, ref) => {
           if (pag?.paginas && !paginasDelLibro.current) paginasDelLibro.current = pag.paginas
           const min = minutosRestantes(propsRef.current.minutosDe?.(capitulo), d.fraction ?? 0)
           const etiqueta = ll?.tocItem?.label ?? ''
-          pintarMarginales(textoFolio(pag, min, v.renderer.feet?.length ?? 1), etiqueta)
+          /* El pie de una columna lo ocupa el indicador del capítulo (LectorScreen); en el libro
+             abierto quedan los números de página y lo que falta va en el indicador. */
+          const columnas = v.renderer.feet?.length ?? 1
+          pintarMarginales(columnas >= 2 ? textoFolio(pag, null, columnas) : [''], etiqueta)
+          // Dónde empieza la página a la vista (foliate da el final: en el libro abierto, «7 %» en la primera página).
+          const fr = v.getSectionFractions()
+          const ini = fr[d.index]
+          const fraccionInicio =
+            ini != null && Number.isFinite(d.fraction) ? ini + (d.fraction ?? 0) * ((fr[d.index + 1] ?? 1) - ini) : null
           propsRef.current.onReubicar({
             fraccion: ll?.fraction ?? 0,
+            fraccionInicio,
             cfi: ll?.cfi ?? null,
             fraseId,
             capitulo,
@@ -661,15 +671,18 @@ const LectorFoliate = forwardRef<ControlLector, PropsLector>((props, ref) => {
         // Índice y secciones para la vista previa del deslizador.
         const indice = aplanarIndice(v.book.toc)
         const fracciones = v.getSectionFractions()
-        const tituloDe = (s: Seccion) =>
+        const entradaDe = (s: Seccion) =>
           indice.find(
             (i) => i.href.split('#')[0].endsWith(s.id.split('/').pop() ?? s.id) || s.id.endsWith(i.href.split('#')[0]),
-          )?.titulo ?? ''
+          )
         const info: InfoLibro = {
           indice,
           idioma: (v as unknown as { language?: { canonical?: string } }).language?.canonical ?? null,
           secciones: v.book.sections
-            .map((s, i) => ({ fraccion: fracciones[i] ?? 0, titulo: tituloDe(s) }))
+            .map((s, i) => {
+              const e = entradaDe(s)
+              return { fraccion: fracciones[i] ?? 0, titulo: e?.titulo ?? '', href: e?.href }
+            })
             .filter((s) => s.titulo),
         }
         propsRef.current.onListo(info)

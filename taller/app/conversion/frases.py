@@ -196,6 +196,10 @@ def _materializar(padre: Elemento, nodos: list[_Nodo]) -> None:
 # ------------------------------------------------------------------ API
 
 
+def _es_codigo(el: Elemento) -> bool:
+    return el.tag == "pre" and "bah-codigo" in (el.get("class") or "").split()
+
+
 def bloques_hoja(body: Elemento) -> list[Elemento]:
     """Bloques con texto y sin hijos de bloque, en orden de documento."""
     hojas: list[Elemento] = []
@@ -216,6 +220,9 @@ def bloques_hoja(body: Elemento) -> list[Elemento]:
         }:
             continue
         if any(es_bloque(h) for h in el):
+            continue
+        # (v1.6) bloques de código (Markdown/HTML): se ven tal cual, sin segmentar ni colapsar espacios, y no se leen
+        if _es_codigo(el) or any(_es_codigo(a) for a in el.iterancestors()):
             continue
         # no segmentar dentro de un bloque hoja ya elegido (p.ej. <p> dentro de <li> sin otros bloques)
         if any(a in elegidas for a in el.iterancestors()):

@@ -31,7 +31,29 @@ img { max-width: 100%; height: auto; }
 blockquote { margin: 1em 2em; font-style: italic; }
 pre { white-space: pre-wrap; }
 span.bah-f { }
-"""
+/* (v1.6) Documentos: tablas, tareas, código y texto técnico (solo afecta a estas clases) */
+div.bah-tabla { overflow-x: auto; margin: 1em 0; max-width: 100%; }
+div.bah-tabla table { border-collapse: collapse; font-size: 0.92em; }
+div.bah-tabla th, div.bah-tabla td { border: 1px solid rgba(128, 128, 128, 0.5); padding: 0.3em 0.6em;
+  vertical-align: top; text-align: left; }
+div.bah-tabla th { font-weight: bold; background: rgba(128, 128, 128, 0.12); }
+div.bah-tabla td p, div.bah-tabla th p { margin: 0; text-align: left; }
+ul.bah-tareas { list-style: none; padding-left: 0.4em; }
+li.bah-tarea::before { content: "\\2610\\00a0"; }
+li.bah-tarea.bah-tarea-hecha::before { content: "\\2611\\00a0"; }
+li.bah-tarea-hecha { opacity: 0.75; }
+pre.bah-codigo { font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 0.85em; line-height: 1.4;
+  white-space: pre; overflow-x: auto; padding: 0.7em 0.9em; border-radius: 4px;
+  background: rgba(128, 128, 128, 0.12); border-left: 3px solid rgba(128, 128, 128, 0.45); }
+code.bah-codigo-linea { font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 0.9em;
+  background: rgba(128, 128, 128, 0.14); padding: 0 0.25em; border-radius: 3px; }
+p.bah-linea { font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 0.85em; line-height: 1.45;
+  margin: 0; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.2em; }
+blockquote.bah-cita { font-style: normal; margin: 1em 0.4em; padding: 0.1em 0 0.1em 0.9em;
+  border-left: 3px solid rgba(128, 128, 128, 0.5); }
+aside.bah-notas-orador { margin-top: 1.5em; padding: 0.6em 0.9em; border-top: 1px solid rgba(128, 128, 128, 0.5);
+  font-size: 0.92em; }
+""" + "".join(f"p.bah-sangria-{n} {{ padding-left: {n * 2}ch; }}\n" for n in range(1, 21))
 
 
 def href_capitulo(indice: int) -> str:

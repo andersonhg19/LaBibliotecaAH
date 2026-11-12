@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 
@@ -15,6 +15,9 @@ import Encabezado, { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import Sala from '@componentes/molecules/Sala'
 import { BotonLaton, OndaVoz, SelectorVelocidad } from '@componentes/reproductor/ControlesVoz'
+import HojaCapitulos, { textoPosicion } from '@componentes/reproductor/HojaCapitulos'
+import PanelTexto from '@componentes/reproductor/PanelTexto'
+import Pastilla from '@componentes/reproductor/Pastilla'
 import { avisoDeVoz, duracionHumana, restanteLibro, textoRestante } from '@componentes/reproductor/estadoVoz'
 import { useAhora } from '@componentes/reproductor/useAhora'
 import { usePreferencias } from '@contextos/PreferenciasContext'
@@ -22,6 +25,7 @@ import { useTheme } from '@contextos/ThemeContext'
 import { motor, useVoz } from '@contextos/VozContext'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { autoresTexto, reloj } from '@logica/formato'
+import { idDeFrase } from '@logica/tiempos'
 import { resaltaPalabra, textoVelocidad } from '@logica/velocidad'
 import type { Rutas } from '@navegacion/linking'
 import { urlMuestraVoz } from '@servicios/archivos'
@@ -51,6 +55,12 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [voces, setVoces] = useState<VozDTO[]>([])
   const muestra = useRef<HTMLAudioElement | null>(null)
+  const [textoAbierto, setTextoAbierto] = useState(false)
+  const [capitulosAbiertos, setCapitulosAbiertos] = useState(false)
+  /* Lo que hace tocar una frase del panel; en una ref para que el panel (memo) no se repinte en cada avance. */
+  const tocarFraseActual = useRef<(fraseId: string) => void>(() => {})
+  const tocarFrase = useCallback((fraseId: string) => tocarFraseActual.current(fraseId), [])
+  const cerrarTexto = useCallback(() => setTextoAbierto(false), [])
 
   const { cargando, error, cargar } = useCarga(async () => {
     const [d, vs] = await Promise.all([librosService.detalle(id), vocesService.todas()])
@@ -72,10 +82,20 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const esteLibro = v.libro?.ejemplarId === id
   const sonando = esteLibro && v.fase === 'reproduciendo'
   const ocupado = esteLibro && (v.fase === 'cargando' || v.fase === 'preparando')
-  const cap = libro.capitulos.find((c) => c.indice === (esteLibro ? v.capitulo : (libro.progreso?.capitulo ?? 0)))
+  const capActual = esteLibro ? v.capitulo : (libro.progreso?.capitulo ?? 0)
+  const cap = libro.capitulos.find((c) => c.indice === capActual)
+  const tituloCap = cap?.titulo ?? `Capítulo ${capActual + 1}`
   const anchoPortada = Math.min(260, width * 0.6)
 
   const empezar = () => escucharLibro(libro, { vozId: prefs.vozId, velocidad: prefs.velocidad })
+  /* Desde una frase o un capítulo: si suena este libro se salta ahí; si no, empieza ahí. */
+  const irA = (fraseId: string) =>
+    esteLibro
+      ? motor.irAFrase(fraseId)
+      : escucharLibro(libro, { vozId: prefs.vozId, velocidad: prefs.velocidad, desdeFrase: fraseId })
+  tocarFraseActual.current = irA
+  const elegirCapitulo = (indice: number) => (esteLibro ? motor.irACapitulo(indice) : irA(idDeFrase(indice, 0)))
+  const posicionCap = textoPosicion(libro.capitulos, capActual, libro.titulo)
   const alternar = () => (esteLibro ? motor.alternar() : empezar())
   /* Si suena OTRO libro, los controles de esta pantalla no lo tocan (QA LV-P3). */
   const siEste = (fn: () => void) => () => {
@@ -113,11 +133,35 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.capituloFila}>
           <OndaVoz activa={sonando} />
           <Text style={[styles.capitulo, { color: colors.text }]} accessibilityRole="header">
-            {cap?.titulo ?? `Capítulo ${(esteLibro ? v.capitulo : 0) + 1}`}
+            {tituloCap}
           </Text>
           <OndaVoz activa={sonando} />
         </View>
         <Text style={[styles.autor, { color: colors.primary }]}>{autoresTexto(libro.autores)}</Text>
+        {libro.capitulos.length > 0 || libro.archivoId ? (
+          <View style={styles.pastillas}>
+            {libro.capitulos.length > 0 ? (
+              <Pastilla
+                icono="indice"
+                texto={posicionCap}
+                etiqueta={`Capítulos: ${posicionCap}, ${tituloCap}. Abrir la lista`}
+                desplegable
+                abierta={capitulosAbiertos}
+                onPress={() => setCapitulosAbiertos(true)}
+                testID="fila-capitulo"
+              />
+            ) : null}
+            {libro.archivoId ? (
+              <Pastilla
+                icono="texto"
+                texto="Ver texto"
+                etiqueta="Ver el texto que se está leyendo"
+                onPress={() => setTextoAbierto(true)}
+                testID="boton-ver-texto"
+              />
+            ) : null}
+          </View>
+        ) : null}
 
         {aviso ? (
           <View
@@ -294,6 +338,24 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
         {!esteLibro ? <Button title="Escuchar este libro" icono="auriculares" onPress={empezar} size="large" /> : null}
       </ScrollView>
+      <HojaCapitulos
+        visible={capitulosAbiertos}
+        capitulos={libro.capitulos}
+        actual={capActual}
+        tituloLibro={libro.titulo}
+        onElegir={elegirCapitulo}
+        onCerrar={() => setCapitulosAbiertos(false)}
+      />
+      <PanelTexto
+        visible={textoAbierto}
+        onCerrar={cerrarTexto}
+        archivoId={libro.archivoId}
+        capitulo={capActual}
+        titulo={tituloCap}
+        fraseId={esteLibro ? v.fraseId : null}
+        onTocarFrase={tocarFrase}
+        testID="panel-texto"
+      />
     </Sala>
   )
 }
@@ -312,6 +374,7 @@ const styles = StyleSheet.create({
   capituloFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   capitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.xl, textAlign: 'center' },
   autor: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.lg, textAlign: 'center' },
+  pastillas: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
   estado: {
     gap: 8,
     alignItems: 'center',

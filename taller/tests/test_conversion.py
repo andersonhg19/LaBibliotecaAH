@@ -29,6 +29,7 @@ def test_epub(epub_prueba, datos):
     assert est["editorial"] == "Editorial Roble" and est["anio"] == 2019
     assert est["isbn"] == "9788420412146"
     assert est["sinopsis"] == "Una sinopsis breve."
+    assert est["materias"] == ["Novela", "Fantástico", "Juvenil"]  # (v1.4) dc:subject, separados por «;»
     assert est["tienePortada"] and r.tiene_portada
     # portada, nav y el documento vacío no son capítulos; la lámina se queda dentro del cap. 1
     assert [c["titulo"] for c in est["capitulos"]] == ["Parte I", "Capítulo 1: La lluvia", "Capítulo 2: El final"]
@@ -153,9 +154,9 @@ def test_txt_utf8_sin_capitulos(tmp_path, datos):
 
 
 def test_formato_no_soportado(tmp_path, datos):
-    f = tmp_path / "x.rtf"
-    f.write_bytes(b"{\\rtf1 hola}")
-    with pytest.raises(ErrorDefinitivo):
+    f = tmp_path / "x.exe"
+    f.write_bytes(b"MZ\x90\x00 un ejecutable")
+    with pytest.raises(ErrorDefinitivo, match=r"El formato \.exe"):
         _convertir(f, datos)
 
 

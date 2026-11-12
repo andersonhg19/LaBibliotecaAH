@@ -16,13 +16,15 @@ interface Props {
   /** Ancho máximo en escritorio. */
   ancho?: number
   testID?: string
+  /** Opcional: la ref del cuerpo desplazable (para llevar a la vista lo elegido al abrir). */
+  refScroll?: React.Ref<ScrollView>
 }
 
 /*
  * Una hoja que sube desde abajo en el teléfono y una ventana centrada en el
  * PC. Papel sobre madera: el borde de arriba lleva un filete de latón.
  */
-const Hoja: React.FC<Props> = ({ visible, titulo, onCerrar, children, ancho = 560, testID }) => {
+const Hoja: React.FC<Props> = ({ visible, titulo, onCerrar, children, ancho = 560, testID, refScroll }) => {
   const { colors, isDark } = useTheme()
   const { width, height } = useWindowDimensions()
   const escritorio = width >= 820
@@ -60,7 +62,7 @@ const Hoja: React.FC<Props> = ({ visible, titulo, onCerrar, children, ancho = 56
             </AppText>
             <BotonIcono icono="close" etiqueta="Cerrar" onPress={onCerrar} />
           </View>
-          <ScrollView contentContainerStyle={styles.cuerpo} keyboardShouldPersistTaps="handled">
+          <ScrollView ref={refScroll} contentContainerStyle={styles.cuerpo} keyboardShouldPersistTaps="handled">
             {children}
           </ScrollView>
         </View>

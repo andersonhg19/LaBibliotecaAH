@@ -207,13 +207,17 @@ class ArchivosYAudioTest extends PostgresDeVerdad {
         }
 
         @Test
-        @DisplayName("si falta, encola el capitulo (prioridad 10) y los 2 siguientes (20), sin duplicar")
+        @DisplayName("si falta, encola el capitulo (prioridad 10); los siguientes (20) cuando ya suena (v1.5), sin duplicar")
         void encola() throws Exception {
             marcarListo(archivo, 4, "{}");
             JsonNode r = estado(2).get("object");
 
             assertThat(r.get("estado").asText()).isEqualTo("PENDIENTE");
             assertThat(r.get("url1x").isNull()).isTrue();
+            assertThat(trabajosDeVoz()).as("la precarga espera a la primera parte del pedido").isEqualTo(1);
+            escribir(DATOS.resolve("audio/" + archivo + "/" + VOZ + "/cap-002.partes.json"),
+                    "{}".getBytes(StandardCharsets.UTF_8));
+            estado(2);
             assertThat(jdbc.queryForList("SELECT (payload->>'capitulo')::int AS c, prioridad FROM bah_lib_trabajo "
                     + "WHERE tipo = 'VOZ_CAPITULO' ORDER BY 1")).extracting(m -> m.get("c") + ":" + m.get("prioridad"))
                     .containsExactly("2:10", "3:20");
@@ -262,6 +266,80 @@ class ArchivosYAudioTest extends PostgresDeVerdad {
                     .get("message").asText()).isEqualTo("Este libro no tiene archivo.");
             jdbc.update("UPDATE bah_lib_archivo SET n_capitulos = NULL WHERE id = ?", archivo);
             assertThat(estado(40).get("object").get("estado").asText()).isEqualTo("PENDIENTE");
+        }
+    }
+
+    @Nested
+    @DisplayName("v1.5: sintesis progresiva, prioridad del capitulo que se escucha y texto por frases")
+    class Progresiva {
+
+        private JsonNode estado(int capitulo) throws Exception {
+            return pedir(ANDERSON, "/v1/audio/estado", Map.of("ejemplarId", ejemplar, "vozId", VOZ, "capitulo", capitulo))
+                    .get("object");
+        }
+
+        private java.util.List<String> cola() {
+            return jdbc.queryForList("SELECT (payload->>'capitulo')::int AS c, prioridad FROM bah_lib_trabajo "
+                    + "WHERE tipo = 'VOZ_CAPITULO' AND estado = 'PENDIENTE' ORDER BY 1").stream()
+                    .map(m -> m.get("c") + ":" + m.get("prioridad")).toList();
+        }
+
+        @Test
+        @DisplayName("mientras se genera, urlPartes aparece cuando el taller escribio el manifiesto; con LISTO no")
+        void urlPartes() throws Exception {
+            marcarListo(archivo, 10, "{}");
+            assertThat(estado(5).get("urlPartes").isNull()).as("sin partes aun").isTrue();
+            escribir(DATOS.resolve("audio/" + archivo + "/" + VOZ + "/cap-005.partes.json"),
+                    "{\"partes\":[]}".getBytes(StandardCharsets.UTF_8));
+            escribir(DATOS.resolve("audio/" + archivo + "/" + VOZ + "/cap-005.parte-000.m4a"), audio);
+            String base = "/BIBLIOTECA-SERVICE/biblioteca/v1/archivos/" + archivo + "/audio/" + VOZ + "/cap-005";
+            assertThat(estado(5).get("urlPartes").asText()).isEqualTo(base + ".partes.json");
+            jdbc.update("INSERT INTO bah_lib_audio (archivo_id, voz_id, capitulo, estado) VALUES (?, ?, 5, 'GENERANDO')",
+                    archivo, VOZ);
+            JsonNode generando = estado(5);
+            assertThat(generando.get("estado").asText()).isEqualTo("GENERANDO");
+            assertThat(generando.get("urlPartes").asText()).isEqualTo(base + ".partes.json");
+            jdbc.update("UPDATE bah_lib_audio SET estado = 'LISTO', duracion_seg = 12 WHERE archivo_id = ? AND capitulo = 5",
+                    archivo);
+            assertThat(estado(5).get("urlPartes").isNull()).as("entero: ya no hacen falta").isTrue();
+
+            String t = token(ANDERSON);
+            mvc.perform(bajar(rutaAudio("cap-005.partes.json")).param("t", t)).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/json"));
+            mvc.perform(bajar(rutaAudio("cap-005.parte-000.m4a")).param("t", t)).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "audio/mp4")).andExpect(content().bytes(audio));
+            mvc.perform(bajar(rutaAudio("cap-005.parte-0.m4a")).param("t", t)).andExpect(status().isNotFound());
+            mvc.perform(bajar(rutaAudio("cap-005.parte-001.m4a")).param("t", t)).andExpect(status().isNotFound());
+        }
+
+        @Test
+        @DisplayName("el capitulo que se escucha pasa por delante; lo pedido antes de ese libro queda como precarga")
+        void prioridad() throws Exception {
+            marcarListo(archivo, 10, "{}");
+            estado(2);
+            assertThat(cola()).containsExactly("2:10");
+            escribir(DATOS.resolve("audio/" + archivo + "/" + VOZ + "/cap-002.partes.json"),
+                    "{}".getBytes(StandardCharsets.UTF_8));
+            estado(2);
+            assertThat(cola()).as("ya suena: precarga").containsExactly("2:10", "3:20", "4:20");
+            estado(4);
+            assertThat(cola()).as("el 4 sube, el 2 baja").containsExactly("2:20", "3:20", "4:10");
+            estado(4);
+            assertThat(cola()).as("pedirlo otra vez no cambia nada").containsExactly("2:20", "3:20", "4:10");
+        }
+
+        @Test
+        @DisplayName("GET frases/cap-NNN.json: el texto del capitulo, solo del dueno y con nombre cerrado")
+        void frases() throws Exception {
+            byte[] json = "{\"capitulo\":3,\"frases\":[]}".getBytes(StandardCharsets.UTF_8);
+            escribir(DATOS.resolve("normalizados/" + archivo + "/frases/cap-003.json"), json);
+            String ruta = "/v1/archivos/" + archivo + "/frases/";
+            mvc.perform(bajar(ruta + "cap-003.json").param("t", token(ANDERSON))).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type", "application/json")).andExpect(content().bytes(json));
+            mvc.perform(bajar(ruta + "cap-004.json").param("t", token(ANDERSON))).andExpect(status().isNotFound());
+            mvc.perform(bajar(ruta + "estructura.json").param("t", token(ANDERSON))).andExpect(status().isNotFound());
+            mvc.perform(bajar(ruta + "cap-003.json").param("t", token(SAMY))).andExpect(status().isNotFound());
+            mvc.perform(bajar(ruta + "cap-003.json")).andExpect(status().isUnauthorized());
         }
     }
 

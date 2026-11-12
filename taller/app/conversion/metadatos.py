@@ -1,8 +1,9 @@
-"""Limpieza de metadatos extraídos (título y autores) comunes a PDF y Word."""
+"""Limpieza de metadatos extraídos (título, autores y materias) comunes a EPUB, PDF y Word."""
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 # Títulos que ponen los programas y no el autor (QA BI-17: los .doc de LibreOffice quedaban "Word Document")
 _TITULO_GENERICO = re.compile(
@@ -52,3 +53,44 @@ def normalizar_autores(texto: str | None) -> list[str]:
         else:
             autores.extend(a.strip() for a in bloque.split(",") if a.strip())
     return autores[:10]
+
+
+# (v1.4) materias: dc:subject del EPUB, palabras clave de PDF/DOCX
+MAX_MATERIAS = 30
+MAX_LARGO_MATERIA = 100
+_SEPARADORES_MATERIA = re.compile(r"\s*[;,/|]\s*")
+_BORDES = re.compile(r"^[\s.;:,_\-–—·•\"'«»“”‘’¿¡!?*]+|[\s.;:,_\-–—·•\"'«»“”‘’¿¡!?*]+$")
+
+
+def reparar_mojibake(texto: str) -> str:
+    """«RomÃ¡ntico» (UTF-8 leído como Latin-1/cp1252) → «Romántico». Si no encaja, se deja como estaba."""
+    if "Ã" not in texto and "Â" not in texto:
+        return texto
+    for codificacion in ("cp1252", "latin-1"):
+        try:
+            return texto.encode(codificacion).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return texto
+
+
+def limpiar_materias(textos: Iterable[str | None]) -> list[str]:
+    """Materias del archivo separadas por «;», «,», «/» o «|», sin espacios de más, sin repetir y acotadas.
+
+    No se normalizan aquí: la tabla de géneros vive en biblioteca-service (una sola, también para lo editado a mano).
+    """
+    salida: list[str] = []
+    vistas: set[str] = set()
+    for texto in textos:
+        if not texto:
+            continue
+        for parte in _SEPARADORES_MATERIA.split(reparar_mojibake(str(texto))):
+            limpia = _BORDES.sub("", re.sub(r"\s+", " ", parte))
+            clave = limpia.casefold()
+            if not limpia or len(limpia) > MAX_LARGO_MATERIA or clave in vistas:
+                continue
+            vistas.add(clave)
+            salida.append(limpia)
+            if len(salida) >= MAX_MATERIAS:
+                return salida
+    return salida

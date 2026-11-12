@@ -48,6 +48,13 @@ class EdgeTts:
         self.reintentos = reintentos
         self.pausa_base = pausa_base
 
+    def fijar_concurrencia(self, n: int) -> None:
+        """Tope de síntesis simultáneas SOLO para el bucle de eventos actual (un trabajo): el capítulo que alguien
+        escucha va con más que las precargas (v1.5)."""
+        bucle = asyncio.get_running_loop()
+        with self._cerrojo:
+            self._semaforos[bucle] = asyncio.Semaphore(max(1, n))
+
     def _sem(self) -> asyncio.Semaphore:
         bucle = asyncio.get_running_loop()
         with self._cerrojo:
@@ -58,41 +65,48 @@ class EdgeTts:
             return sem
 
     async def sintetizar(self, texto: str, voz: str) -> Sintesis:
+        async with self._sem():
+            return await self._sintetizar(texto, voz)
+
+    async def sintetizar_sin_cola(self, texto: str, voz: str) -> Sintesis:
+        """Sin esperar turno en el semáforo: el duplicado de una frase del arranque que tarda (v1.5)."""
+        return await self._sintetizar(texto, voz)
+
+    async def _sintetizar(self, texto: str, voz: str) -> Sintesis:
         import edge_tts
 
         ultimo: Exception | None = None
-        async with self._sem():
-            for intento in range(1, self.reintentos + 1):
-                try:
-                    com = edge_tts.Communicate(texto, voz, boundary="WordBoundary")
-                    audio = bytearray()
-                    palabras: list[tuple[str, float, float]] = []
-                    async for trozo in com.stream():
-                        tipo = trozo.get("type")
-                        if tipo == "audio":
-                            audio.extend(trozo["data"])
-                        elif tipo == "WordBoundary":
-                            t0 = trozo["offset"] / 1e7
-                            palabras.append((trozo["text"], t0, t0 + trozo["duration"] / 1e7))
-                    if not audio:
-                        raise ConnectionError("edge-tts no devolvió audio")
-                    return Sintesis(bytes(audio), "mp3", palabras)
-                except Exception as e:  # 403, desconexiones, límites…
-                    if isinstance(e, ValueError) and "voice" in str(e).lower():
-                        # "Invalid voice": no es una caída del servicio, no se reintenta (QA DA-12)
-                        raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz, detalle=str(e)) from e
-                    ultimo = e
-                    espera = self.pausa_base * (2 ** (intento - 1)) + random.uniform(0, 0.5)
-                    log.warning(
-                        "edge-tts falló (intento %d/%d, voz %s): %s — reintento en %.1fs",
-                        intento,
-                        self.reintentos,
-                        voz,
-                        e,
-                        espera,
-                    )
-                    if intento < self.reintentos:
-                        await asyncio.sleep(espera)
+        for intento in range(1, self.reintentos + 1):
+            try:
+                com = edge_tts.Communicate(texto, voz, boundary="WordBoundary")
+                audio = bytearray()
+                palabras: list[tuple[str, float, float]] = []
+                async for trozo in com.stream():
+                    tipo = trozo.get("type")
+                    if tipo == "audio":
+                        audio.extend(trozo["data"])
+                    elif tipo == "WordBoundary":
+                        t0 = trozo["offset"] / 1e7
+                        palabras.append((trozo["text"], t0, t0 + trozo["duration"] / 1e7))
+                if not audio:
+                    raise ConnectionError("edge-tts no devolvió audio")
+                return Sintesis(bytes(audio), "mp3", palabras)
+            except Exception as e:  # 403, desconexiones, límites…
+                if isinstance(e, ValueError) and "voice" in str(e).lower():
+                    # "Invalid voice": no es una caída del servicio, no se reintenta (QA DA-12)
+                    raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz, detalle=str(e)) from e
+                ultimo = e
+                espera = self.pausa_base * (2 ** (intento - 1)) + random.uniform(0, 0.5)
+                log.warning(
+                    "edge-tts falló (intento %d/%d, voz %s): %s — reintento en %.1fs",
+                    intento,
+                    self.reintentos,
+                    voz,
+                    e,
+                    espera,
+                )
+                if intento < self.reintentos:
+                    await asyncio.sleep(espera)
         raise ErrorReintentable(Msj.SERVICIO_VOZ_CAIDO, detalle=f"edge-tts, {self.reintentos} intentos: {ultimo}")
 
 

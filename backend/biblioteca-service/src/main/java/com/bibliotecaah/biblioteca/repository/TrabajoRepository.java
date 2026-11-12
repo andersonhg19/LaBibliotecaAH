@@ -11,10 +11,14 @@ public interface TrabajoRepository {
 
     String CONVERTIR = "CONVERTIR";
     String VOZ_CAPITULO = "VOZ_CAPITULO";
+    /** (v1.4) El taller relee solo las materias del original (relleno de generos de libros viejos). */
+    String RELEER_METADATOS = "RELEER_METADATOS";
 
     int PRIORIDAD_CONVERTIR = 100;
     int PRIORIDAD_CAPITULO_PEDIDO = 10;
     int PRIORIDAD_CAPITULO_SIGUIENTE = 20;
+    /** Detras de las conversiones nuevas: el relleno no retrasa a nadie. */
+    int PRIORIDAD_RELEER = 200;
 
     UUID encolarConversion(UUID archivoId);
 
@@ -31,6 +35,15 @@ public interface TrabajoRepository {
     /** Un capitulo en ERROR vuelve a PENDIENTE y se encola (peticion explicita, QA DA-02). */
     void reintentarVoz(UUID archivoId, String vozId, int capitulo, int prioridad);
 
+    /**
+     * (v1.5) El capitulo que se escucha pasa por delante: si su trabajo espera
+     * con otra prioridad (p. ej. encolado antes como precarga) sube a
+     * {@link #PRIORIDAD_CAPITULO_PEDIDO}; los demas capitulos de ese libro y voz
+     * que se pidieron antes y aun esperan bajan a {@link #PRIORIDAD_CAPITULO_SIGUIENTE}
+     * (el usuario ya no esta en ellos). Devuelve cuantos trabajos cambio.
+     */
+    int priorizarVoz(UUID archivoId, String vozId, int capitulo);
+
     /** Fila de bah_lib_audio (estado, duracion_seg, error) o null. */
     Map<String, Object> estadoDelAudio(UUID archivoId, String vozId, int capitulo);
 
@@ -38,4 +51,15 @@ public interface TrabajoRepository {
 
     /** Columna JSONB metadatos del archivo, como texto (o null). */
     String metadatosDe(UUID archivoId);
+
+    /**
+     * Relleno de generos (v1.4): encola RELEER_METADATOS para cada archivo LISTO
+     * que alguien lee con una obra sin generos y cuyas materias aun no se leyeron
+     * (sin clave "materias" en sus metadatos) ni se estan leyendo. Idempotente:
+     * una vez leidas, el archivo no vuelve a encolarse. Devuelve cuantos encolo.
+     */
+    int encolarRelecturaDeMaterias();
+
+    /** Obras sin ningun genero de libros y documentos con archivo (para el informe del relleno). */
+    int contarObrasSinGenero();
 }

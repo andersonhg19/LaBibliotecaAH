@@ -174,10 +174,11 @@ public class IngestaServiceImpl implements IngestaService {
                 .generos(new ArrayList<>())
                 .fuenteMetadatos(FuenteMetadatos.NOMBRE_ARCHIVO)
                 .build();
-        if (Archivo.LISTO.equals(archivo.getEstadoConversion())) {
-            metadatos.aplicar(obra, trabajos.metadatosDe(archivo.getId()));
+        String metadatosListos = Archivo.LISTO.equals(archivo.getEstadoConversion())
+                ? trabajos.metadatosDe(archivo.getId()) : null;
+        if (metadatosListos != null) {
+            metadatos.aplicar(obra, metadatosListos);
         }
-        obras.save(obra);
 
         Ejemplar ejemplar = Ejemplar.builder()
                 .id(UUID.randomUUID())
@@ -190,6 +191,11 @@ public class IngestaServiceImpl implements IngestaService {
                 .fechaLlegada(Instant.now())
                 .etiquetas(new ArrayList<>())
                 .build();
+        if (metadatosListos != null) {
+            /* Generos (y etiquetas de forma/publico) de las materias del archivo. */
+            metadatos.clasificar(ejemplar, metadatosListos);
+        }
+        obras.save(obra);
         /* saveAndFlush: si otra subida simultanea gano la carrera, el choque
            salta AQUI (DataIntegrityViolationException) e ingerir reintenta. */
         ejemplares.saveAndFlush(ejemplar);

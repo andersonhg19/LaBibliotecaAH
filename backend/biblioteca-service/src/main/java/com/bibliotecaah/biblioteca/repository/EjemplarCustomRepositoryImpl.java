@@ -1,5 +1,6 @@
 package com.bibliotecaah.biblioteca.repository;
 
+import com.bibliotecaah.biblioteca.dto.filter.FiltroCarpetaDTO;
 import com.bibliotecaah.biblioteca.dto.filter.FiltroLibrosDTO;
 import com.bibliotecaah.biblioteca.dto.output.FacetaDTO;
 import com.bibliotecaah.biblioteca.dto.output.FacetasDTO;
@@ -7,8 +8,11 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.text.Normalizer;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -138,6 +142,77 @@ public class EjemplarCustomRepositoryImpl implements EjemplarCustomRepository {
                         + " AND a.formato_original IS NOT NULL GROUP BY a.formato_original "
                         + "ORDER BY n DESC, a.formato_original", p))
                 .build();
+    }
+
+    // ------------------------------------------------------------------ carpetas (v1.6)
+
+    private static final String DOCUMENTOS = " FROM bah_lib_ejemplar e JOIN bah_lib_obra o ON o.id = e.obra_id"
+            + " WHERE e.usuario_id = :u AND e.retirado_en IS NULL AND e.tipo = 'DOCUMENTO'";
+
+    @Override
+    public List<UUID> documentosDeCarpeta(Long usuarioId, UUID carpetaId, FiltroCarpetaDTO.Orden orden, int limite) {
+        MapSqlParameterSource p = new MapSqlParameterSource("u", usuarioId).addValue("limite", limite);
+        String donde;
+        if (carpetaId == null) {
+            donde = " AND e.carpeta_id IS NULL";
+        } else {
+            donde = " AND e.carpeta_id = :c";
+            p.addValue("c", carpetaId);
+        }
+        return jdbc.queryForList("SELECT e.id" + DOCUMENTOS + donde + " ORDER BY " + ordenDocumentos(orden)
+                + " LIMIT :limite", p, UUID.class);
+    }
+
+    @Override
+    public List<UUID> buscarDocumentos(Long usuarioId, Collection<UUID> carpetas, String texto,
+                                       FiltroCarpetaDTO.Orden orden, int limite) {
+        if (carpetas != null && carpetas.isEmpty()) return List.of();
+        MapSqlParameterSource p = new MapSqlParameterSource("u", usuarioId).addValue("limite", limite)
+                .addValue("texto", "%" + escaparLike(normalizar(texto.trim())) + "%");
+        StringBuilder donde = new StringBuilder(" AND ").append(normalizarSql("concat_ws(' ', o.titulo, o.subtitulo, "
+                + "array_to_string(o.autores, ' '), o.sinopsis, array_to_string(e.etiquetas, ' '))")).append(" LIKE :texto");
+        if (carpetas != null) {
+            donde.append(" AND e.carpeta_id IN (:carpetas)");
+            p.addValue("carpetas", carpetas);
+        }
+        return jdbc.queryForList("SELECT e.id" + DOCUMENTOS + donde + " ORDER BY " + ordenDocumentos(orden)
+                + " LIMIT :limite", p, UUID.class);
+    }
+
+    @Override
+    public Map<UUID, Long> documentosPorCarpeta(Long usuarioId) {
+        Map<UUID, Long> cuentas = new HashMap<>();
+        jdbc.query("SELECT e.carpeta_id AS c, COUNT(*) AS n FROM bah_lib_ejemplar e WHERE e.usuario_id = :u "
+                + "AND e.retirado_en IS NULL AND e.tipo = 'DOCUMENTO' GROUP BY e.carpeta_id",
+                new MapSqlParameterSource("u", usuarioId),
+                rs -> {
+                    cuentas.put(rs.getObject("c", UUID.class), rs.getLong("n"));
+                });
+        return cuentas;
+    }
+
+    @Override
+    public List<UUID> documentosEn(Long usuarioId, Collection<UUID> carpetas) {
+        if (carpetas.isEmpty()) return List.of();
+        return jdbc.queryForList("SELECT e.id FROM bah_lib_ejemplar e WHERE e.usuario_id = :u AND e.retirado_en IS NULL "
+                + "AND e.tipo = 'DOCUMENTO' AND e.carpeta_id IN (:carpetas)",
+                new MapSqlParameterSource("u", usuarioId).addValue("carpetas", carpetas), UUID.class);
+    }
+
+    @Override
+    public int moverDocumentos(Long usuarioId, Collection<UUID> ejemplarIds, UUID carpetaId) {
+        if (ejemplarIds.isEmpty()) return 0;
+        return jdbc.update("UPDATE bah_lib_ejemplar SET carpeta_id = :c, last_update = now(), id_modified_by = :u "
+                + "WHERE usuario_id = :u AND retirado_en IS NULL AND tipo = 'DOCUMENTO' AND id IN (:ids)",
+                new MapSqlParameterSource("u", usuarioId).addValue("c", carpetaId).addValue("ids", ejemplarIds));
+    }
+
+    static String ordenDocumentos(FiltroCarpetaDTO.Orden orden) {
+        return switch (orden == null ? FiltroCarpetaDTO.Orden.NOMBRE : orden) {
+            case NOMBRE -> "lower(o.titulo) ASC, e.id ASC";
+            case RECIENTES -> "e.fecha_llegada DESC, e.id ASC";
+            case ANTIGUOS -> "e.fecha_llegada ASC, e.id ASC";
+        };
     }
 
     private List<FacetaDTO> contar(String sql, MapSqlParameterSource p) {

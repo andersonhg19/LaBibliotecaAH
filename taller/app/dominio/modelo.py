@@ -58,6 +58,7 @@ class Libro:
             "editorial": None,
             "anio": None,
             "sinopsis": None,
+            "materias": [],  # (v1.4) temas tal cual los trae el archivo; biblioteca-service los normaliza
         }
     )
     capitulos: list[Capitulo] = field(default_factory=list)

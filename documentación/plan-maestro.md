@@ -189,6 +189,11 @@ de ambos usuarios sin duplicar el archivo).
 | DOCX | pandoc → HTML | Títulos (Heading 1/2) → capítulos |
 | DOC (antiguo) | LibreOffice headless → DOCX → pandoc | |
 | TXT | heurística de capítulos ("Capítulo X", "CAPÍTULO", numeración romana, líneas en mayúsculas) | Detección de codificación (UTF-8/Latin-1) |
+| MD / HTML (v1.6) | pandoc `gfm` / lxml → lista blanca → HTML | Tareas, tablas, citas, código sin leer en voz |
+| RTF / ODT (v1.6) | LibreOffice headless → DOCX → pandoc | |
+| PPTX (v1.6) | lxml sobre el ZIP | Un capítulo por diapositiva, notas del orador sin voz |
+| JSON / YAML / LOG (v1.6) | línea a línea, monoespaciado | |
+| XLSX / XLS / ODS / CSV (v1.6) | openpyxl / xlrd / lxml / csv → `hoja.json` | NO van a EPUB: visor de hojas (contratos §11) |
 | Respaldo | Calibre `ebook-convert` | Para lo raro (MOBI, AZW3, FB2, RTF) |
 
 ### 5.4 Normalizador de texto (antes de segmentar)
@@ -310,6 +315,10 @@ gana la marca de tiempo más reciente. Si otro dispositivo avanzó más: "Seguis
 
 - **Documentos personales** (R11): `tipo = DOCUMENTO`, sin autor obligatorio, sin búsqueda de metadatos,
   estante propio "Mis documentos" (un archivador, no un estante de libros).
+  (contratos v1.6) Con **carpetas y subcarpetas** propias de cada usuario (`carpeta`: id, usuario_id, padre_id, nombre;
+  `ejemplar.carpeta_id`), subir directo a una carpeta, mover varios, buscar dentro y borrar eligiendo qué pasa con lo de
+  dentro. Formatos: además de los de libros, MD, HTML, RTF, ODT, PPTX y JSON/YAML/LOG (al lector) y XLSX, XLS, ODS y CSV
+  (al **visor de hojas**, con `hoja.json`).
 - **Lista de deseos** (R8): `tipo = DESEO` (sin archivo). Muestra dónde conseguirlo (enlace a búsqueda de la
   editorial/biblioteca) y "ya lo tengo" lo convierte en libro.
 - **Hogar**: un libro puede marcarse `visible_hogar` para que Samy lo vea en "Biblioteca compartida"
