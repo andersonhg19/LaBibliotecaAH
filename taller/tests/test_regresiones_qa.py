@@ -553,6 +553,18 @@ class TestVoz:
         assert t["duracion"] == 1.0 and t["frases"][0]["t0"] == t["frases"][0]["t1"] == 0
         assert audio.duracion(d / "cap-000.m4a") == pytest.approx(1.0, abs=0.05)
 
+    @hay_ffmpeg
+    def test_capitulo_sin_ninguna_frase_da_un_silencio_corto_no_un_error(self, tmp_path):
+        rutas = Rutas(tmp_path)
+        preparar_frases(rutas, "a1", [])
+        motor = MotorFalso()
+        duracion = asyncio.run(generar_capitulo(rutas, "a1", "edge.v", 0, motor, "v"))
+        assert duracion == 1.0 and motor.llamadas == 0
+        d = rutas.audio("a1", "edge.v")
+        assert (d / "cap-000.m4a").stat().st_size > 0 and (d / "cap-000-2x.m4a").stat().st_size > 0
+        t = json.loads((d / "cap-000.tiempos.json").read_text(encoding="utf-8"))
+        assert t["duracion"] == 1.0 and t["frases"] == []
+
     def test_da12_voz_fuera_del_catalogo_es_error_definitivo_inmediato(self, tmp_path, monkeypatch):
         def no_llamar(*_a, **_k):
             raise AssertionError("no debe pedirse un motor para una voz inexistente")

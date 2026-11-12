@@ -254,7 +254,6 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
             apaisado={horizontal}
             onVerCatalogo={verCatalogo}
             onTraer={() => setSubir(true)}
-            onSeguir={(l) => navigation.navigate('Leer', { id: l.id })}
           />
         </View>
       </ScrollView>

@@ -385,8 +385,9 @@ async def generar_capitulo(
         raise ErrorDefinitivo(Msj.CAPITULO_INEXISTENTE, capitulo=capitulo)
     datos = json.loads(ruta_frases.read_text(encoding="utf-8"))
     frases = datos["frases"]
-    if not frases:
-        raise ErrorDefinitivo(Msj.CAPITULO_SIN_TEXTO, capitulo=capitulo)
+    # Un capítulo sin ninguna frase (una página de imagen, una portadilla «Sección 4») no es un error: da el mismo
+    # segundo de silencio que uno con solo separadores (DA-11) y el reproductor pasa solo al siguiente. Antes era
+    # un ERROR definitivo que paraba la escucha en el iPhone (2026-11-12).
 
     dir_cache = rutas.cache_voz()
     ultimo_latido = [time.monotonic()]

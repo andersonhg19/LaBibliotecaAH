@@ -341,3 +341,11 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
 - Commit `36f6b73`. Respaldo de bases `D:\respaldos\biblioteca\2026-11-12_0859`; `.env` anterior en `.env.antes-0.3.1`.
 - Los 18 capítulos de voz ya generados se marcaron PENDIENTE (prioridad 200) y se reensamblaron desde la caché de frases
   en ~3 min. Capítulo 5 de prueba: 2015 s → 1650 s; hueco entre frases p50 0,28 s, p90 0,53 s (antes ~1,2 s).
+
+## 2026-11-12 — Capítulo sin frases y tarjeta del PC
+
+- **«El capítulo 3 no tiene texto para leer»** (Percy Jackson, «Sección 4»): un capítulo con la lista de frases vacía
+  (portadilla o imagen) era un ERROR definitivo y paraba la escucha. Ahora da 1 s de silencio, como los que solo
+  tienen separadores (DA-11), y el reproductor sigue al siguiente. Prueba de regresión nueva.
+- **Tarjeta blanca «Sigue donde lo dejaste»** junto al atril en el PC: quitada a pedido de Anderson; en el PC, como en
+  el móvil, se toca el libro y se sigue desde ahí.
