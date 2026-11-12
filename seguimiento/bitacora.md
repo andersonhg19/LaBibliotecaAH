@@ -240,3 +240,10 @@ biblioteca-service) y UX-14 (textos de auth) pedidos por el integrador. El gatew
 | Claves en un repo publico | informes y pruebas citaban la clave real | tachadas en documentos; pruebas con «clave-de-prueba» |
 
 Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del EPUB), DA-22/23/26, desplazamiento tactil del modo Hojas sin verificar en un telefono real, prueba de pantalla bloqueada en iPhone y Android.
+
+## 2026-11-11 — Versión 0.2.0 en producción
+- Respaldo previo solo de las bases (0,07 MB). Desde hoy `respaldo.ps1` ya no copia libros (decisión de Anderson: gastaría el disco).
+- `.env` de producción: TAG=0.2.0, EXP_TIME=86400000 (24 h con renovación), REGISTRO_PUBLICO=false, LOGIN_PROXIES_CONFIABLES=2.
+- Imágenes construidas en casa (commit 911b1fe): rediseño, modo Hojas, anotaciones, traductor Opus-MT, login por alias, lomos legibles en el móvil y baldas por género/autor con filtros.
+- Verificado en 7050/7051: 8 contenedores sanos; CORS 200 (7050) / 403 (ajeno); entran anderson, samy y admin; 18 libros de Anderson; facetas; traducción; captura iPhone con títulos completos en los lomos.
+- Pendiente: confirmar los lomos en Safari de un iPhone real.

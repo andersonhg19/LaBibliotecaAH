@@ -1,7 +1,7 @@
 # Despliegue de La Biblioteca AH en el PC de casa
 
-El PC de casa **no construye** imágenes (no puede hacer `docker build` ni `pull` por SSH). Las imágenes se construyen
-en el PC de desarrollo, se exportan con `docker save`, se copian con `scp` y se cargan con `docker load`.
+Todo se construye y se ejecuta en el PC de casa. `docker build`/`pull` no funcionan por SSH: se lanzan en la sesión de
+Windows con `ops/casa-sesion.sh` (tarea programada `BibliotecaAH-Sesion`).
 Oh Churus corre en el mismo equipo y **no se toca**: la biblioteca usa proyecto, red, volumen y puertos propios.
 
 ## Dónde queda cada cosa
@@ -18,34 +18,22 @@ Oh Churus corre en el mismo equipo y **no se toca**: la biblioteca usa proyecto,
 Puertos locales (todos en 127.0.0.1): postgres 5433, discovery 8860, gateway 8920, auth 8921, biblioteca 8925,
 taller 8926, web 3100. Oh Churus usa 3000/5432/8760/8820-8823 y Tailscale 7000/7001.
 
-## Versión nueva (desde el PC de desarrollo, Git Bash)
+## Versión nueva (todo en casa; así se desplegó la 0.2.0 el 2026-11-11)
+
+Con `TAG` ya cambiado en `C:\srv\biblioteca-ah\.env`, desde la consola (Git Bash):
 
 ```bash
-cd /z/Personales/LaBibliotecaAH
-V=0.1.1
-# 1. Imagenes. La web lleva la URL de la API dentro: se construye con la de casa.
-docker compose build postgres discovery-service gateway-service auth-service biblioteca-service taller
-for s in postgres discovery-service gateway-service auth-service biblioteca-service taller; do docker tag bah/$s:latest bah/$s:$V; done
-API_URL=https://casa.tail60fcb5.ts.net:7051 TAG=$V docker compose build frontend
-# 2. Exportar y copiar (solo hace falta incluir las imagenes que cambiaron)
-docker save bah/postgres:$V bah/discovery-service:$V bah/gateway-service:$V bah/auth-service:$V \
-  bah/biblioteca-service:$V bah/taller:$V bah/frontend:$V | gzip -1 > bah-$V.tar.gz
-scp bah-$V.tar.gz docker-compose.yml casa:C:/srv/biblioteca-ah/
-scp ops/respaldo.ps1 casa:C:/srv/biblioteca-ah/
+C='docker compose -f C:\Users\ander\Documents\Anderson\Personales\LaBibliotecaAH\docker-compose.yml --env-file C:\srv\biblioteca-ah\.env -p biblioteca-ah'
+# 1. Respaldo de las BASES (nunca de los libros)
+ssh casa 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\srv\biblioteca-ah\respaldo.ps1'
+# 2. Construir en la sesion de Windows. La web toma API_URL del .env de produccion.
+echo "$C build" | bash ops/casa-sesion.sh - 3000
+# 3. Levantar sin construir (Flyway aplica las migraciones al arrancar)
+ssh casa "$C up -d --no-build"
 ```
 
-En casa (PowerShell):
-
-```powershell
-cd C:\srv\biblioteca-ah
-docker load -i bah-0.1.1.tar.gz
-# Cambiar TAG=0.1.1 en .env y levantar sin construir:
-docker compose up -d --no-build
-docker compose ps
-Remove-Item bah-0.1.1.tar.gz
-```
-
-Volver atrás: poner el `TAG` anterior en `.env` y `docker compose up -d --no-build` (las imágenes viejas siguen cargadas).
+Volver atrás: poner el `TAG` anterior en `.env` (hay copia en `.env.antes-0.2.0`) y repetir el paso 3; las imágenes
+viejas siguen en casa.
 Flyway solo avanza: si la versión nueva trajo migraciones, restaurar antes el respaldo de la base (abajo).
 
 ## Primera instalación (hecha el 2026-11-10)
