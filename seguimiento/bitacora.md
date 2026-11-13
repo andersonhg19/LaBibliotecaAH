@@ -349,3 +349,11 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
   tienen separadores (DA-11), y el reproductor sigue al siguiente. Prueba de regresión nueva.
 - **Tarjeta blanca «Sigue donde lo dejaste»** junto al atril en el PC: quitada a pedido de Anderson; en el PC, como en
   el móvil, se toca el libro y se sigue desde ahí.
+
+## 2026-11-12 — Escucha de corrido, capítulos de verdad, «Ver texto» centrado y voz plegada
+- Caso de Anderson («La diosa de tres cabezas»): al acabar los créditos (índice 2) pasó a «Sección 4» (índice 3, 0 frases: página de imagen) → ERROR del taller 0.3.1 → la escucha se paraba y «Reintentar» volvía a fallar (mismo taller). El taller de 6d7807c ya da 1 s de silencio.
+- `motorAudio.ts`: escuchando de corrido se pasa de largo una página sin palabras (minutos 0) y un capítulo en ERROR (máx. 3 seguidos); «Capítulo siguiente/anterior» también saltan las páginas vacías. Elegido a mano, el ERROR sí se dice.
+- `logica/capitulos.ts`: si un capítulo dice ser el primero («1 • …», «Capítulo 1», «Capítulo uno»), lo de antes es preliminar; sin ese ancla, las «Sección N» sin título del principio tampoco cuentan; una página vacía nunca se numera. Ese libro pasa de «Capítulo 4 de 46» a «Inicio · N capítulos».
+- `PanelTexto.tsx`: en tablet y PC (≥ 820 px) ventana centrada (hasta 820×980, 90 %), márgenes de libro y letra 20/34.
+- `ReproductorScreen.tsx`: «La voz» plegada en acordeón (se ve la elegida; «Cambiar» abre la lista).
+- Pruebas: jest 580/581 (la de siempre, BibliotecaDeLujo, pasa sola 23/23); capturas QA en iPhone 390, Android 412, iPad 820 vertical y 1180 horizontal, PC 1440 (C:\srv\biblioteca-ah-qa\qa\dev-iphone3\capturas).

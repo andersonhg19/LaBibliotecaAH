@@ -1,13 +1,6 @@
 import { buscarFrase, buscarPalabra, capituloDeFrase, indiceDeFrase, inicioFraseSiguiente } from '@logica/tiempos'
 import { normalizarVelocidad, planDeVelocidad, resaltaPalabra, tiempoEn1x, tiempoEnArchivo } from '@logica/velocidad'
-import type {
-  CapituloResumen,
-  EstadoAudioDTO,
-  PartesCapitulo,
-  ProgresoDTO,
-  ResultDTO,
-  TiemposCapitulo,
-} from '@tipos'
+import type { CapituloResumen, EstadoAudioDTO, PartesCapitulo, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import { MENSAJES } from '@utils/mensajes'
 
 /*
@@ -152,6 +145,8 @@ const RAPIDO_DURANTE_MS = 60_000
 const SONDEO_PARTES_MS = 2_500
 /** Esperas entre reintentos automáticos sin red (después se queda en la última). */
 const REINTENTOS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
+/** Escuchando de corrido, cuántos capítulos en ERROR seguidos se saltan antes de parar y decirlo. */
+const MAX_SALTOS = 3
 
 /**
  * Cuánto tarda el taller en generar un capítulo (medido en QA: un capítulo de
@@ -242,6 +237,8 @@ export class MotorAudio {
   private errorEnPartes: string | null = null
   /** Pregunta ya al servidor (sin esperar al siguiente sondeo). */
   private sondearYa: (() => void) | null = null
+  /** Capítulos en ERROR saltados seguidos al pasar solo al siguiente (tope para no recorrer el libro entero). */
+  private saltosSeguidos = 0
 
   constructor(private deps: DependenciasMotor) {
     deps.alVolverLaRed?.(() => {
@@ -277,6 +274,16 @@ export class MotorAudio {
   private fallar(tipo: TipoError, mensaje: string) {
     this.esperandoParte = false
     this.poner({ fase: 'error', tipoError: tipo, mensaje, preparacion: null })
+  }
+
+  /**
+   * El capítulo con voz que va después (o antes) de `desde`, o -1. Una página sin ninguna palabra (minutos 0:
+   * una imagen, una portadilla vacía) no se oye: se pasa de largo (2026-11-12, «Sección 4» paraba la escucha).
+   */
+  private vecinoConVoz(desde: number, paso: 1 | -1): number {
+    const caps = this.estado.libro?.capitulos ?? []
+    for (let i = desde + paso; i >= 0 && i < caps.length; i += paso) if (caps[i].minutos !== 0) return i
+    return -1
   }
 
   /** Hay algo que sonar: el capítulo entero o, mientras se genera, sus partes. */
@@ -414,6 +421,8 @@ export class MotorAudio {
     reproducir: boolean,
     fraseId: string | null = null,
     reintentar = false,
+    /** Se llegó solo, al acabar el anterior: un capítulo en ERROR se salta en vez de parar la escucha. */
+    automatico = false,
   ) {
     const l = this.estado.libro
     if (!l) return
@@ -466,6 +475,7 @@ export class MotorAudio {
       }
       const e = r.object
       if (e.estado === 'LISTO') {
+        this.saltosSeguidos = 0
         this.urls = { u1: this.deps.resolverUrl(e.url1x), u2: this.deps.resolverUrl(e.url2x) }
         this.errorEnPartes = null
         this.poner({ preparacion: null, ...(e.duracionSeg ? { duracion: e.duracionSeg } : {}) })
@@ -501,6 +511,13 @@ export class MotorAudio {
         if (this.enPartes() && !this.esperandoParte) {
           // Lo ya generado sigue sonando; el fallo se dice al llegar al final de lo que hay.
           this.errorEnPartes = motivo
+          return
+        }
+        const sig = automatico ? this.vecinoConVoz(capitulo, 1) : -1
+        if (sig >= 0 && this.saltosSeguidos < MAX_SALTOS) {
+          // Escuchando de corrido, un capítulo que no se pudo generar no para el libro: se sigue con el próximo.
+          this.saltosSeguidos++
+          this.cargar(sig, 0, this.quiereSonar, null, false, true)
           return
         }
         this.fallar('capitulo', motivo)
@@ -719,7 +736,9 @@ export class MotorAudio {
     if (this.posPendiente != null) {
       try {
         const parte = this.enPartes() ? this.partes?.m.partes[this.parteActual] : null
-        el.currentTime = parte ? Math.max(0, this.posPendiente - parte.t0) : tiempoEnArchivo(this.posPendiente, this.factor)
+        el.currentTime = parte
+          ? Math.max(0, this.posPendiente - parte.t0)
+          : tiempoEnArchivo(this.posPendiente, this.factor)
       } catch {
         /* nada */
       }
@@ -842,13 +861,15 @@ export class MotorAudio {
     // Un capítulo que no se llegó a oír por falta de red no se salta: se reintenta (QA LV-02).
     if (this.estado.fase === 'error' && (this.estado.tipoError === 'red' || this.estado.tipoError === 'audio'))
       return this.reintentar()
-    if (this.estado.capitulo + 1 < l.capitulos.length) this.cargar(this.estado.capitulo + 1, 0, this.seguirSonando())
+    const sig = this.vecinoConVoz(this.estado.capitulo, 1)
+    if (sig >= 0) this.cargar(sig, 0, this.seguirSonando())
   }
 
   capituloAnterior() {
     if (this.estado.fase !== 'error' && (this.posicion() > 5 || this.estado.capitulo === 0)) return this.buscar(0)
     if (this.estado.capitulo === 0) return this.reintentar()
-    this.cargar(this.estado.capitulo - 1, 0, this.seguirSonando())
+    const ant = this.vecinoConVoz(this.estado.capitulo, -1)
+    this.cargar(ant >= 0 ? ant : this.estado.capitulo - 1, 0, this.seguirSonando())
   }
 
   irACapitulo(capitulo: number, reproducir = true) {
@@ -1057,9 +1078,11 @@ export class MotorAudio {
       this.guardar(true)
       return
     }
-    if (this.estado.capitulo + 1 < l.capitulos.length) {
+    const sig = this.vecinoConVoz(this.estado.capitulo, 1)
+    if (sig >= 0) {
       // Mismo elemento, nuevo src: así iOS sigue sonando con la pantalla bloqueada.
-      this.cargar(this.estado.capitulo + 1, 0, true)
+      this.saltosSeguidos = 0
+      this.cargar(sig, 0, true, null, false, true)
     } else {
       this.quiereSonar = false
       this.poner({ fase: 'pausado', mensaje: MENSAJES.vozFinLibro })

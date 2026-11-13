@@ -259,6 +259,9 @@ describe('El reproductor', () => {
     await waitFor(() => expect(r.getByLabelText('0.5x')).toBeTruthy())
     expect(r.getByLabelText('5x')).toBeTruthy()
     expect(r.getByLabelText('Al final del capítulo')).toBeTruthy()
+    // Las voces van plegadas: se ve la elegida y la lista se abre al tocar (2026-11-12).
+    expect(r.queryByLabelText('Álvaro, España, voz de la casa')).toBeNull()
+    fireEvent.press(r.getByTestId('acordeon-voz'))
     expect(r.getByLabelText('Álvaro, España, voz de la casa')).toBeTruthy()
     expect(r.getByLabelText('Escuchar una muestra de Elvira')).toBeTruthy()
   })

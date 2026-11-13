@@ -7,6 +7,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack'
 import Button from '@componentes/atoms/Button'
 import Chip from '@componentes/atoms/Chip'
 import Deslizador from '@componentes/atoms/Deslizador'
+import Icono from '@componentes/atoms/Icono'
 import Spinner from '@componentes/atoms/Spinner'
 import AppText from '@componentes/atoms/Text'
 import Portada from '@componentes/estanteria/Portada'
@@ -57,6 +58,8 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const muestra = useRef<HTMLAudioElement | null>(null)
   const [textoAbierto, setTextoAbierto] = useState(false)
   const [capitulosAbiertos, setCapitulosAbiertos] = useState(false)
+  /* La lista de voces, plegada: se ve la elegida y se abre solo para cambiarla (acordado 2026-11-12). */
+  const [vocesAbiertas, setVocesAbiertas] = useState(false)
   /* Lo que hace tocar una frase del panel; en una ref para que el panel (memo) no se repinte en cada avance. */
   const tocarFraseActual = useRef<(fraseId: string) => void>(() => {})
   const tocarFrase = useCallback((fraseId: string) => tocarFraseActual.current(fraseId), [])
@@ -80,6 +83,7 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   if (!libro) return null
 
   const esteLibro = v.libro?.ejemplarId === id
+  const vozElegida = voces.find((vz) => vz.id === (esteLibro ? v.vozId : prefs.vozId)) ?? null
   const sonando = esteLibro && v.fase === 'reproduciendo'
   const ocupado = esteLibro && (v.fase === 'cargando' || v.fase === 'preparando')
   const capActual = esteLibro ? v.capitulo : (libro.progreso?.capitulo ?? 0)
@@ -296,8 +300,27 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
 
         <View style={[styles.tarjeta, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <AppText variant="label">La voz</AppText>
-          {voces.map((vz) => {
+          <Pressable
+            onPress={() => setVocesAbiertas((a) => !a)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: vocesAbiertas }}
+            accessibilityLabel={`La voz: ${vozElegida ? `${vozElegida.nombre}, ${vozElegida.pais}` : 'sin elegir'}. ${vocesAbiertas ? 'Ocultar' : 'Cambiar'} la voz`}
+            testID="acordeon-voz"
+            style={({ pressed }) => [styles.acordeon, pressed && { opacity: 0.7 }, web({ cursor: 'pointer' })]}
+          >
+            <View style={styles.vozNombre}>
+              <AppText variant="label">La voz</AppText>
+              {vozElegida ? (
+                <Text style={[styles.vozTexto, { color: colors.primary }]}>
+                  {vozElegida.nombre}
+                  <Text style={[styles.tiempo, { color: colors.textMuted }]}> · {vozElegida.pais}</Text>
+                </Text>
+              ) : null}
+            </View>
+            <Text style={[styles.tiempo, { color: colors.textMuted }]}>{vocesAbiertas ? 'Ocultar' : 'Cambiar'}</Text>
+            <Icono nombre={vocesAbiertas ? 'up' : 'down'} color={colors.textMuted} tamano={18} />
+          </Pressable>
+          {(vocesAbiertas ? voces : []).map((vz) => {
             const activa = (esteLibro ? v.vozId : prefs.vozId) === vz.id
             const preparandose = esteLibro && v.vozPendiente?.id === vz.id
             return (
@@ -434,6 +457,7 @@ const styles = StyleSheet.create({
   },
   tarjeta: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  acordeon: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48 },
   voz: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth },
   vozNombre: { flex: 1, minHeight: 48, justifyContent: 'center' },
   vozTexto: { fontFamily: fuentes.uiMedia, fontSize: fontSize.sm },

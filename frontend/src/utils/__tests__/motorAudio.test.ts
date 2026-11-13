@@ -191,6 +191,73 @@ describe('El motor de la voz', () => {
     expect(el.paused).toBe(false)
   })
 
+  it('escuchando de corrido pasa de largo una página vacía y un capítulo en ERROR (2026-11-12, «Sección 4»)', async () => {
+    const libro = {
+      ...LIBRO,
+      capitulos: [
+        { indice: 0, titulo: 'Créditos', minutos: 1 },
+        { indice: 1, titulo: 'Sección 2', minutos: 0 },
+        { indice: 2, titulo: 'Dedicatoria', minutos: 1 },
+        { indice: 3, titulo: '1 • El comienzo', minutos: 20 },
+      ],
+    }
+    const { motor, el } = montar(async (d) =>
+      d.capitulo === 2
+        ? {
+            correct: true,
+            message: 'OK',
+            errorCode: 0,
+            object: {
+              estado: 'ERROR',
+              error: 'No se pudo.',
+              duracionSeg: null,
+              url1x: null,
+              url2x: null,
+              urlTiempos: null,
+            },
+          }
+        : listo(d.capitulo),
+    )
+    motor.abrir(libro, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.emitir('ended')
+    await esperar()
+    await esperar()
+    expect(motor.obtener().capitulo).toBe(3)
+    expect(motor.obtener().fase).not.toBe('error')
+    expect(el.src).toBe('/a/cap-3.m4a')
+  })
+
+  it('elegido a mano, un capítulo en ERROR sí se dice (no se salta)', async () => {
+    const { motor } = montar(async () => ({
+      correct: true,
+      message: 'OK',
+      errorCode: 0,
+      object: { estado: 'ERROR', error: 'No se pudo.', duracionSeg: null, url1x: null, url2x: null, urlTiempos: null },
+    }))
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    expect(motor.obtener().fase).toBe('error')
+    expect(motor.obtener().capitulo).toBe(0)
+  })
+
+  it('«Capítulo siguiente» se salta las páginas vacías', async () => {
+    const { motor } = montar()
+    const libro = {
+      ...LIBRO,
+      capitulos: [
+        { indice: 0, titulo: 'A', minutos: 2 },
+        { indice: 1, titulo: 'Sección 2', minutos: 0 },
+        { indice: 2, titulo: 'B', minutos: 2 },
+      ],
+    }
+    motor.abrir(libro, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    motor.capituloSiguiente()
+    await esperar()
+    expect(motor.obtener().capitulo).toBe(2)
+  })
+
   it('salta por frase con tiempos.json', async () => {
     const { motor, el } = montar()
     motor.abrir(LIBRO, { capitulo: 0, posicion: 12, vozId: 'v', velocidad: 1 })

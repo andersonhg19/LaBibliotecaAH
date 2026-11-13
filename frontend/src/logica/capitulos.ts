@@ -28,16 +28,38 @@ export function esPreliminar(tituloCapitulo: string, tituloLibro: string): boole
   return PRELIMINAR.test(tituloCapitulo.trim())
 }
 
+/** «Sección 4»: el nombre que pone el taller a una página sin título (la portadilla, los créditos, una imagen). */
+const SIN_TITULO = /^secci[oó]n\s+\d+$/i
+/** Donde empieza el libro de verdad: «1 • …», «1. …», «Capítulo 1», «Capítulo uno», «I. …», «Chapter 1». */
+const PRIMERO = /^\s*(?:(?:cap[ií]tulo|chapter)\s+(?:1|uno|one|i)\b|(?:1|uno|i)\s*(?:[.•·:\-–—)]|$))/i
+
+interface CapituloNumerable {
+  titulo: string
+  /** Minutos a 1x; 0 = una página sin ninguna palabra (no se oye ni se numera). */
+  minutos?: number
+}
+
 /**
  * El número que se enseña de cada capítulo (en el orden que vienen), o null si
- * es preliminar. Solo cuenta como preliminar lo que va ANTES del primer
- * capítulo de verdad: un «Índice» al final sí se numera.
+ * es preliminar o una página vacía. Lo que va ANTES del primer capítulo de
+ * verdad (sinopsis, portadilla, créditos, dedicatoria, una «Sección 4» sin
+ * título) no se numera; un «Índice» al final sí. Si un capítulo dice ser el
+ * primero («1 • Tengo un accidente…», «Capítulo 1»), la cuenta empieza ahí
+ * (2026-11-12: «La diosa de tres cabezas» decía «Capítulo 4 de 46» en sus
+ * créditos).
  */
-export function numerarCapitulos(capitulos: { titulo: string }[], tituloLibro: string): (number | null)[] {
+export function numerarCapitulos(capitulos: CapituloNumerable[], tituloLibro: string): (number | null)[] {
+  const vacio = (c: CapituloNumerable) => c.minutos === 0
+  const limite = Math.max(12, Math.ceil(capitulos.length * 0.25))
+  const ancla = capitulos.findIndex((c, i) => i < limite && !vacio(c) && PRIMERO.test(c.titulo))
   let n = 0
   let empezado = false
-  const numeros = capitulos.map((c) => {
-    if (!empezado && esPreliminar(c.titulo, tituloLibro)) return null
+  const numeros = capitulos.map((c, i) => {
+    if (vacio(c)) return null
+    if (!empezado) {
+      if (ancla > 0 && i < ancla) return null
+      if (ancla < 0 && (esPreliminar(c.titulo, tituloLibro) || SIN_TITULO.test(c.titulo.trim()))) return null
+    }
     empezado = true
     n += 1
     return n

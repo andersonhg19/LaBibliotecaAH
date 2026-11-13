@@ -27,8 +27,10 @@ import { reducirMovimiento, web } from '@tema/web'
  * «VER TEXTO» MIENTRAS SE ESCUCHA (como los lectores en voz alta).
  *
  * Lo de siempre es la carátula y el capítulo; esto es una consulta puntual:
- * una hoja que sube desde abajo en el teléfono y un panel a la derecha en el
- * PC, con el texto del capítulo y la frase que suena resaltada.
+ * una hoja que sube desde abajo en el teléfono y, en tablet y PC, una ventana
+ * CENTRADA y amplia (líneas de lectura cómoda, ~70 caracteres; antes era una
+ * franja estrecha a la derecha, 2026-11-12), con el texto del capítulo y la
+ * frase que suena resaltada.
  *
  *   · Sigue a la voz: la frase actual se centra con un desplazamiento suave
  *     (sin animación si el sistema pide reducir movimiento).
@@ -77,6 +79,7 @@ const Parrafo = React.memo(function Parrafo({
   colorResalte,
   onTocar,
   onY,
+  grande = false,
 }: {
   frases: FraseDeTexto[]
   titulo: boolean
@@ -86,10 +89,14 @@ const Parrafo = React.memo(function Parrafo({
   colorResalte: string
   onTocar: (id: string) => void
   onY: (indice: number, y: number) => void
+  /** Tablet y PC: la letra un punto más grande. */
+  grande?: boolean
 }) {
   return (
     <View onLayout={(e: LayoutChangeEvent) => onY(indice, e.nativeEvent.layout.y)}>
-      <Text style={[titulo ? styles.titulo : styles.texto, { color: colorTexto }]}>
+      <Text
+        style={[titulo ? styles.titulo : styles.texto, grande && !titulo && styles.textoGrande, { color: colorTexto }]}
+      >
         {frases.map((f, k) => {
           const suena = f.id === actual
           return (
@@ -236,8 +243,8 @@ const PanelTexto: React.FC<Props> = ({
           styles.fondo,
           {
             backgroundColor: colors.velo,
-            justifyContent: escritorio ? 'flex-start' : 'flex-end',
-            alignItems: escritorio ? 'flex-end' : 'stretch',
+            justifyContent: escritorio ? 'center' : 'flex-end',
+            alignItems: escritorio ? 'center' : 'stretch',
           },
         ]}
       >
@@ -253,7 +260,12 @@ const PanelTexto: React.FC<Props> = ({
           style={[
             styles.panel,
             escritorio
-              ? { width: Math.min(480, width * 0.42), height: '100%', borderLeftWidth: 2 }
+              ? {
+                  width: Math.min(820, width * 0.9),
+                  height: Math.min(980, height * 0.9),
+                  borderWidth: 2,
+                  borderRadius: 18,
+                }
               : { height: height * 0.86, borderTopWidth: 2, borderTopLeftRadius: 18, borderTopRightRadius: 18 },
             { backgroundColor: colors.surface, borderColor: colors.primaryLight },
             web(materialHoja(isDark, colors)),
@@ -291,7 +303,7 @@ const PanelTexto: React.FC<Props> = ({
             <ScrollView
               ref={scroll}
               style={styles.scroll}
-              contentContainerStyle={styles.cuerpo}
+              contentContainerStyle={[styles.cuerpo, escritorio && styles.cuerpoAncho]}
               onLayout={(e) => {
                 altoVista.current = e.nativeEvent.layout.height
               }}
@@ -312,6 +324,7 @@ const PanelTexto: React.FC<Props> = ({
                   colorResalte={resalte}
                   onTocar={tocar}
                   onY={onY}
+                  grande={escritorio}
                 />
               ))}
             </ScrollView>
@@ -376,7 +389,10 @@ const styles = StyleSheet.create({
   centro: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   scroll: { flex: 1 },
   cuerpo: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 120, gap: 14 },
+  /* En tablet y PC: márgenes de libro y el texto un punto más grande. */
+  cuerpoAncho: { paddingHorizontal: 48, paddingTop: 20, gap: 16 },
   texto: { fontFamily: fuentes.lectura, fontSize: fontSize.md, lineHeight: 30 },
+  textoGrande: { fontSize: 20, lineHeight: 34 },
   titulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, lineHeight: 30, marginTop: 6 },
   actual: { borderRadius: 4 },
   volverCaja: { position: 'absolute', left: 0, right: 0, bottom: 20, alignItems: 'center' },

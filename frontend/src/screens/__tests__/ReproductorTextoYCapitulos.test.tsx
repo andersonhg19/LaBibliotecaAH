@@ -236,9 +236,45 @@ describe('enParrafos', () => {
   })
 })
 
+describe('numerar los capítulos de verdad (2026-11-12, «La diosa de tres cabezas»)', () => {
+  it('lo de antes del «1 • …» no cuenta, ni una página vacía', () => {
+    const caps = [
+      { indice: 0, titulo: 'Sección 1', minutos: 1 },
+      { indice: 1, titulo: 'Percy Jackson y la diosa de tres cabezas', minutos: 1 },
+      { indice: 2, titulo: 'Sección 3', minutos: 1 },
+      { indice: 3, titulo: 'Sección 4', minutos: 0 },
+      { indice: 4, titulo: 'Sección 5', minutos: 1 },
+      { indice: 5, titulo: 'Carta del autor', minutos: 2 },
+      { indice: 6, titulo: '1 • Tengo un accidente en el despacho de la directora', minutos: 18 },
+      { indice: 7, titulo: '2 • Grover se pone hasta arriba de cafeína', minutos: 13 },
+    ]
+    expect(textoPosicion(caps, 3, 'La diosa de tres cabezas')).toBe('Inicio · 2 capítulos')
+    expect(textoPosicion(caps, 6, 'La diosa de tres cabezas')).toBe('Capítulo 1 de 2')
+    expect(textoPosicion(caps, 7, 'La diosa de tres cabezas')).toBe('Capítulo 2 de 2')
+  })
+
+  it('sin «1» que lo diga: las «Sección N» sin título del principio tampoco cuentan', () => {
+    const caps = [
+      { indice: 0, titulo: 'Sección 1', minutos: 1 },
+      { indice: 1, titulo: 'El viaje', minutos: 9 },
+      { indice: 2, titulo: 'Sección 3', minutos: 9 },
+    ]
+    expect(textoPosicion(caps, 1, 'X')).toBe('Capítulo 1 de 2')
+    expect(textoPosicion(caps, 2, 'X')).toBe('Capítulo 2 de 2')
+  })
+
+  it('«Capítulo 10» no se confunde con el primero', () => {
+    const caps = [
+      { indice: 0, titulo: 'Prólogo', minutos: 3 },
+      { indice: 1, titulo: 'Capítulo 10', minutos: 3 },
+    ]
+    expect(textoPosicion(caps, 1, 'X')).toBe('Capítulo 2 de 2')
+  })
+})
+
 describe('textoPosicion', () => {
   const caps = [
-    { indice: 0, titulo: 'El faro del norte', minutos: 0 },
+    { indice: 0, titulo: 'El faro del norte', minutos: 1 },
     { indice: 1, titulo: 'Capítulo 1', minutos: 20 },
     { indice: 2, titulo: 'Capítulo 2', minutos: 20 },
   ]
@@ -249,6 +285,11 @@ describe('textoPosicion', () => {
     // «Inicio» (lo que va antes del primer capítulo en un TXT) tampoco cuenta; «Inicio del viaje» sí es un capítulo
     const conInicio = [{ ...caps[0], titulo: 'Inicio' }, ...caps.slice(1)]
     expect(textoPosicion(conInicio, 2, 'Otro título')).toBe('Capítulo 2 de 2')
-    expect(textoPosicion([{ ...caps[0], titulo: 'Inicio del viaje' }, ...caps.slice(1)], 2, 'X')).toBe('Capítulo 3 de 3')
+    // (sin un «Capítulo 1» que marque el comienzo: con él, lo de antes es preliminar)
+    const sinAncla = [
+      { indice: 0, titulo: 'Inicio del viaje', minutos: 5 },
+      { indice: 1, titulo: 'La tormenta', minutos: 5 },
+    ]
+    expect(textoPosicion(sinAncla, 1, 'X')).toBe('Capítulo 2 de 2')
   })
 })
