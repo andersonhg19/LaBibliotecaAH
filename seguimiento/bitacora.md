@@ -360,3 +360,10 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
 
 ## 2026-11-12 — Desplegada la 0.3.2
 - Respaldo de bases 2026-11-12_2106, `.env.antes-0.3.2`, build en sesión y `up -d --no-build`: los 8 contenedores en 0.3.2 y healthy; web 200.
+
+## 2026-11-12 — Escucha continua con el iPhone bloqueado: precarga y «cinta»
+- Investigación: WebKit 173332/261554 (iOS suspende la página cuando un <audio> llega al fin; un audio arrancado en segundo plano puede sonar mudo), Audiobookshelf #2655 (abierto, mismo fallo con un archivo por pista), Legato PR #427 (resuelto con un solo ManagedMediaSource continuo; 12 pistas seguidas bloqueado en iOS 18.7). Spotify/YouTube Music: código cerrado, no verificado.
+- Paso 1 (todos los navegadores) `motorAudio.ts`: a 45 s (× velocidad) del final se pide el capítulo siguiente; al acabar se cambia de src y se da ▶ dentro del mismo 'ended', sin esperar al servidor. `navigator.audioSession.type = 'playback'` (Safari 16.4+).
+- Paso 2 (iPhone/iPad) `utils/cinta.ts`: los .m4a se trocean en el navegador a MP4 fragmentado con mp4box 2.4.1 (sin segunda copia en disco) y se encadenan en un ManagedMediaSource: el <audio> nunca cambia de src ni termina; pasar de capítulo es contabilidad. ~90 s por delante, se suelta lo oído (> 40 s atrás), la lista de edición del AAC recorta el cebado, la duración del MediaSource cubre la cinta. Si la cinta falla, se apaga en la sesión y sigue el <audio> normal. Partes (capítulo generándose) siguen por el <audio> normal. `localStorage['bah.cinta']` = '1' la fuerza (Chrome, MediaSource) y '0' la apaga.
+- QA (Chrome con la cinta forzada, «la travesia del faro», Elvira): cruce cap 1→2 a 1x y 2→3 a 3x (archivo 2x) sin 'ended', mismo blob, búfer continuo sin huecos; −15 s exacto; «Ver texto» resalta la frase del capítulo nuevo; pausa/▶; cero errores de consola. Jest 585/586 (la de siempre).
+- Falta: probar en el iPhone real (pantalla de inicio y Safari), 30 min bloqueado cruzando ≥ 5 capítulos.

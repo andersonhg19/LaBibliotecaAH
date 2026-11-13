@@ -5,6 +5,7 @@ import { Platform } from 'react-native'
 import { urlBinaria } from '@servicios/archivos'
 import { audioService, progresoService } from '@servicios/bibliotecaService'
 import type { PartesCapitulo, TiemposCapitulo } from '@tipos'
+import { crearCinta } from '@utils/cinta'
 import { MotorAudio } from '@utils/motorAudio'
 import { esteDispositivo, guardarProgresoLocal } from '@utils/progresoLocal'
 
@@ -40,6 +41,8 @@ export const motor = new MotorAudio({
   guardarServidor: (p) => progresoService.guardar(p),
   guardarLocal: (p) => guardarProgresoLocal(p),
   resolverUrl: (ruta) => urlBinaria(ruta),
+  // iPhone/iPad: los capítulos seguidos en un solo flujo (sin «fin» que suspenda la página bloqueada).
+  cinta: (el) => crearCinta(el),
   dispositivo: esteDispositivo,
   ahora: () => Date.now(),
   alVolverLaRed: (fn) => {

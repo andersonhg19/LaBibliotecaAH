@@ -588,3 +588,164 @@ describe('Contrato v1.2 del progreso', () => {
     expect(acotar(-3, 0, 100, 0)).toBe(0)
   })
 })
+
+describe('Pasar de capítulo sin esperar al servidor (2026-11-12, iPhone bloqueado)', () => {
+  it('a 45 s del final pide el siguiente y, al acabar, cambia el src y da ▶ en el MISMO ended', async () => {
+    const { motor, el } = montar()
+    const pedir = (motor as unknown as { deps: DependenciasMotor }).deps.pedirEstado as jest.Mock
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.emitir('loadedmetadata')
+    expect(pedir).toHaveBeenCalledTimes(1)
+    el.currentTime = 70
+    el.emitir('timeupdate')
+    await esperar()
+    expect(pedir).toHaveBeenCalledTimes(2)
+    expect(pedir.mock.calls[1][0]).toEqual({ ejemplarId: 'e1', vozId: 'v', capitulo: 1 })
+    el.emitir('ended')
+    // Sin esperar nada: el cambio ocurre dentro del propio 'ended'.
+    expect(el.src).toBe('/a/cap-1.m4a')
+    expect(el.paused).toBe(false)
+    expect(motor.obtener().capitulo).toBe(1)
+    await esperar()
+    expect(pedir).toHaveBeenCalledTimes(2)
+  })
+
+  it('si el siguiente aún no estaba LISTO, al acabar se pide como siempre', async () => {
+    let veces = 0
+    const { motor, el } = montar(async (d) => {
+      veces++
+      return d.capitulo === 1 && veces === 2 ? generando : listo(d.capitulo)
+    })
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.emitir('loadedmetadata')
+    el.currentTime = 70
+    el.emitir('timeupdate')
+    await esperar()
+    el.emitir('ended')
+    await esperar()
+    expect(motor.obtener().capitulo).toBe(1)
+    expect(el.src).toBe('/a/cap-1.m4a')
+    expect(veces).toBe(3)
+  })
+
+  it('con «al final del capítulo» no se precarga ni se sigue', async () => {
+    const { motor, el } = montar()
+    const pedir = (motor as unknown as { deps: DependenciasMotor }).deps.pedirEstado as jest.Mock
+    motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    motor.setTemporizador('capitulo')
+    el.currentTime = 70
+    el.emitir('timeupdate')
+    await esperar()
+    expect(pedir).toHaveBeenCalledTimes(1)
+    el.emitir('ended')
+    expect(motor.obtener().capitulo).toBe(0)
+    expect(motor.obtener().fase).toBe('pausado')
+  })
+})
+
+/** Una cinta de mentira: lo justo para ver que el motor cuenta bien sin tocar el src. */
+class CintaFalsa {
+  tramos: { clave: string; inicio: number; fin: number }[] = []
+  actual: { clave: string; inicio: number; fin: number } | null = null
+  cargas: string[] = []
+  encoladas: string[] = []
+  constructor(private el: AudioFalso) {}
+  get puesta() {
+    return this.el.src === 'blob:cinta'
+  }
+  siguienteDe(t: unknown) {
+    const i = this.tramos.indexOf(t as never)
+    return i >= 0 ? (this.tramos[i + 1] ?? null) : null
+  }
+  tiempo() {
+    return this.actual ? this.el.currentTime - this.actual.inicio : 0
+  }
+  async cargar(url: string, t: number) {
+    this.cargas.push(url)
+    this.el.src = 'blob:cinta'
+    this.actual = { clave: url, inicio: 0, fin: 100 }
+    this.tramos = [this.actual]
+    this.el.currentTime = t
+    return this.actual
+  }
+  async encolar(url: string) {
+    this.encoladas.push(url)
+    const u = this.tramos[this.tramos.length - 1]
+    const t = { clave: url, inicio: u.fin, fin: u.fin + 100 }
+    this.tramos.push(t)
+    return t
+  }
+  olvidarSiguientes() {
+    this.tramos = this.tramos.slice(0, this.tramos.indexOf(this.actual as never) + 1)
+  }
+  avanzar() {
+    const s = this.siguienteDe(this.actual)
+    if (s) this.actual = s
+    return s
+  }
+  irA(t: number) {
+    if (this.actual) this.el.currentTime = this.actual.inicio + t
+  }
+  bomba() {}
+  soltar() {
+    this.actual = null
+    this.tramos = []
+  }
+}
+
+describe('La cinta continua (iPhone)', () => {
+  function montarConCinta() {
+    const el = new AudioFalso()
+    let cinta: CintaFalsa | null = null
+    const motor = new MotorAudio({
+      crearAudio: () => el as unknown as HTMLAudioElement,
+      pedirEstado: jest.fn(async (d) => listo(d.capitulo)),
+      cargarTiempos: async () => TIEMPOS,
+      guardarServidor: async () => undefined,
+      guardarLocal: async () => undefined,
+      resolverUrl: (r) => r,
+      dispositivo: () => 'iPhone',
+      ahora: () => 1_000_000,
+      cinta: (e) => (cinta = new CintaFalsa(e as unknown as AudioFalso)) as never,
+    })
+    return { motor, el, cinta: () => cinta as unknown as CintaFalsa }
+  }
+
+  it('pone el capítulo en la cinta, encola el siguiente y pasa a él SIN cambiar el src', async () => {
+    const { motor, el, cinta } = montarConCinta()
+    motor.abrir(LIBRO, { capitulo: 0, posicion: 10, vozId: 'v', velocidad: 1 })
+    await esperar()
+    await esperar()
+    expect(cinta().cargas).toEqual(['/a/cap-0.m4a'])
+    expect(el.src).toBe('blob:cinta')
+    expect(el.currentTime).toBe(10)
+    expect(motor.posicion()).toBe(10)
+    el.currentTime = 70
+    el.emitir('timeupdate')
+    await esperar()
+    await esperar()
+    expect(cinta().encoladas).toEqual(['/a/cap-1.m4a'])
+    // El audio cruza solo al tramo siguiente; el motor solo cambia la cuenta.
+    el.currentTime = 100.5
+    el.emitir('timeupdate')
+    expect(motor.obtener().capitulo).toBe(1)
+    expect(el.src).toBe('blob:cinta')
+    expect(motor.posicion()).toBeCloseTo(0.5)
+    expect(cinta().cargas).toHaveLength(1)
+  })
+
+  it('a 3x usa el archivo 2x en la cinta y la posición sigue en la línea 1x', async () => {
+    const { motor, el, cinta } = montarConCinta()
+    motor.abrir(LIBRO, { capitulo: 0, posicion: 40, vozId: 'v', velocidad: 3 })
+    await esperar()
+    await esperar()
+    expect(cinta().cargas).toEqual(['/a/cap-0-2x.m4a'])
+    expect(el.currentTime).toBe(20)
+    expect(motor.posicion()).toBe(40)
+    motor.buscar(60)
+    expect(el.currentTime).toBe(30)
+  })
+})
