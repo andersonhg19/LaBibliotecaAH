@@ -357,3 +357,6 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
 - `PanelTexto.tsx`: en tablet y PC (≥ 820 px) ventana centrada (hasta 820×980, 90 %), márgenes de libro y letra 20/34.
 - `ReproductorScreen.tsx`: «La voz» plegada en acordeón (se ve la elegida; «Cambiar» abre la lista).
 - Pruebas: jest 580/581 (la de siempre, BibliotecaDeLujo, pasa sola 23/23); capturas QA en iPhone 390, Android 412, iPad 820 vertical y 1180 horizontal, PC 1440 (C:\srv\biblioteca-ah-qa\qa\dev-iphone3\capturas).
+
+## 2026-11-12 — Desplegada la 0.3.2
+- Respaldo de bases 2026-11-12_2106, `.env.antes-0.3.2`, build en sesión y `up -d --no-build`: los 8 contenedores en 0.3.2 y healthy; web 200.

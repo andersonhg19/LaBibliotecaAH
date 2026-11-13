@@ -18,7 +18,7 @@ Oh Churus corre en el mismo equipo y **no se toca**: la biblioteca usa proyecto,
 Puertos locales (todos en 127.0.0.1): postgres 5433, discovery 8860, gateway 8920, auth 8921, biblioteca 8925,
 taller 8926, web 3100. Oh Churus usa 3000/5432/8760/8820-8823 y Tailscale 7000/7001.
 
-## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11 , la 0.3.0 y la 0.3.1 el 2026-11-12)
+## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11 , la 0.3.0, la 0.3.1 y la 0.3.2 el 2026-11-12)
 
 Con `TAG` ya cambiado en `C:\srv\biblioteca-ah\.env`, desde la consola (Git Bash):
 
@@ -32,7 +32,7 @@ echo "$C build" | bash ops/casa-sesion.sh - 3000
 ssh casa "$C up -d --no-build"
 ```
 
-Volver atrás: poner el `TAG` anterior en `.env` (hay copias en `.env.antes-0.2.0` y `.env.antes-0.3.0`) y repetir el paso 3; las imágenes
+Volver atrás: poner el `TAG` anterior en `.env` (hay copias en `.env.antes-0.2.0` y `.env.antes-0.3.0`, `.env.antes-0.3.2`) y repetir el paso 3; las imágenes
 viejas siguen en casa.
 Flyway solo avanza: si la versión nueva trajo migraciones, restaurar antes el respaldo de la base (abajo).
 
