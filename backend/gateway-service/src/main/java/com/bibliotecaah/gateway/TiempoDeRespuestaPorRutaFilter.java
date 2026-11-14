@@ -19,7 +19,7 @@ import java.util.Map;
 
 /**
  * Tiempo de respuesta por ruta (auditoria BK-05). El tope general del gateway
- * (spring.cloud.gateway.httpclient.response-timeout) es corto; solo las rutas
+ * (spring.cloud.gateway.server.webflux.httpclient.response-timeout) es corto; solo las rutas
  * que de verdad lo necesitan (subidas de hasta 1 GB, cuya respuesta llega
  * cuando el servicio termina de leer el cuerpo) esperan mas.
  *

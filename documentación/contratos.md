@@ -328,7 +328,7 @@ Todo es **aditivo**: una web o un taller de antes siguen funcionando (esperan al
 Producción (casa): Tailscale `https://casa.tail60fcb5.ts.net:7050` → 127.0.0.1:3100 (web) y `:7051` → 127.0.0.1:8920 (gateway).
 
 - Paquete Java raíz: `com.bibliotecaah.<servicio>` (ej. `com.bibliotecaah.auth`, `com.bibliotecaah.biblioteca`).
-- Maven: `groupId com.bibliotecaah`, padre `backend/pom.xml` (`la-biblioteca-ah`), Spring Boot 3.2.5, Spring Cloud 2023.0.3, Java 17.
+- Maven: `groupId com.bibliotecaah`, padre `backend/pom.xml` (`la-biblioteca-ah`), Spring Boot 3.5.16, Spring Cloud 2025.0.3 (Gateway 4.3: propiedades en `spring.cloud.gateway.server.webflux.*`), Java 17. Flyway 11 necesita `flyway-database-postgresql` además de `flyway-core`.
 - Prefijos de tabla: `bah_auth_` (auth), `bah_lib_` (biblioteca).
 - JWT: igual que Oh Churus (HMAC256, `com.auth0:java-jwt`, claims `sub`=email, `userId`, `name`, `roles`) y, desde v1.2, `ver` (versión de sesión) y `exp` obligatorio. `SECRET` **obligatorio** (sin valor por defecto en el código).
 

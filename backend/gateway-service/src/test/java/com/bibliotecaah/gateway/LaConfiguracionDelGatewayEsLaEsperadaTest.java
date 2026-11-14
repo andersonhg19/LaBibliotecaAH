@@ -53,7 +53,7 @@ class LaConfiguracionDelGatewayEsLaEsperadaTest {
         void origenesExplicitos() {
             CorsConfiguration conf = cors.getCorsConfigurations().get("/**");
 
-            assertThat(conf).as("globalcors debe estar bajo spring.cloud.gateway").isNotNull();
+            assertThat(conf).as("globalcors debe estar bajo spring.cloud.gateway.server.webflux").isNotNull();
             assertThat(conf.getAllowedOrigins())
                     .containsExactly("https://web.ejemplo:7050", "http://localhost:4100");
             assertThat(conf.getAllowCredentials()).isTrue();

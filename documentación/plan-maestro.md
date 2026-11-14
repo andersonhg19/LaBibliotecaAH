@@ -91,7 +91,7 @@ Sergio/Raúl (Polly es-ES) y, si se quiere el timbre exacto de Carlos, **Polly C
 |---|---|---|---|
 | Repo | Nuevo monorepo `LaBibliotecaAH` en `Z:\Personales\LaBibliotecaAH` (= casa `C:\Users\ander\Documents\Anderson\Personales\LaBibliotecaAH`) | Lo pidió Anderson; ciclo de vida separado de Oh Churus | Módulo dentro del repo Oh Churus |
 | Identidad | **Ver decisión abierta D1** | — | — |
-| Backend negocio | Spring Boot 3.2.5 / Java 17, mismo patrón de Oh Churus (ResultDTO, POST, Flyway, JaCoCo, Karate) | Base probada con >90% cobertura | — |
+| Backend negocio | Spring Boot 3.5.x / Java 17 (era 3.2.5 hasta 0.3.3), mismo patrón de Oh Churus (ResultDTO, POST, Flyway, JaCoCo, Karate) | Base probada con >90% cobertura | — |
 | Procesamiento pesado | **Microservicio Python (FastAPI)** "taller": conversión de documentos + TTS + alineación | Las mejores herramientas (PyMuPDF, ebooklib, pandoc, Piper, Kokoro, edge-tts, WhisperX) son Python | Apache Tika en Java (pierde estructura) |
 | Formato interno | Todo se normaliza a **EPUB3 con un `id` estable por frase** (`c03-s0123`) | Un solo lector, un solo sistema de anclas, el mismo id une texto ↔ audio ↔ notas | Renderizar cada formato por separado |
 | Lector visual | **foliate-js** (commit fijado) dentro de `react-native-webview`; en web, directo | EPUB, CFI, resaltados SVG, paginación; lo usa Readest en producción | Readium nativo (difícil de unir a nuestro TTS) |

@@ -118,6 +118,7 @@
             "type" : "boolean"
           },
           "vozId" : {
+            "minLength" : 1,
             "type" : "string"
           }
         },
@@ -548,6 +549,7 @@
             "type" : "string"
           },
           "vozId" : {
+            "minLength" : 1,
             "type" : "string"
           }
         },
@@ -641,9 +643,7 @@
           "message" : {
             "type" : "string"
           },
-          "object" : {
-            "type" : "object"
-          }
+          "object" : { }
         },
         "type" : "object"
       },
@@ -734,7 +734,7 @@
     "title" : "La Biblioteca AH — biblioteca-service",
     "version" : "1.0.0"
   },
-  "openapi" : "3.0.1",
+  "openapi" : "3.1.0",
   "paths" : {
     "/v1/admin/libros/reclasificar-estructura" : {
       "post" : {

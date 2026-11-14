@@ -78,6 +78,7 @@
           },
           "password" : {
             "example" : "Clave1234",
+            "minLength" : 1,
             "type" : "string"
           },
           "usuario" : {
@@ -110,6 +111,7 @@
             "type" : "integer"
           },
           "roleName" : {
+            "minLength" : 1,
             "type" : "string"
           }
         },
@@ -135,9 +137,7 @@
           "message" : {
             "type" : "string"
           },
-          "object" : {
-            "type" : "object"
-          }
+          "object" : { }
         },
         "type" : "object"
       },
@@ -202,6 +202,7 @@
             "type" : "string"
           },
           "email" : {
+            "format" : "email",
             "maxLength" : 150,
             "minLength" : 0,
             "type" : "string"
@@ -241,6 +242,7 @@
             "type" : "string"
           },
           "email" : {
+            "format" : "email",
             "maxLength" : 150,
             "minLength" : 0,
             "type" : "string"
@@ -282,7 +284,7 @@
     "title" : "La Biblioteca AH — auth-service",
     "version" : "1.0.0"
   },
-  "openapi" : "3.0.1",
+  "openapi" : "3.1.0",
   "paths" : {
     "/v1/admin/audit/all" : {
       "post" : {

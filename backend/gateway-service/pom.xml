@@ -16,7 +16,9 @@
     <dependencies>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-gateway</artifactId>
+            <!-- Spring Cloud 2025.0 (Gateway 4.3): el starter clasico pasa a llamarse
+                 gateway-server-webflux (mismo servidor reactivo sobre Netty). -->
+            <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
         </dependency>
 
         <dependency>
