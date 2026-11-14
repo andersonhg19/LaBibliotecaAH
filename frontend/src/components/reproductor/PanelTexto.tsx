@@ -424,7 +424,13 @@ const styles = StyleSheet.create({
   cuerpoAncho: { paddingHorizontal: 48, paddingTop: 20, gap: 16 },
   texto: { fontFamily: fuentes.lectura, fontSize: fontSize.md, lineHeight: 30 },
   textoGrande: { fontSize: 20, lineHeight: 34 },
-  titulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, lineHeight: 30, marginTop: 6 },
+  titulo: {
+    fontFamily: fuentes.tituloNegrita,
+    fontSize: fontSize.lg,
+    lineHeight: 30,
+    marginTop: 6,
+    fontVariant: ['lining-nums'],
+  },
   actual: { borderRadius: 4 },
   /* La marca de la palabra: encima del texto, translúcida, y sin recibir toques. */
   marca: { position: 'absolute', left: 0, top: 0, width: 0, height: 0, borderRadius: 5, zIndex: 2, opacity: 0 },
