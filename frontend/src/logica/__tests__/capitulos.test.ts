@@ -160,6 +160,16 @@ describe('C12 · libro v1 sin reclasificar: el respaldo no falla', () => {
     expect(l.map((x) => x.region)).toEqual(['antes', 'antes', 'cuerpo'])
     expect(tieneEstructura([c('Capítulo 1')])).toBe(false)
   })
+
+  it('con la forma REAL del DTO v1 (numero, region y tipo a null, presentes) también usa el respaldo', () => {
+    // La API serializa los null (CapituloDTO v1): `numero !== undefined` daba v2 y se perdían los números.
+    const v1 = (titulo: string, minutos = 5) => ({ titulo, minutos, numero: null, region: null, tipo: null })
+    const caps = [v1('Dedicatoria', 1), v1('Capítulo 1'), v1('Capítulo 2'), v1('Notas', 1)]
+    expect(tieneEstructura(caps)).toBe(false)
+    const l = estructurarIndice(caps, 'X')
+    expect(l.map((x) => x.numero)).toEqual([null, 1, 2, null])
+    expect(l.map((x) => x.region)).toEqual(['antes', 'cuerpo', 'cuerpo', 'despues'])
+  })
 })
 
 describe('C3 · con la estructura del taller (v2) manda la API', () => {
