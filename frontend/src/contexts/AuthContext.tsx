@@ -84,8 +84,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           try {
             await authService.getUser(parsed.userId)
           } catch (e) {
-            /* Un 401 aquí es que el token ya no vale: se dice, no se entra con todo vacío. */
-            if ((e as { response?: { status?: number } } | null)?.response?.status === 401) {
+            /* Un 401 aquí es que el token ya no vale: se dice, no se entra con todo vacío. Salvo que auth-service
+               acabe de confirmar que la sesión sigue viva (V-NUEVO-2): entonces fue un tropiezo, se entra. */
+            const err = e as { response?: { status?: number }; sesionVigente?: boolean } | null
+            if (err?.response?.status === 401 && !err.sesionVigente) {
               await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY)])
               setAvisoDeSesion(AVISO_SESION_EXPIRADA)
               fijarToken(null)
