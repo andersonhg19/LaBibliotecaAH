@@ -4,7 +4,17 @@
 # Casa:        mismas imagenes construidas en el PC de desarrollo, cargadas con docker load (ver documentación/despliegue.md)
 name: biblioteca-ah
 
+# Endurecimiento comun (OP-16): ningun proceso gana privilegios (setuid) y sin capacidades de Linux.
+# Postgres es la excepcion: su entrada arranca como root y baja a "postgres" (necesita unas pocas).
+x-seguro: &seguro
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+# Limites de CPU (OP-07): produccion, QA, Oh Churus y sf-* comparten la misma VM. Ajustables por .env:
+# QA pone valores mas bajos (ver documentación/despliegue.md) para no competir con produccion.
 x-java: &java
+  <<: *seguro
+  cpus: ${CPUS_JAVA:-1.5}
   environment: &java-env
     JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -Xss512k -XX:+UseSerialGC -Duser.timezone=America/Bogota"
     TZ: America/Bogota
@@ -17,6 +27,11 @@ services:
     image: bah/postgres:${TAG:-latest}
     build: ./backend/init-db
     restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # Lo justo para que la entrada oficial ajuste el dueño de PGDATA y pase de root a "postgres".
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    cpus: ${CPUS_POSTGRES:-2}
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-biblioteca}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
@@ -37,7 +52,8 @@ services:
     <<: *java
     image: bah/discovery-service:${TAG:-latest}
     build: {context: ./backend, dockerfile: discovery-service/Dockerfile}
-    ports: ["127.0.0.1:${PUERTO_DISCOVERY:-8860}:8860"]
+    # Sin puerto en el host (OP-18): Eureka solo lo usan los servicios por la red del compose; publicado,
+    # cualquier proceso local podria registrar una instancia falsa. Para verlo: docker compose exec o un override.
     mem_limit: 384m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8860/actuator/health"]
@@ -118,9 +134,11 @@ services:
       discovery-service: {condition: service_healthy}
 
   taller:
+    <<: *seguro
     image: bah/taller:${TAG:-latest}
     build: ./taller
     restart: unless-stopped
+    cpus: ${CPUS_TALLER:-2}
     environment:
       TALLER_DB_URL: postgresql://${POSTGRES_USER:-biblioteca}:${POSTGRES_PASSWORD}@postgres:5432/biblioteca_db
       TALLER_DATOS: /datos
@@ -140,9 +158,12 @@ services:
   # (se convierten al construirla): arranca sin internet en segundos, sin volumen. SIN puerto publicado (solo
   # lo ve biblioteca-service por la red interna; asi QA y produccion no chocan). Usuario no root (uid 10002).
   traductor:
+    <<: *seguro
     image: bah/traductor:${TAG:-latest}
     build: ./traductor
     restart: unless-stopped
+    # Igual que TRADUCTOR_HILOS: mas CPU no lo acelera y si le quita a la casa.
+    cpus: ${CPUS_TRADUCTOR:-4}
     environment:
       TRADUCTOR_IDIOMAS: ${TRADUCTOR_IDIOMAS:-en,es}
       # Hilos de CTranslate2 por lote y lotes que traduce a la vez (medido en casa: 4 x 1).
@@ -156,7 +177,9 @@ services:
     networks: [biblioteca-ah]
 
   frontend:
+    <<: *seguro
     image: bah/frontend:${TAG:-latest}
+    cpus: ${CPUS_WEB:-0.5}
     build:
       context: ./frontend
       args:

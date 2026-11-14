@@ -2,8 +2,10 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    # main y las ramas de trabajo (ola/*): el CI tiene que estar en verde ANTES de integrar y de desplegar.
+    branches: [main, 'ola/**']
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -11,7 +13,7 @@ concurrency:
 
 env:
   JAVA_VERSION: '17'
-  NODE_VERSION: '20.18.1'
+  NODE_VERSION: '22'  # Node 20 sin soporte desde 2026-04-30 (OP-09); la linea LTS 22
   PYTHON_VERSION: '3.12'
   LANG: C.UTF-8
   LC_ALL: C.UTF-8
@@ -21,7 +23,7 @@ jobs:
   secretos:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Ningun .env trackeado
@@ -39,8 +41,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -54,17 +56,21 @@ jobs:
       run:
         working-directory: taller
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Dependencias del sistema
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg pandoc
+      # OP-01: pyproject no define el extra [dev]; las herramientas (ruff, mypy, pytest) estan en requirements-dev.txt.
       - name: Dependencias
-        run: pip install -e ".[dev]"
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy .
+      # Como la imagen `pruebas` del taller: mypy segun [tool.mypy] de pyproject (paquete app), no las pruebas.
+      - run: mypy
       - run: pytest
 
   traductor:
@@ -73,8 +79,8 @@ jobs:
       run:
         working-directory: traductor
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Dependencias (fijadas con hashes)
@@ -92,8 +98,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm

@@ -138,10 +138,21 @@ describe('El catálogo', () => {
 
   it('UX-22: una búsqueda sin resultados lo dice y ofrece limpiarla', async () => {
     const r = await alCatalogo()
-    fireEvent.changeText(r.getByTestId('buscar'), 'zzz')
-    await waitFor(() => expect(r.getByText('Nada coincide con «zzz»')).toBeTruthy())
+    /* OP-06: la búsqueda espera 350 ms (debounce con setTimeout). Con la CPU repartida entre los
+       workers de jest, 350 ms + el render del catálogo no cabían en el 1 s por defecto de waitFor.
+       Se adelanta el debounce con temporizadores falsos (solo setTimeout) y se da margen al render. */
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask', 'setImmediate', 'Date', 'performance'] })
+    try {
+      fireEvent.changeText(r.getByTestId('buscar'), 'zzz')
+      await act(async () => {
+        jest.advanceTimersByTime(350)
+      })
+    } finally {
+      jest.useRealTimers()
+    }
+    await waitFor(() => expect(r.getByText('Nada coincide con «zzz»')).toBeTruthy(), { timeout: 10000 })
     await act(async () => fireEvent.press(r.getByTestId('limpiar-busqueda')))
-    await waitFor(() => expect(r.queryByText('Nada coincide con «zzz»')).toBeNull())
+    await waitFor(() => expect(r.queryByText('Nada coincide con «zzz»')).toBeNull(), { timeout: 10000 })
   })
 
   it('BI-13/BI-14: las facetas son las de la pestaña y se vuelven a pedir al abrir los filtros', async () => {
