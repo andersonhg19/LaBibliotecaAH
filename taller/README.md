@@ -41,6 +41,10 @@ tests/                 corpus generado por programa (corpus.py) + pruebas pytest
   ERROR, MP3 truncados fuera de la caché, pausas 0,4/0,35/0,7/1,0 s y silencios internos ≤ 0,40 s, −18 LUFS /
   −1,5 dBTP (ganancia por voz calibrada en `cache-voz/volumen.json`), 2x desde el PCM y envolvente en `tiempos.json`.
 - Audio ya generado: no se regenera; suena como en 0.3.3 hasta que se regenere su capítulo.
+- Arreglos de la validación 0.4.0: `estructura.json` lleva `"clasificador": 2` (versión de las reglas; RECLASIFICAR
+  rehace los v2 con un clasificador menor, solo los campos de la clasificación); cuentos y poemas cortos con nombre son
+  cuerpo; si nada queda en voz, se lee todo lo que tiene texto; libros en otro idioma enteros con voz multilingüe; pico
+  verdadero medido en el m4a final (≤ −1,5 dBTP) y silencios internos medidos por energía (contratos §12).
 
 ## Configuración (variables de entorno, validadas al arrancar)
 
