@@ -52,6 +52,8 @@ public class PronunciacionServiceImpl implements PronunciacionService {
     /** Letras (no solo signos): una "palabra" sin ninguna no tiene que pronunciarse. */
     private static final Pattern CON_LETRA = Pattern.compile("[\\p{L}\\p{N}]");
     private static final Pattern CONTROL = Pattern.compile("[\\p{Cc}\\p{Cf}\\u2028\\u2029]");
+    /** Marcas que la voz leeria en voz alta (validacion r3, R3-1): no hay inyeccion, pero suenan a basura. */
+    private static final Pattern MARCAS = Pattern.compile("[<>{}\\\\]");
 
     private final EjemplarRepository ejemplares;
     private final PronunciacionRepository diccionario;
@@ -107,7 +109,7 @@ public class PronunciacionServiceImpl implements PronunciacionService {
     /**
      * Recorta espacios y valida: como mucho MAX_ENTRADAS; palabra de 1 a MAX_DE
      * caracteres con alguna letra o cifra; pronunciacion de 1 a MAX_A; sin
-     * caracteres de control; sin palabras repetidas (sin distinguir mayusculas).
+     * caracteres de control ni marcas (signos menor/mayor, llaves, barra invertida) en la pronunciacion; sin palabras repetidas (sin distinguir mayusculas).
      */
     static List<PronunciacionEntradaDTO> validar(List<PronunciacionEntradaDTO> entradas) {
         ValidationUtils.exigir(entradas != null, Message.Msj.cuerpoInvalido, CodigoError.DATO_INVALIDO);
@@ -121,7 +123,7 @@ public class PronunciacionServiceImpl implements PronunciacionService {
             String a = e == null || e.getA() == null ? "" : espacios(e.getA());
             boolean valida = !de.isEmpty() && de.length() <= MAX_DE && CON_LETRA.matcher(de).find()
                     && !a.isEmpty() && a.length() <= MAX_A && CON_LETRA.matcher(a).find()
-                    && !CONTROL.matcher(de).find() && !CONTROL.matcher(a).find();
+                    && !CONTROL.matcher(de).find() && !CONTROL.matcher(a).find() && !MARCAS.matcher(a).find();
             ValidationUtils.exigir(valida, Message.Msj.pronunciacionInvalida, CodigoError.DATO_INVALIDO, i + 1,
                     MAX_DE, MAX_A);
             Integer antes = vistas.putIfAbsent(clave(de), i + 1);

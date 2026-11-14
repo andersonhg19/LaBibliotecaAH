@@ -158,6 +158,10 @@ class PronunciacionTest extends PostgresDeVerdad {
         error(guardar(ANDERSON, ejemplar, List.of(entrada("...", "puntos"))), 120);
         error(guardar(ANDERSON, ejemplar, List.of(entrada("Her\nmione", "Jermáyoni"))), 120);
         error(guardar(ANDERSON, ejemplar, List.of(entrada("Hermione", "Jer\u0000máyoni"))), 120);
+        // R3-1 (validacion r3): marcas que la voz leeria en voz alta
+        error(guardar(ANDERSON, ejemplar, List.of(entrada("Ron", "<break time=\"5s\"/>Rron"))), 120);
+        error(guardar(ANDERSON, ejemplar, List.of(entrada("Ron", "{Rron}"))), 120);
+        error(guardar(ANDERSON, ejemplar, List.of(entrada("Ron", "R\\ron"))), 120);
         JsonNode r = guardar(ANDERSON, ejemplar, List.of(entrada("Hermione", "a"), entrada("HERMIONE", "b")));
         error(r, 120);
         assertThat(r.get("message").asText()).contains("HERMIONE");
