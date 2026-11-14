@@ -48,6 +48,13 @@ class ElGatewayNoEnsenaLoInternoTest {
                 assertThat(siguio.get()).as(ruta).isFalse();
                 assertThat(ex.getResponse().getStatusCode()).as(ruta).isEqualTo(HttpStatus.NOT_FOUND);
                 assertThat(ex.getResponse().getBodyAsString().block()).isEqualTo(RutasInternasFilter.CUERPO);
+                /* V-NUEVO-2 (validacion 0.4.0): esta 404 corta la cadena antes del filtro de cabeceras. */
+                var h = ex.getResponse().getHeaders();
+                assertThat(h.getContentType()).as(ruta).isEqualTo(MediaType.APPLICATION_JSON);
+                assertThat(h.getFirst("X-Content-Type-Options")).as(ruta).isEqualTo("nosniff");
+                assertThat(h.getFirst("X-Frame-Options")).as(ruta).isEqualTo("DENY");
+                assertThat(h.getFirst("Referrer-Policy")).as(ruta).isEqualTo("no-referrer");
+                assertThat(h.getCacheControl()).as(ruta).isEqualTo("no-store");
             }
         }
 

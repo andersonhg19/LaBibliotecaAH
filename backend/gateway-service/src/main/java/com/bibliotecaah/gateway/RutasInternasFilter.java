@@ -50,6 +50,9 @@ public class RutasInternasFilter implements GlobalFilter, Ordered {
         ServerHttpResponse respuesta = exchange.getResponse();
         respuesta.setStatusCode(HttpStatus.NOT_FOUND);
         respuesta.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        /* Esta respuesta corta la cadena antes de que CabecerasDeSeguridadFilter (orden +2) registre
+           su beforeCommit: las cabeceras se ponen aqui (validacion 0.4.0, V-NUEVO-2). */
+        CabecerasDeSeguridadFilter.poner(respuesta.getHeaders());
         DataBuffer cuerpo = respuesta.bufferFactory().wrap(CUERPO.getBytes(StandardCharsets.UTF_8));
         return respuesta.writeWith(Mono.just(cuerpo));
     }
