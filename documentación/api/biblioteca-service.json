@@ -738,7 +738,7 @@
   "paths" : {
     "/v1/admin/libros/reclasificar-estructura" : {
       "post" : {
-        "description" : "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503.",
+        "description" : "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 (o es v2 con un clasificador anterior a BIBLIOTECA_CLASIFICADOR_MINIMO, por defecto 2) y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503.",
         "operationId" : "reclasificarEstructura",
         "responses" : {
           "200" : {
@@ -2405,7 +2405,7 @@
     },
     "/v1/sesiones/latido" : {
       "post" : {
-        "description" : "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+        "description" : "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
         "operationId" : "latido",
         "requestBody" : {
           "content" : {

@@ -6066,7 +6066,7 @@
                 "reclasificar-estructura"
               ]
             },
-            "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
+            "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 (o es v2 con un clasificador anterior a BIBLIOTECA_CLASIFICADOR_MINIMO, por defecto 2) y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
           },
           "response": [
             {
@@ -6088,7 +6088,7 @@
                     "reclasificar-estructura"
                   ]
                 },
-                "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
+                "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 (o es v2 con un clasificador anterior a BIBLIOTECA_CLASIFICADOR_MINIMO, por defecto 2) y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
               },
               "status": "OK",
               "code": 200,
@@ -6590,7 +6590,7 @@
                 "latido"
               ]
             },
-            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"capitulo\": 0,\n  \"dispositivo\": \"\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"LECTURA\",\n  \"posicion\": 0,\n  \"segundos\": 0,\n  \"sesionId\": \"00000000-0000-0000-0000-000000000000\"\n}",
@@ -6625,7 +6625,7 @@
                     "latido"
                   ]
                 },
-                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"capitulo\": 0,\n  \"dispositivo\": \"\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"LECTURA\",\n  \"posicion\": 0,\n  \"segundos\": 0,\n  \"sesionId\": \"00000000-0000-0000-0000-000000000000\"\n}",
@@ -6672,7 +6672,7 @@
                 "latido"
               ]
             },
-            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"VOZ\",\n  \"sesionId\": \"11111111-1111-1111-1111-111111111111\",\n  \"capitulo\": 3,\n  \"posicion\": 812.4,\n  \"segundos\": 60,\n  \"dispositivo\": \"iPhone\"\n}",
@@ -6707,7 +6707,7 @@
                     "latido"
                   ]
                 },
-                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"VOZ\",\n  \"sesionId\": \"11111111-1111-1111-1111-111111111111\",\n  \"capitulo\": 3,\n  \"posicion\": 812.4,\n  \"segundos\": 60,\n  \"dispositivo\": \"iPhone\"\n}",

@@ -77,9 +77,12 @@ public class CapituloVozServiceImpl implements CapituloVozService {
         Map<Integer, Boolean> nuevas = new LinkedHashMap<>();
         if (soloHistoria) {
             /* Sin region (libro v1, aun sin reclasificar) todo cuenta como historia. */
-            for (CapituloDTO c : estructura.capitulos(e.getArchivo().getId())) {
+            List<CapituloDTO> todos = estructura.capitulos(e.getArchivo().getId());
+            for (CapituloDTO c : todos) {
                 nuevas.put(c.getIndice(), c.getRegion() == null || LectorDeEstructura.CUERPO.equals(c.getRegion()));
             }
+            /* A-1: un libro sin nada en el cuerpo (mal clasificado) no se queda mudo: todo es historia. */
+            if (!nuevas.containsValue(Boolean.TRUE)) nuevas.replaceAll((indice, enVoz) -> Boolean.TRUE);
         }
         preferencias.reemplazar(yo, e.getId(), nuevas);
         log.info("Ejemplar {}: solo la historia en voz = {} (usuario {})", e.getId(), soloHistoria, yo);

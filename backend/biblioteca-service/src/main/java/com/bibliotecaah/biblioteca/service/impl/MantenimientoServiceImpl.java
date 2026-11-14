@@ -6,6 +6,7 @@ import com.bibliotecaah.biblioteca.repository.TrabajoRepository;
 import com.bibliotecaah.biblioteca.service.MantenimientoService;
 import com.bibliotecaah.biblioteca.util.SecurityUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.bibliotecaah.biblioteca.util.AlmacenDeArchivos;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,11 +27,20 @@ public class MantenimientoServiceImpl implements MantenimientoService {
     private final LectorDeEstructura estructura;
     private final AlmacenDeArchivos almacen;
 
+    /**
+     * Version minima del clasificador del taller (el entero "clasificador" de la raiz de
+     * estructura.json; sin el campo = 1, la primera regla). Las v2 por debajo se vuelven a encolar
+     * para reclasificar (validacion 0.4.0, A-1). 0 o 1 = no reencolar ninguna v2.
+     */
+    private final int clasificadorMinimo;
+
     public MantenimientoServiceImpl(TrabajoRepository trabajos, LectorDeEstructura estructura,
-                                    AlmacenDeArchivos almacen) {
+                                    AlmacenDeArchivos almacen,
+                                    @Value("${biblioteca.reclasificar.clasificador-minimo:2}") int clasificadorMinimo) {
         this.trabajos = trabajos;
         this.estructura = estructura;
         this.almacen = almacen;
+        this.clasificadorMinimo = clasificadorMinimo;
     }
 
     @Override
@@ -46,8 +56,10 @@ public class MantenimientoServiceImpl implements MantenimientoService {
 
     /**
      * Mira la version de estructura.json de cada archivo LISTO: los v1 se encolan
-     * (si no tienen ya un RECLASIFICAR_ESTRUCTURA vivo), los v2 se dejan. Sin el
-     * disco no se puede saber que version tienen: 503 datosNoDisponibles.
+     * (si no tienen ya un RECLASIFICAR_ESTRUCTURA vivo), y tambien los v2 hechos
+     * con un clasificador anterior al minimo ("clasificador" de la raiz); el resto
+     * de v2 se deja. Sin el disco no se puede saber que version tienen: 503
+     * datosNoDisponibles.
      */
     @Override
     @Transactional
@@ -56,10 +68,10 @@ public class MantenimientoServiceImpl implements MantenimientoService {
         almacen.exigirDisponible();
         ReclasificacionDTO dto = new ReclasificacionDTO();
         for (UUID archivo : trabajos.archivosListos()) {
-            int version = estructura.version(archivo);
-            if (version == LectorDeEstructura.SIN_ESTRUCTURA) {
+            LectorDeEstructura.Versiones v = estructura.versiones(archivo);
+            if (v.version() == LectorDeEstructura.SIN_ESTRUCTURA) {
                 dto.setSinEstructura(dto.getSinEstructura() + 1);
-            } else if (version >= 2) {
+            } else if (v.version() >= 2 && v.clasificador() >= clasificadorMinimo) {
                 dto.setYaReclasificados(dto.getYaReclasificados() + 1);
             } else if (trabajos.encolarReclasificacionSiFalta(archivo)) {
                 dto.setArchivosEncolados(dto.getArchivosEncolados() + 1);
@@ -67,9 +79,9 @@ public class MantenimientoServiceImpl implements MantenimientoService {
                 dto.setYaEnCola(dto.getYaEnCola() + 1);
             }
         }
-        log.info("Reclasificacion de estructuras pedida por el usuario {}: {} encolado(s), {} ya en v2, {} ya en cola, "
-                + "{} sin estructura", yo, dto.getArchivosEncolados(), dto.getYaReclasificados(), dto.getYaEnCola(),
-                dto.getSinEstructura());
+        log.info("Reclasificacion de estructuras pedida por el usuario {}: {} encolado(s), {} ya en v2 "
+                + "(clasificador >= {}), {} ya en cola, {} sin estructura", yo, dto.getArchivosEncolados(),
+                dto.getYaReclasificados(), clasificadorMinimo, dto.getYaEnCola(), dto.getSinEstructura());
         return dto;
     }
 }

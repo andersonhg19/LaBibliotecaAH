@@ -51,10 +51,31 @@ public class LectorDeEstructura {
         List<CapituloDTO> lista = new ArrayList<>();
         JsonNode raiz = leer(archivoId);
         if (raiz == null) return lista;
+        boolean clasificado = version(raiz) >= 2;
         for (JsonNode c : raiz.path("capitulos")) {
-            lista.add(capitulo(c, lista.size()));
+            CapituloDTO capitulo = capitulo(c, lista.size());
+            capitulo.setClasificado(clasificado);
+            lista.add(capitulo);
         }
+        nuncaTodoFueraDeLaVoz(lista, archivoId);
         return lista;
+    }
+
+    /**
+     * Validacion 0.4.0 (A-1): la primera regla del taller dejo libros sin NINGUN
+     * capitulo en voz (un solo cuento titulado "Epigrafe", unas "Notas" sueltas,
+     * cuentos cortos antes de uno largo...): escuchar de corrido no tenia nada que
+     * leer y preparar el libro daba total 0. Si ningun capitulo va en voz por
+     * defecto, van todos (como un libro v1). Las preferencias del usuario siguen
+     * mandando sobre este defecto.
+     */
+    static void nuncaTodoFueraDeLaVoz(List<CapituloDTO> lista, UUID archivoId) {
+        if (lista.isEmpty() || lista.stream().anyMatch(CapituloDTO::isEnVozPorDefecto)) return;
+        log.debug("Estructura de {} sin ningun capitulo en voz: van todos por defecto", archivoId);
+        for (CapituloDTO c : lista) {
+            c.setEnVozPorDefecto(true);
+            c.setEnVoz(true);
+        }
     }
 
     /**
@@ -64,7 +85,25 @@ public class LectorDeEstructura {
      */
     public int version(UUID archivoId) {
         JsonNode raiz = leer(archivoId);
-        if (raiz == null) return SIN_ESTRUCTURA;
+        return raiz == null ? SIN_ESTRUCTURA : version(raiz);
+    }
+
+    /**
+     * Version y version del clasificador de una estructura de un vistazo (una sola
+     * lectura del fichero): {@code version} como {@link #version(UUID)} y
+     * {@code clasificador} = el entero "clasificador" de la raiz (lo escribe el
+     * taller desde la regla corregida); 1 si no esta (v2 de la primera regla).
+     */
+    public record Versiones(int version, int clasificador) { }
+
+    public Versiones versiones(UUID archivoId) {
+        JsonNode raiz = leer(archivoId);
+        if (raiz == null) return new Versiones(SIN_ESTRUCTURA, 0);
+        int clasificador = raiz.path("clasificador").isIntegralNumber() ? raiz.path("clasificador").asInt() : 1;
+        return new Versiones(version(raiz), clasificador);
+    }
+
+    private static int version(JsonNode raiz) {
         if (raiz.path("version").canConvertToInt()) return raiz.path("version").asInt();
         if (raiz.path("versionFormato").canConvertToInt()) return raiz.path("versionFormato").asInt();
         return 1;

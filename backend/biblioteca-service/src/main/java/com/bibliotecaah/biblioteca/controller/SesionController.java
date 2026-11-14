@@ -35,7 +35,8 @@ public class SesionController {
 
     @Operation(summary = "Latido de una sesion de lectura o escucha (cada ~60 s y al pausar/salir)",
             description = "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el "
-                    + "latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.")
+                    + "latido anterior; lo que suma no pasa del tiempo real desde el ultimo latido de cualquier "
+                    + "sesion del usuario + 10 s; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.")
     @PostMapping(value = "/latido", produces = "application/json")
     public ResponseEntity<ResultDTO> latido(@Valid @RequestBody LatidoDTO dto) {
         return ResponseEntity.ok(new ResultDTO(sesiones.latido(dto)));

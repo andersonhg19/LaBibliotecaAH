@@ -18,11 +18,16 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,7 +47,7 @@ class Mejoras040Test extends PostgresDeVerdad {
     static final ZoneId BOGOTA = ZoneId.of("America/Bogota");
 
     /** 6 capitulos: portada (antes), prologo, cap 1, cap 2 (sin enVoz: por region), notas (despues) y uno raro. */
-    static final String ESTRUCTURA_V2 = "{\"version\":2,\"versionFormato\":1,\"capitulos\":["
+    static final String ESTRUCTURA_V2 = "{\"version\":2,\"versionFormato\":1,\"clasificador\":2,\"capitulos\":["
             + "{\"indice\":0,\"titulo\":\"Portada\",\"palabras\":10,\"tipo\":\"preliminar\",\"region\":\"antes\","
             + "\"numero\":null,\"enVoz\":false,\"palabrasVoz\":0,\"origenTipo\":\"epub-type\"},"
             + "{\"indice\":1,\"titulo\":\"Prólogo\",\"palabras\":300,\"tipo\":\"prologo\",\"region\":\"cuerpo\","
@@ -55,6 +60,13 @@ class Mejoras040Test extends PostgresDeVerdad {
             + "\"numero\":null,\"enVoz\":false},"
             + "{\"indice\":5,\"titulo\":\"Raro\",\"palabras\":10,\"tipo\":\"MAL TIPO\",\"region\":\"marte\",\"numero\":\"x\"}"
             + "]}";
+
+    /** A-1: la primera regla del taller dejaba un solo cuento titulado "Epigrafe" fuera de la voz. */
+    static final String ESTRUCTURA_TODO_FUERA = "{\"version\":2,\"capitulos\":["
+            + "{\"indice\":0,\"titulo\":\"Epígrafe\",\"palabras\":307,\"tipo\":\"epigrafe\",\"region\":\"antes\","
+            + "\"numero\":null,\"enVoz\":false,\"palabrasVoz\":300},"
+            + "{\"indice\":1,\"titulo\":\"Notas\",\"palabras\":40,\"tipo\":\"notas\",\"region\":\"despues\","
+            + "\"numero\":null,\"enVoz\":false}]}";
 
     static final String ESTRUCTURA_V1 = "{\"versionFormato\":1,\"capitulos\":["
             + "{\"indice\":0,\"titulo\":\"Uno\",\"palabras\":3120},{\"indice\":1,\"titulo\":\"Dos\",\"palabras\":10}]}";
@@ -130,6 +142,7 @@ class Mejoras040Test extends PostgresDeVerdad {
             JsonNode portada = caps.get(0);
             assertThat(portada.get("tipo").asText()).isEqualTo("preliminar");
             assertThat(portada.get("region").asText()).isEqualTo("antes");
+            assertThat(portada.has("numero")).as("v2: numero va aunque sea null").isTrue();
             assertThat(portada.get("numero").isNull()).isTrue();
             assertThat(portada.get("enVoz").asBoolean()).isFalse();
             assertThat(portada.get("enVozPorDefecto").asBoolean()).isFalse();
@@ -140,16 +153,17 @@ class Mejoras040Test extends PostgresDeVerdad {
             assertThat(cap1.get("minutosVoz").asInt()).isEqualTo(10);
             assertThat(caps.get(3).get("enVoz").asBoolean()).as("sin enVoz: el cuerpo va en voz").isTrue();
             assertThat(caps.get(4).get("enVoz").asBoolean()).isFalse();
-            assertThat(caps.get(4).get("minutosVoz").isNull()).isTrue();
+            assertThat(caps.get(4).has("minutosVoz")).as("sin palabrasVoz: no va").isFalse();
             JsonNode raro = caps.get(5);
-            assertThat(raro.get("tipo").isNull()).isTrue();
-            assertThat(raro.get("region").isNull()).isTrue();
+            assertThat(raro.has("tipo")).isFalse();
+            assertThat(raro.has("region")).isFalse();
             assertThat(raro.get("numero").isNull()).isTrue();
+            assertThat(raro.has("clasificado")).isFalse();
             assertThat(raro.get("enVoz").asBoolean()).isTrue();
         }
 
         @Test
-        @DisplayName("C12: un libro v1 sin reclasificar sigue igual: campos nuevos null y todo en voz")
+        @DisplayName("C12: un libro v1 sin reclasificar sigue igual: sin los campos nuevos (ni null) y todo en voz")
         void fichaV1() throws Exception {
             JsonNode viejo = subirLibro(ANDERSON, "v1.epub");
             estructura(uuid(viejo.get("archivoId")), ESTRUCTURA_V1);
@@ -157,10 +171,11 @@ class Mejoras040Test extends PostgresDeVerdad {
             assertThat(caps).hasSize(2);
             assertThat(caps.get(0).get("minutos").asInt()).isEqualTo(21);
             for (JsonNode c : caps) {
-                assertThat(c.get("tipo").isNull()).isTrue();
-                assertThat(c.get("region").isNull()).isTrue();
-                assertThat(c.get("numero").isNull()).isTrue();
-                assertThat(c.get("minutosVoz").isNull()).isTrue();
+                /* Validacion 0.4.0 C12: con "numero": null la web creia que era un v2 sin numeros. */
+                assertThat(c.has("tipo")).as(c.toString()).isFalse();
+                assertThat(c.has("region")).as(c.toString()).isFalse();
+                assertThat(c.has("numero")).as(c.toString()).isFalse();
+                assertThat(c.has("minutosVoz")).as(c.toString()).isFalse();
                 assertThat(c.get("enVoz").asBoolean()).isTrue();
                 assertThat(c.get("enVozPorDefecto").asBoolean()).isTrue();
             }
@@ -241,6 +256,33 @@ class Mejoras040Test extends PostgresDeVerdad {
             assertThat(jdbc.queryForList("SELECT (payload->>'capitulo')::int FROM bah_lib_trabajo "
                     + "WHERE tipo = 'VOZ_CAPITULO' ORDER BY 1", Integer.class))
                     .as("3 y 4 fuera de la voz; solo queda el 5 dentro del libro").containsExactly(5);
+        }
+
+        @Test
+        @DisplayName("A-1: un libro clasificado sin NINGUN capitulo en voz se trata como todo en voz (ficha, "
+                + "solo la historia y preparar el libro)")
+        void nuncaTodoFuera() throws Exception {
+            JsonNode mal = subirLibro(ANDERSON, "epigrafe.epub");
+            UUID archivo = uuid(mal.get("archivoId"));
+            marcarListo(archivo, 2, "{}");
+            estructura(archivo, ESTRUCTURA_TODO_FUERA);
+            String id = mal.get("id").asText();
+
+            JsonNode caps = ficha(ANDERSON, id).get("capitulos");
+            assertThat(caps).extracting(c -> c.get("enVozPorDefecto").asBoolean()).containsExactly(true, true);
+            assertThat(caps).extracting(c -> c.get("enVoz").asBoolean()).containsExactly(true, true);
+            assertThat(caps.get(0).get("region").asText()).as("la region no se toca").isEqualTo("antes");
+
+            JsonNode historia = putSoloHistoria(ANDERSON, id, mapa("soloHistoria", true));
+            assertThat(historia.get("object")).extracting(c -> c.get("enVoz").asBoolean()).containsExactly(true, true);
+
+            JsonNode cocina = pedir(ANDERSON, "/v1/voz/preparar-libro", mapa("ejemplarId", id, "vozId", VOZ)).get("object");
+            assertThat(cocina.get("total").asInt()).isEqualTo(2);
+
+            /* La preferencia del usuario sigue mandando sobre el defecto. */
+            JsonNode fuera = putVoz(ANDERSON, id, 1, mapa("enVoz", false)).get("object");
+            assertThat(fuera.get("enVoz").asBoolean()).isFalse();
+            assertThat(fuera.get("enVozPorDefecto").asBoolean()).isTrue();
         }
     }
 
@@ -395,6 +437,58 @@ class Mejoras040Test extends PostgresDeVerdad {
         }
 
         @Test
+        @DisplayName("A-1: tambien reencola las v2 con un clasificador anterior al minimo (o sin el campo); "
+                + "las del clasificador actual no")
+        void reencolaClasificadorViejo() throws Exception {
+            UUID sinCampo = uuid(subirLibro(ANDERSON, "sin-campo.epub").get("archivoId"));
+            marcarListo(sinCampo, 2, "{}");
+            estructura(sinCampo, ESTRUCTURA_TODO_FUERA);
+            UUID viejo = uuid(subirLibro(ANDERSON, "viejo.epub").get("archivoId"));
+            marcarListo(viejo, 6, "{}");
+            estructura(viejo, ESTRUCTURA_V2.replace("\"clasificador\":2", "\"clasificador\":1"));
+            UUID actual = uuid(libroV2("actual.epub").get("archivoId"));
+            UUID futuro = uuid(subirLibro(ANDERSON, "futuro.epub").get("archivoId"));
+            marcarListo(futuro, 6, "{}");
+            estructura(futuro, ESTRUCTURA_V2.replace("\"clasificador\":2", "\"clasificador\":3"));
+
+            JsonNode r = comoAdmin();
+            assertThat(r.get("archivosEncolados").asInt()).isEqualTo(2);
+            assertThat(r.get("yaReclasificados").asInt()).isEqualTo(2);
+            assertThat(trabajos()).extracting(t -> t.get("archivo_id")).containsExactlyInAnyOrder(sinCampo, viejo);
+            assertThat(comoAdmin().get("yaEnCola").asInt()).as("idempotente").isEqualTo(2);
+
+            /* El taller los reclasifica con la regla nueva y escribe "clasificador": 2. */
+            estructura(sinCampo, ESTRUCTURA_V2);
+            estructura(viejo, ESTRUCTURA_V2);
+            jdbc.update("UPDATE bah_lib_trabajo SET estado = 'HECHO' WHERE tipo = 'RECLASIFICAR_ESTRUCTURA'");
+            JsonNode hecho = comoAdmin();
+            assertThat(hecho.get("archivosEncolados").asInt()).isZero();
+            assertThat(hecho.get("yaReclasificados").asInt()).isEqualTo(4);
+            assertThat(actual).isNotNull();
+        }
+
+        @Test
+        @DisplayName("V-NUEVO-7: volver a subir un archivo ya convertido con estructura v1 (o clasificador viejo) "
+                + "encola su reclasificacion; con la estructura al dia, no")
+        void resubidaReclasifica() throws Exception {
+            UUID viejo = uuid(subirLibro(ANDERSON, "faro.epub").get("archivoId"));
+            marcarListo(viejo, 2, "{}");
+            estructura(viejo, ESTRUCTURA_V1);
+            UUID alDia = uuid(libroV2("al-dia.epub").get("archivoId"));
+            assertThat(trabajos()).isEmpty();
+
+            JsonNode otraVez = subir(SAMY, "faro.epub", epub("faro.epub")).get("object").get(0);
+            assertThat(uuid(otraVez.get("archivoId"))).as("reutiliza la conversion").isEqualTo(viejo);
+            subir(ANDERSON, "faro.epub", epub("faro.epub"));
+            subir(SAMY, "al-dia.epub", epub("al-dia.epub"));
+            assertThat(trabajos()).singleElement().satisfies(t -> {
+                assertThat(t.get("archivo_id")).isEqualTo(viejo);
+                assertThat(t.get("prioridad")).isEqualTo(200);
+            });
+            assertThat(alDia).isNotNull();
+        }
+
+        @Test
         @DisplayName("solo ADMIN: un usuario normal recibe 403 y no se encola nada")
         void soloAdmin() throws Exception {
             UUID v1 = uuid(subirLibro(ANDERSON, "uno.epub").get("archivoId"));
@@ -512,6 +606,52 @@ class Mejoras040Test extends PostgresDeVerdad {
             assertThat(jdbc.queryForObject("SELECT segundos FROM bah_lib_sesion WHERE id = ?::uuid", Integer.class, sesion))
                     .isEqualTo(30);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_sesion", Integer.class)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("V-NUEVO-4: 30 latidos de 120 s en paralelo, cada uno con una sesion nueva, no suman mas que "
+                + "el tiempo real + 10 s")
+        void sesionesNuevasEnParalelo() throws Exception {
+            long t0 = System.nanoTime();
+            ExecutorService hilos = Executors.newFixedThreadPool(10);
+            try {
+                List<Future<JsonNode>> pedidos = new ArrayList<>();
+                for (int i = 0; i < 30; i++) {
+                    String modo = i % 2 == 0 ? "LECTURA" : "VOZ";
+                    pedidos.add(hilos.submit(() -> latir(ANDERSON, mapa("ejemplarId", ejemplar, "modo", modo,
+                            "segundos", 120))));
+                }
+                for (Future<JsonNode> f : pedidos) bien(f.get(60, TimeUnit.SECONDS));
+            } finally {
+                hilos.shutdownNow();
+            }
+            long real = (long) Math.ceil((System.nanoTime() - t0) / 1e9);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_sesion", Integer.class)).isEqualTo(30);
+            /* El primero cuenta sus 120 s (lo leido antes de llegar); el resto, el tiempo real de la rafaga
+               y el margen una sola vez (antes: 120 + 29 x 120). */
+            assertThat(jdbc.queryForObject("SELECT SUM(segundos) FROM bah_lib_sesion WHERE usuario_id = ?",
+                    Integer.class, ANDERSON)).isBetween(120, (int) (131 + real));
+            JsonNode r = resumen(ANDERSON, null, null).get("object");
+            assertThat(r.get("minutosLectura").asInt() + r.get("minutosVoz").asInt()).isLessThanOrEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("V-NUEVO-4: dos dispositivos a la vez no suman doble; otro usuario no se ve afectado")
+        void dosDispositivos() throws Exception {
+            String a = latir(ANDERSON, mapa("ejemplarId", ejemplar, "modo", "LECTURA", "segundos", 60,
+                    "dispositivo", "iPhone")).get("object").get("sesionId").asText();
+            /* Otro dispositivo empieza al instante con 60 s: solo cuenta el margen. */
+            JsonNode b = latir(ANDERSON, mapa("ejemplarId", ejemplar, "modo", "VOZ", "segundos", 60, "dispositivo", "PC"));
+            assertThat(b.get("object").get("segundosTotales").asInt()).isBetween(0, 15);
+            /* Y el primero, que vuelve a latir al instante, ya no suma nada: el margen esta gastado. */
+            JsonNode otraVez = latir(ANDERSON, mapa("ejemplarId", ejemplar, "modo", "LECTURA", "sesionId", a, "segundos", 60));
+            assertThat(otraVez.get("object").get("segundosTotales").asInt()).isBetween(60, 65);
+            assertThat(jdbc.queryForObject("SELECT SUM(segundos) FROM bah_lib_sesion WHERE usuario_id = ?",
+                    Integer.class, ANDERSON)).as("antes: 180").isBetween(60, 80);
+
+            String deSamy = subir(SAMY, "samy.epub", epub("samy.epub")).get("object").get(0).get("id").asText();
+            JsonNode samy = latir(SAMY, mapa("ejemplarId", deSamy, "modo", "LECTURA", "segundos", 90));
+            assertThat(samy.get("object").get("segundosTotales").asInt()).as("cada usuario con su tope").isEqualTo(90);
         }
 
         private void sesion(long usuario, String ejemplarId, String modo, LocalDate dia, LocalTime hora, int segundos) {

@@ -22,6 +22,7 @@ import com.bibliotecaah.biblioteca.util.DetectorDeFormato;
 import com.bibliotecaah.biblioteca.util.Mensajes;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -65,11 +66,17 @@ public class IngestaServiceImpl implements IngestaService {
     private final TransactionTemplate tx;
     private final Mensajes mensajes;
     private final ApplicationEventPublisher eventos;
+    private final LectorDeEstructura estructura;
+    /** Igual que en MantenimientoServiceImpl: clasificador minimo de una estructura v2. */
+    private final int clasificadorMinimo;
 
     public IngestaServiceImpl(AlmacenDeArchivos almacen, ArchivoRepository archivos, ObraRepository obras,
                               EjemplarRepository ejemplares, TrabajoRepository trabajos, TareaMetadatos metadatos,
                               EnsambladorDeEjemplares ensamblador, TransactionTemplate tx, Mensajes mensajes,
-                              ApplicationEventPublisher eventos) {
+                              ApplicationEventPublisher eventos, LectorDeEstructura estructura,
+                              @Value("${biblioteca.reclasificar.clasificador-minimo:2}") int clasificadorMinimo) {
+        this.estructura = estructura;
+        this.clasificadorMinimo = clasificadorMinimo;
         this.almacen = almacen;
         this.archivos = archivos;
         this.obras = obras;
@@ -141,6 +148,7 @@ public class IngestaServiceImpl implements IngestaService {
                 archivos.save(archivo);
                 trabajos.encolarConversion(archivo.getId());
             }
+            reclasificarSiHaceFalta(archivo);
             Ejemplar existente = ejemplares.delUsuarioPorArchivo(usuarioId, archivo.getId()).orElse(null);
             if (existente != null) {
                 /* QA BI-16: ya lo tenia; se devuelve el suyo, marcado. */
@@ -205,6 +213,26 @@ public class IngestaServiceImpl implements IngestaService {
         EjemplarDTO dto = ensamblador.uno(usuarioId, ejemplar);
         dto.setYaLoTenias(false);
         return dto;
+    }
+
+    /**
+     * Validacion 0.4.0 (V-NUEVO-7): volver a subir un archivo ya convertido (mismo sha256) reutiliza la
+     * conversion anterior; si su estructura.json es v1 (o v2 de un clasificador viejo) el libro se quedaba sin
+     * clasificar. Se encola RECLASIFICAR_ESTRUCTURA (idempotente). Si algo falla, la subida sigue: solo log.
+     */
+    void reclasificarSiHaceFalta(Archivo archivo) {
+        if (!Archivo.LISTO.equals(archivo.getEstadoConversion())) return;
+        try {
+            LectorDeEstructura.Versiones v = estructura.versiones(archivo.getId());
+            if (v.version() == LectorDeEstructura.SIN_ESTRUCTURA) return;
+            if (v.version() >= 2 && v.clasificador() >= clasificadorMinimo) return;
+            if (trabajos.encolarReclasificacionSiFalta(archivo.getId())) {
+                log.info("Archivo {} ya convertido con estructura v{} (clasificador {}): se encola su reclasificacion",
+                        archivo.getId(), v.version(), v.clasificador());
+            }
+        } catch (RuntimeException e) {
+            log.warn("No se pudo encolar la reclasificacion de {}: {}", archivo.getId(), e.getMessage());
+        }
     }
 
     private Archivo nuevoArchivo(String nombre, Formato formato, String sha256, long tamano, Path temporal) {
