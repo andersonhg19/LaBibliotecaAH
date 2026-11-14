@@ -117,13 +117,14 @@ class LaSesionRevocadaNoEntraTest {
         }
 
         @Test
-        @DisplayName("la clave es (usuario, version): una version nueva se pregunta aparte")
+        @DisplayName("la clave es (usuario, version, token): una version nueva se pregunta aparte")
         void porVersion() {
+            String v0 = token(1, 0);
             respuesta = 401;
-            assertThat(vigencia.vigente(1L, 0, token(1, 0))).isFalse();
+            assertThat(vigencia.vigente(1L, 0, v0)).isFalse();
             respuesta = 200;
             assertThat(vigencia.vigente(1L, 1, token(1, 1))).isTrue();
-            assertThat(vigencia.vigente(1L, null, token(1, 0))).as("sin claim = version 0").isFalse();
+            assertThat(vigencia.vigente(1L, null, v0)).as("sin claim = version 0").isFalse();
         }
 
         @Test
