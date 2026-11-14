@@ -255,7 +255,23 @@ def _telefono(m: re.Match[str]) -> str | None:
     grupos = re.findall(r"\d+", texto)
     if sum(len(g) for g in grupos) < 7:
         return None
+    if _TRES_TRES_TRES.fullmatch(texto):
+        # «912 345 678» suelto puede ser una cantidad con espacios de miles: solo si antes se dice que es un teléfono
+        antes = m.string[max(0, m.start() - 40) : m.start()]
+        if not _ANTES_DE_TELEFONO.search(antes):
+            return None
     return ("más " if texto.startswith("+") else "") + ", ".join(_grupo_telefono(g) for g in grupos)
+
+
+# sin «+» (R3): 3-3-4 («300 123 4567», «604 444 5566»), 3-3-2-2 / 3-2-2-2 («601 234 56 78», «912 34 56 78») y 3-3-3
+# (este último solo tras «teléfono», «tel.», «llama»…). Grupos así no son años, páginas ni cantidades con miles.
+_TELEFONO_SIN_MAS = r"\d{3}(?P<sep>[ .])\d{3}(?P=sep)\d{4}|\d{3} \d{2,3} \d{2} \d{2}|\d{3} \d{3} \d{3}"
+_TRES_TRES_TRES = re.compile(r"\d{3} \d{3} \d{3}")
+_ANTES_DE_TELEFONO = re.compile(
+    r"(?:tel[eé]fono|tel\.|tlf\.?|m[oó]vil|celular|fijo|whats\s?app|ll[aá]m(?:a|e|en|ar|ame|enos)|marca|n[uú]mero)"
+    r"\W*(?:\w+\W+){0,2}$",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------- URL, correo, ruta
@@ -373,11 +389,11 @@ def _construir_reglas() -> list[_Regla]:
     )
     # «5 m²», «3 km²», «2 m³»: la unidad entera («m dos» si no)
     r.append(_Regla(r"(?<=\d)\s?(km|cm|mm|m)([²³])(?!\w)", _unidad_al_cuadrado))
-    # teléfonos: con prefijo de país, con el prefijo entre paréntesis o 300-123-4567 (V-NUEVO-7)
+    # teléfonos: con prefijo de país, con el prefijo entre paréntesis, 300-123-4567 (V-NUEVO-7) o sin «+» (R3)
     r.append(
         _Regla(
             r"(?<![\w+])(?:\+\d{1,3}(?:[ .-]?\d{1,4}){2,5}|\(\d{1,4}\)\s?\d{2,4}(?:[ -]\d{2,4}){1,3}"
-            r"|\d{3}-\d{3}-\d{4})(?![\d,.]?\d)",
+            rf"|\d{{3}}-\d{{3}}-\d{{4}}|(?<![.,])(?:{_TELEFONO_SIN_MAS}))(?![\d,.]?\d)",
             _telefono,
         )
     )

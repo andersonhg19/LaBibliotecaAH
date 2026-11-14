@@ -235,6 +235,41 @@ def test_bajas_de_la_validacion(voz, esperado):  # V-NUEVO-5, V-NUEVO-6, V-NUEVO
 
 
 @pytest.mark.parametrize(
+    ("voz", "esperado"),
+    [
+        (
+            "Llama al 300 123 4567 antes.",
+            "Llama al trescientos, ciento veintitrés, cuarenta y cinco sesenta y siete antes.",
+        ),
+        (
+            "La oficina: 604 444 5566.",
+            "La oficina: seiscientos cuatro, cuatrocientos cuarenta y cuatro, cincuenta y cinco sesenta y seis.",
+        ),
+        ("Al 300.123.4567 ya.", "Al trescientos, ciento veintitrés, cuarenta y cinco sesenta y siete ya."),
+        (
+            "Fijo 601 234 56 78 y 912 34 56 78.",
+            "Fijo seiscientos uno, doscientos treinta y cuatro, cincuenta y seis, setenta y ocho y novecientos doce, "
+            "treinta y cuatro, cincuenta y seis, setenta y ocho.",
+        ),
+        (
+            "Mi teléfono es 912 345 678.",
+            "Mi teléfono es novecientos doce, trescientos cuarenta y cinco, seiscientos setenta y ocho.",
+        ),
+        # lo que NO es un teléfono queda como estaba (o como lo lee la regla de números)
+        ("Había 250 000 000 estrellas.", "Había 250 000 000 estrellas."),
+        ("En 1990 2000 y 2010.", "En 1990 2000 y 2010."),
+        ("Ver las páginas 300 301 y 302.", "Ver las páginas 300 301 y 302."),
+        ("Del año 1492 al 1500 hubo 300 barcos.", "Del año 1492 al 1500 hubo 300 barcos."),
+        ("Costó 1.300 123 4567 nada.", "Costó mil trescientos 123 4567 nada."),
+        ("Son 1.250.000 personas.", "Son un millón doscientas cincuenta mil personas."),
+        ("Los números 123 456 7890123 no.", "Los números 123 456 7890123 no."),
+    ],
+)
+def test_telefonos_sin_mas_por_grupos(voz, esperado):  # R3: «300 123 4567» sin prefijo
+    assert lee(voz) == esperado
+
+
+@pytest.mark.parametrize(
     ("texto", "idioma"),
     [
         ("Der schnelle braune Fuchs springt über den faulen Hund.", "de"),
