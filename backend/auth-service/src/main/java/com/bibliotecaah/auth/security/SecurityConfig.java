@@ -1,6 +1,7 @@
 package com.bibliotecaah.auth.security;
 
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -9,9 +10,11 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 
 import java.io.IOException;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -65,6 +68,21 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Validacion 0.4.0 (V-NUEVO-3): una ruta que el cortafuegos de Spring Security rechaza
+     * ({@code ./}, {@code ..}, {@code %2e}, {@code ;}) salia con el JSON por defecto de Spring
+     * ({timestamp, status, error, path}). Ahora: 400 con el ResultDTO del contrato, igual que lo que
+     * rechaza Tomcat (TomcatConfig). Spring Security toma este bean solo.
+     */
+    @Bean
+    RequestRejectedHandler rutaRechazada() {
+        return (req, res, ex) -> {
+            log.info("Ruta rechazada por el cortafuegos: {} ({})", req.getMethod(), ex.getMessage());
+            escribir(res, 400, RUTA_INVALIDA);
+        };
+    }
+
+    static final String RUTA_INVALIDA = "{\"correct\":false,\"message\":\"La dirección pedida no es válida.\",\"errorCode\":400}";
     static final String SIN_SESION = "{\"correct\":false,\"message\":\"Necesitas iniciar sesión.\",\"errorCode\":401}";
     static final String SIN_PERMISO = "{\"correct\":false,\"message\":\"No tienes permiso para hacer esto.\",\"errorCode\":403}";
 

@@ -7,11 +7,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 
 import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -60,6 +64,30 @@ class ContratoDeErroresTest extends PostgresDeVerdad {
             var conflicto = manejador.conflicto(new org.springframework.dao.DataIntegrityViolationException("x")).getBody();
             assertThat(conflicto.getErrorCode()).isEqualTo(101);
             assertThat(conflicto.getMessage()).isEqualTo("Otra petición igual llegó al mismo tiempo. Recarga y comprueba el resultado.");
+        }
+
+        @Test
+        @ExtendWith(OutputCaptureExtension.class)
+        @DisplayName("una ruta que no existe: 404 con ResultDTO 102 y sin ERROR en el log; un metodo que la ruta no "
+                + "admite: 405 con ResultDTO 120")
+        void rutaInexistente(CapturedOutput salida) throws Exception {
+            var r = mvc.perform(get("/biblioteca/v1/no-existe/de-verdad").contextPath("/biblioteca")
+                    .header("Authorization", bearer(ANDERSON))).andReturn().getResponse();
+            assertThat(r.getStatus()).isEqualTo(404);
+            assertThat(r.getContentType()).startsWith("application/json");
+            JsonNode cuerpo = json.readTree(r.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(cuerpo.get("correct").asBoolean()).isFalse();
+            assertThat(cuerpo.get("errorCode").asInt()).isEqualTo(102);
+            assertThat(cuerpo.get("message").asText()).isEqualTo("La dirección pedida no existe.");
+
+            var metodo = mvc.perform(get("/biblioteca/v1/estantes/all").contextPath("/biblioteca")
+                    .header("Authorization", bearer(ANDERSON))).andReturn().getResponse();
+            assertThat(metodo.getStatus()).isEqualTo(405);
+            JsonNode m = json.readTree(metodo.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(m.get("errorCode").asInt()).isEqualTo(120);
+            assertThat(m.get("message").asText()).isEqualTo("La dirección pedida no admite ese método.");
+
+            assertThat(salida.getAll()).doesNotContain("Error no previsto");
         }
 
         @Test

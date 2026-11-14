@@ -6,6 +6,7 @@ import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.Mensajes;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -16,9 +17,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 
 import java.io.IOException;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -57,6 +60,24 @@ public class SecurityConfig {
                         .accessDeniedHandler((req, res, ex) -> sinPermiso(res)))
                 .addFilterBefore(authorizationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * Validacion 0.4.0 (V-NUEVO-3): una ruta que el cortafuegos de Spring Security rechaza
+     * ({@code ./}, {@code ..}, {@code %2e}, {@code ;}) salia con el JSON por defecto de Spring
+     * ({timestamp, status, error, path}). Ahora: 400 con el ResultDTO del contrato (120 rutaInvalida),
+     * igual que lo que rechaza Tomcat (TomcatConfig). Spring Security toma este bean solo.
+     */
+    @Bean
+    RequestRejectedHandler rutaRechazada() {
+        return (req, res, ex) -> {
+            log.info("Ruta rechazada por el cortafuegos: {} ({})", req.getMethod(), ex.getMessage());
+            res.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            res.setContentType("application/json;charset=UTF-8");
+            res.setCharacterEncoding("UTF-8");
+            res.getWriter().write(json.writeValueAsString(
+                    new ResultDTO(false, mensajes.texto(Message.Msj.rutaInvalida), CodigoError.DATO_INVALIDO)));
+        };
     }
 
     void sinPermiso(HttpServletResponse res) throws IOException {

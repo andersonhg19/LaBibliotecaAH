@@ -10,7 +10,9 @@ import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import lombok.extern.slf4j.Slf4j;
 import com.bibliotecaah.biblioteca.config.Topes;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -109,6 +112,26 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ResultDTO> tipoDeContenido(HttpMediaTypeNotSupportedException ex) {
         return respuesta(CodigoError.DATO_INVALIDO, Message.Msj.contenidoNoSoportado);
+    }
+
+    /**
+     * Una ruta que no existe (informe de dependencias 0.4.0): caia en el manejador general y quedaba
+     * en el log como "ERROR ... Error no previsto" con su traza, con un 200/103. Es un 404 de verdad
+     * con el ResultDTO (102 rutaNoEncontrada, como la 404 de Tomcat) y sin ERROR en el log.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ResultDTO> rutaNoEncontrada(NoResourceFoundException ex) {
+        log.info("Ruta inexistente: {} /{}", ex.getHttpMethod(), ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ResultDTO(false,
+                mensajes.texto(Message.Msj.rutaNoEncontrada), CodigoError.NO_ENCONTRADO));
+    }
+
+    /** Lo mismo con un metodo que la ruta no admite (p. ej. GET a un POST): 405 con el ResultDTO (120). */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ResultDTO> metodoNoPermitido(HttpRequestMethodNotSupportedException ex) {
+        log.info("Metodo no admitido: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(new ResultDTO(false,
+                mensajes.texto(Message.Msj.metodoNoPermitido), CodigoError.DATO_INVALIDO));
     }
 
     @ExceptionHandler(Exception.class)
