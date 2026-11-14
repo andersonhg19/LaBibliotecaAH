@@ -163,7 +163,9 @@ const PanelTexto: React.FC<Props> = ({
       if (!m) return
       const el = ev.fraseId ? document.getElementById(idDom(ev.fraseId)) : null
       const padre = m.offsetParent as HTMLElement | null
-      if (!el || !padre || !ev.palabra) return ponerMarca(m, null, false)
+      if (!el || !padre) return ponerMarca(m, null, false)
+      // Entre dos palabras (un respiro de la voz) la marca se queda donde estaba: así se desliza a la siguiente.
+      if (!ev.palabra) return
       ponerMarca(m, rectDePalabra(el, ev.palabra[0], ev.palabra[1], padre), !reducirMovimiento())
     })
   }, [visible, frases])

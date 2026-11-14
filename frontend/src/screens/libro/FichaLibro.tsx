@@ -66,6 +66,8 @@ type Pestana = 'capitulos' | 'notas' | 'diario' | 'datos'
 
 /** UX5-02: por debajo de este ancho, «Seguir leyendo / Escuchar» van en una barra fija abajo. */
 export const ANCHO_BARRA_ACCIONES = 720
+/** Por debajo de este alto (teléfono en horizontal) también va la barra fija. */
+export const ALTO_MINIMO_SIN_BARRA = 500
 /** Alto de esa barra (sin la zona segura). */
 const ALTO_BARRA_ACCIONES = 76
 
@@ -108,7 +110,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const { prefs } = usePreferencias()
   const { showToast } = useToast()
   const navigation = useNavigation<NativeStackNavigationProp<Rutas>>()
-  const { width } = useWindowDimensions()
+  const { width, height } = useWindowDimensions()
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [pestana, setPestana] = useState<Pestana>('capitulos')
   const [guardando, setGuardando] = useState(false)
@@ -118,7 +120,8 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   /* F2: la tapa vuela desde la portada que se tocó (sin la llegada de siempre). */
   const refTapa = useRef<View>(null)
   const [vuela] = useState(() => hayVueloPara(ejemplarId))
-  const conBarra = !embebida && width < ANCHO_BARRA_ACCIONES
+  /* También con el teléfono en horizontal (poco alto): ahí los botones quedaban bajo el pliegue. */
+  const conBarra = !embebida && (width < ANCHO_BARRA_ACCIONES || height < ALTO_MINIMO_SIN_BARRA)
 
   const tarea = useCallback(async () => {
     setLibro(exigir(await librosService.detalle(ejemplarId)) ?? null)

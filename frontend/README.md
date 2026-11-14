@@ -36,4 +36,7 @@ docker run -p 127.0.0.1:3100:3100 bah/frontend
 | `src/components/estanteria/` | Lomos, portadas, estantes y el efecto de libro físico (`LibroEnEstante.web.tsx`) |
 | `src/components/lector/` | `LectorFoliate.web.tsx` (foliate-js) y las anclas de las notas |
 | `public/foliate/` | foliate-js vendorizado, commit fijado (ver `VERSION.txt`) |
-| `public/fuentes/` | Literata, EB Garamond y Lora (OFL) para el interior del libro |
+| `public/fuentes/` | Literata, EB Garamond y Lora, y desde 0.4.0 Atkinson Hyperlegible 1.006 (google/fonts) y OpenDyslexic (antijingoist/opendyslexic, commit 1824da5, woff2), todas OFL 1.1 con su licencia al lado, para el interior del libro |
+| `src/services/sesionesService.ts` | 0.4.0: latido de las sesiones de lectura/escucha y resumen (contrato C4); al salir, `fetch` con `keepalive` y el token |
+| `src/screens/estadisticas/` | 0.4.0: «Tus lecturas» (racha y minutos por día, `/estadisticas`) |
+| `src/utils/vuelo.ts`, `confeti.ts`, `marcaPalabra.ts` | 0.4.0: la portada que vuela a la ficha, el confeti de papel y la palabra que se desliza en «Ver texto» (todo respeta «Reducir movimiento») |
