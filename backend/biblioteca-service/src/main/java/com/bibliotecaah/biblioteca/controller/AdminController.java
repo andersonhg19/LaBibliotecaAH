@@ -26,4 +26,13 @@ public class AdminController {
     public ResponseEntity<ResultDTO> rellenarGeneros() {
         return ResponseEntity.ok(new ResultDTO(mantenimiento.rellenarGeneros()));
     }
+
+    @Operation(summary = "Reclasifica la estructura (v1 -> v2) de los libros ya convertidos (0.4.0, idempotente)",
+            description = "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 "
+                    + "y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras "
+                    + "no cambian (progreso, notas y audio intactos). Sin el disco: 503.")
+    @PostMapping(value = "/libros/reclasificar-estructura", produces = "application/json")
+    public ResponseEntity<ResultDTO> reclasificarEstructura() {
+        return ResponseEntity.ok(new ResultDTO(mantenimiento.reclasificarEstructura()));
+    }
 }

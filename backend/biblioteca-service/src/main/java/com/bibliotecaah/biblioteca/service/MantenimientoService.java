@@ -1,5 +1,6 @@
 package com.bibliotecaah.biblioteca.service;
 
+import com.bibliotecaah.biblioteca.dto.output.ReclasificacionDTO;
 import com.bibliotecaah.biblioteca.dto.output.RellenoGenerosDTO;
 
 /** Tareas de mantenimiento de la instalacion (rol ADMIN). */
@@ -12,4 +13,12 @@ public interface MantenimientoService {
      * generos de las obras que no tienen ninguno. Idempotente.
      */
     RellenoGenerosDTO rellenarGeneros();
+
+    /**
+     * (0.4.0, contrato C2) Pide al taller que reclasifique la estructura de los
+     * libros ya convertidos (RECLASIFICAR_ESTRUCTURA): tipo, region, numero y
+     * enVoz por capitulo, SIN cambiar indices, titulos ni palabras. Solo los que
+     * aun no tienen estructura v2 ni un trabajo vivo. Idempotente.
+     */
+    ReclasificacionDTO reclasificarEstructura();
 }

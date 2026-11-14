@@ -118,4 +118,57 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
                 + "WHERE e.archivo_id IS NOT NULL AND cardinality(o.generos) = 0", Integer.class);
         return Objects.requireNonNullElse(n, 0);
     }
+
+    // ------------------------------------------------------------------ 0.4.0
+
+    /** Trabajo de voz vivo: PENDIENTE, o EN_CURSO con latido reciente. */
+    private static final String VIVO = "(estado = 'PENDIENTE' OR (estado = 'EN_CURSO' AND actualizado > " + HACE_UN_RATO + "))";
+
+    @Override
+    public List<UUID> archivosListos() {
+        return jdbc.queryForList("SELECT id FROM bah_lib_archivo WHERE estado_conversion = 'LISTO' ORDER BY id",
+                UUID.class);
+    }
+
+    @Override
+    public boolean encolarReclasificacionSiFalta(UUID archivoId) {
+        int n = jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
+                        + "SELECT ?, ?, ?, '{}'::jsonb, ? WHERE NOT EXISTS (SELECT 1 FROM bah_lib_trabajo t "
+                        + "WHERE t.archivo_id = ? AND t.tipo = ? AND t.estado IN ('PENDIENTE', 'EN_CURSO'))",
+                UUID.randomUUID(), RECLASIFICAR_ESTRUCTURA, archivoId, PRIORIDAD_RECLASIFICAR, archivoId,
+                RECLASIFICAR_ESTRUCTURA);
+        return n > 0;
+    }
+
+    @Override
+    public Map<Integer, String> estadosDeVoz(UUID archivoId, String vozId) {
+        Map<Integer, String> estados = new java.util.HashMap<>();
+        jdbc.query("SELECT capitulo, estado FROM bah_lib_audio WHERE archivo_id = ? AND voz_id = ?",
+                rs -> {
+                    estados.put(rs.getInt(1), rs.getString(2));
+                }, archivoId, vozId);
+        return estados;
+    }
+
+    @Override
+    public java.util.Set<Integer> capitulosEnCola(UUID archivoId, String vozId) {
+        return new java.util.HashSet<>(jdbc.queryForList("SELECT DISTINCT (payload->>'capitulo')::int FROM bah_lib_trabajo "
+                        + "WHERE tipo = ? AND archivo_id = ? AND payload->>'vozId' = ? AND " + VIVO,
+                Integer.class, VOZ_CAPITULO, archivoId, vozId));
+    }
+
+    @Override
+    public int colaDeVoz() {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_trabajo WHERE tipo = ? AND " + VIVO,
+                Integer.class, VOZ_CAPITULO);
+        return Objects.requireNonNullElse(n, 0);
+    }
+
+    @Override
+    public boolean vozUrgenteAtascada(int minutos) {
+        Boolean atascada = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM bah_lib_trabajo WHERE tipo = ? "
+                        + "AND estado = 'PENDIENTE' AND prioridad <= ? AND creado < now() - make_interval(mins => ?))",
+                Boolean.class, VOZ_CAPITULO, PRIORIDAD_CAPITULO_PEDIDO, minutos);
+        return Boolean.TRUE.equals(atascada);
+    }
 }

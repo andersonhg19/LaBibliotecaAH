@@ -128,6 +128,14 @@
         ],
         "type" : "object"
       },
+      "CapituloVozDTO" : {
+        "properties" : {
+          "enVoz" : {
+            "type" : "boolean"
+          }
+        },
+        "type" : "object"
+      },
       "CarpetaBorrarDTO" : {
         "properties" : {
           "contenido" : {
@@ -372,9 +380,57 @@
             "type" : "integer"
           },
           "texto" : {
+            "maxLength" : 200,
+            "minLength" : 0,
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "LatidoDTO" : {
+        "properties" : {
+          "capitulo" : {
+            "format" : "int32",
+            "maximum" : 99999,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "dispositivo" : {
+            "maxLength" : 40,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "modo" : {
+            "enum" : [
+              "LECTURA",
+              "VOZ"
+            ],
+            "type" : "string"
+          },
+          "posicion" : {
+            "format" : "double",
+            "type" : "number"
+          },
+          "segundos" : {
+            "format" : "int32",
+            "maximum" : 120,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "sesionId" : {
+            "format" : "uuid",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "ejemplarId",
+          "modo",
+          "segundos"
+        ],
         "type" : "object"
       },
       "LibroSaveDTO" : {
@@ -485,6 +541,22 @@
         ],
         "type" : "object"
       },
+      "PrepararLibroDTO" : {
+        "properties" : {
+          "ejemplarId" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "vozId" : {
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "ejemplarId",
+          "vozId"
+        ],
+        "type" : "object"
+      },
       "ProgresoDTO" : {
         "description" : "Donde va el usuario en un libro",
         "properties" : {
@@ -575,6 +647,17 @@
         },
         "type" : "object"
       },
+      "SoloHistoriaDTO" : {
+        "properties" : {
+          "soloHistoria" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [
+          "soloHistoria"
+        ],
+        "type" : "object"
+      },
       "TraducirCapituloDTO" : {
         "description" : "Capitulo a traducir (la primera llamada lo lanza; las siguientes lo consultan)",
         "properties" : {
@@ -653,6 +736,28 @@
   },
   "openapi" : "3.0.1",
   "paths" : {
+    "/v1/admin/libros/reclasificar-estructura" : {
+      "post" : {
+        "description" : "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503.",
+        "operationId" : "reclasificarEstructura",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Reclasifica la estructura (v1 -> v2) de los libros ya convertidos (0.4.0, idempotente)",
+        "tags" : [
+          "Administracion"
+        ]
+      }
+    },
     "/v1/admin/libros/rellenar-generos" : {
       "post" : {
         "operationId" : "rellenarGeneros",
@@ -1610,6 +1715,119 @@
         ]
       }
     },
+    "/v1/ejemplares/{ejemplarId}/capitulos/voz" : {
+      "put" : {
+        "operationId" : "soloHistoria",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SoloHistoriaDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+        "tags" : [
+          "Capitulos en voz"
+        ]
+      }
+    },
+    "/v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz" : {
+      "put" : {
+        "operationId" : "cambiar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "path",
+            "name" : "indice",
+            "required" : true,
+            "schema" : {
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CapituloVozDTO"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+        "tags" : [
+          "Capitulos en voz"
+        ]
+      }
+    },
+    "/v1/estado-casa" : {
+      "get" : {
+        "operationId" : "estado_1",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Como esta la casa: taller OK|LENTO|CAIDO, traductor OK|CAIDO, disco OK|DESCONECTADO, colaVoz y un mensaje para la persona (cache de 15 s)",
+        "tags" : [
+          "Estado de la casa"
+        ]
+      }
+    },
     "/v1/estantes/all" : {
       "post" : {
         "operationId" : "all_1",
@@ -2185,6 +2403,80 @@
         ]
       }
     },
+    "/v1/sesiones/latido" : {
+      "post" : {
+        "description" : "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+        "operationId" : "latido",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LatidoDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Latido de una sesion de lectura o escucha (cada ~60 s y al pausar/salir)",
+        "tags" : [
+          "Sesiones de lectura"
+        ]
+      }
+    },
+    "/v1/sesiones/resumen" : {
+      "get" : {
+        "description" : "desde/hasta AAAA-MM-DD, opcionales (por defecto los ultimos 30 dias, como mucho 366).",
+        "operationId" : "resumen",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "desde",
+            "required" : false,
+            "schema" : {
+              "format" : "date",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "hasta",
+            "required" : false,
+            "schema" : {
+              "format" : "date",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Resumen: minutos de lectura y voz, por dia y por libro, y rachas (zona America/Bogota)",
+        "tags" : [
+          "Sesiones de lectura"
+        ]
+      }
+    },
     "/v1/traducir" : {
       "post" : {
         "operationId" : "traducir",
@@ -2345,6 +2637,76 @@
           "Archivos"
         ]
       }
+    },
+    "/v1/voz/preparar-libro" : {
+      "get" : {
+        "operationId" : "preparacion",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "vozId",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Progreso de la preparacion del libro en una voz (0.4.0, C5): {total, listos, enCola, error}",
+        "tags" : [
+          "Voces y audio"
+        ]
+      },
+      "post" : {
+        "description" : "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
+        "operationId" : "preparar",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PrepararLibroDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Prepara el libro entero en una voz (0.4.0, C5)",
+        "tags" : [
+          "Voces y audio"
+        ]
+      }
     }
   },
   "security" : [
@@ -2366,12 +2728,20 @@
       "name" : "Archivos"
     },
     {
+      "description" : "Elegir que capitulos lee la voz",
+      "name" : "Capitulos en voz"
+    },
+    {
       "description" : "Archivador de documentos: carpetas y subcarpetas de cada usuario",
       "name" : "Carpetas"
     },
     {
       "description" : "Diario de lectura de cada libro",
       "name" : "Comentarios"
+    },
+    {
+      "description" : "Taller, traductor, disco y cola de voz",
+      "name" : "Estado de la casa"
     },
     {
       "description" : "Colecciones y el estante de favoritos, con orden por arrastre",
@@ -2384,6 +2754,10 @@
     {
       "description" : "Retomar exactamente donde lo dejaste, en cualquier dispositivo",
       "name" : "Progreso"
+    },
+    {
+      "description" : "Minutos leidos y escuchados, por dia y en rachas",
+      "name" : "Sesiones de lectura"
     },
     {
       "description" : "Traduccion autoalojada (los libros no salen de casa)",

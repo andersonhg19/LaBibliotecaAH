@@ -1,13 +1,17 @@
 package com.bibliotecaah.biblioteca.service.impl;
 
 import com.bibliotecaah.biblioteca.dto.input.AudioEstadoPeticionDTO;
+import com.bibliotecaah.biblioteca.dto.input.PrepararLibroDTO;
 import com.bibliotecaah.biblioteca.dto.output.AudioEstadoDTO;
+import com.bibliotecaah.biblioteca.dto.output.CapituloDTO;
+import com.bibliotecaah.biblioteca.dto.output.PreparacionLibroDTO;
 import com.bibliotecaah.biblioteca.entity.Archivo;
 import com.bibliotecaah.biblioteca.entity.Ejemplar;
 import com.bibliotecaah.biblioteca.enums.Message;
 import com.bibliotecaah.biblioteca.repository.EjemplarRepository;
 import com.bibliotecaah.biblioteca.repository.TrabajoRepository;
 import com.bibliotecaah.biblioteca.service.AudioService;
+import com.bibliotecaah.biblioteca.service.CapituloVozService;
 import com.bibliotecaah.biblioteca.service.VozService;
 import com.bibliotecaah.biblioteca.util.AlmacenDeArchivos;
 import com.bibliotecaah.biblioteca.util.CodigoError;
@@ -18,7 +22,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.IntStream;
 
 /**
  * Estado del audio de un capitulo: PENDIENTE | GENERANDO | LISTO | ERROR, o
@@ -40,15 +50,20 @@ public class AudioServiceImpl implements AudioService {
     static final String CONVIRTIENDO = "CONVIRTIENDO";
     static final String ERROR_CONVERSION = "ERROR_CONVERSION";
     static final int SIGUIENTES = 2;
+    /** (0.4.0) Cuantos capitulos se miran hacia delante buscando los 2 siguientes que van en voz. */
+    static final int MIRAR_ADELANTE = 50;
 
     private final EjemplarRepository ejemplares;
     private final TrabajoRepository trabajos;
     private final String prefijo;
     private final VozService voces;
     private final AlmacenDeArchivos almacen;
+    private final CapituloVozService capitulosEnVoz;
 
     public AudioServiceImpl(EjemplarRepository ejemplares, TrabajoRepository trabajos, VozService voces,
-                            AlmacenDeArchivos almacen, @Value("${biblioteca.prefijo-publico}") String prefijo) {
+                            AlmacenDeArchivos almacen, CapituloVozService capitulosEnVoz,
+                            @Value("${biblioteca.prefijo-publico}") String prefijo) {
+        this.capitulosEnVoz = capitulosEnVoz;
         this.ejemplares = ejemplares;
         this.trabajos = trabajos;
         this.prefijo = prefijo;
@@ -112,10 +127,16 @@ public class AudioServiceImpl implements AudioService {
         /* (v1.5) La precarga de los siguientes espera a que el pedido ya suene
            (LISTO o con su primera parte): asi no le quita voz al servicio en
            los primeros segundos, que son los que se notan. */
-        for (int s = 1; s <= SIGUIENTES && !esperandoPrimerAudio; s++) {
-            int siguiente = capitulo + s;
-            if (total == null || siguiente < total) {
+        if (!esperandoPrimerAudio) {
+            /* (0.4.0, C3) Los capitulos que el usuario (o la estructura) deja fuera de
+               la voz no se precargan: se buscan los 2 siguientes que SI van. */
+            Set<Integer> fuera = fueraDeLaVoz(yo, e);
+            int encolados = 0;
+            for (int siguiente = capitulo + 1; encolados < SIGUIENTES && siguiente <= capitulo + MIRAR_ADELANTE
+                    && (total == null || siguiente < total); siguiente++) {
+                if (fuera.contains(siguiente)) continue;
                 trabajos.encolarVozSiFalta(a.getId(), voz, siguiente, TrabajoRepository.PRIORIDAD_CAPITULO_SIGUIENTE);
+                encolados++;
             }
         }
         if (LISTO.equals(estado)) {
@@ -126,5 +147,95 @@ public class AudioServiceImpl implements AudioService {
             dto.setUrlTiempos(base + ".tiempos.json");
         }
         return dto;
+    }
+
+    // ------------------------------------------------------------------ 0.4.0: preparar el libro entero (C5)
+
+    @Override
+    @Transactional
+    public PreparacionLibroDTO preparar(PrepararLibroDTO peticion) {
+        Long yo = SecurityUtils.usuarioActual();
+        Ejemplar e = paraPreparar(yo, peticion.getEjemplarId());
+        String voz = vozDelCatalogo(peticion.getVozId());
+        UUID archivo = e.getArchivo().getId();
+        Map<Integer, String> estados = trabajos.estadosDeVoz(archivo, voz);
+        Set<Integer> enCola = trabajos.capitulosEnCola(archivo, voz);
+        int encolados = 0;
+        for (int capitulo : enVoz(yo, e)) {
+            String estado = estados.get(capitulo);
+            if (LISTO.equals(estado) || ERROR.equals(estado) || enCola.contains(capitulo)) continue;
+            if (trabajos.encolarVozSiFalta(archivo, voz, capitulo, TrabajoRepository.PRIORIDAD_PREPARAR_LIBRO)) {
+                encolados++;
+            }
+        }
+        PreparacionLibroDTO dto = contar(yo, e, voz);
+        dto.setEncolados(encolados);
+        return dto;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PreparacionLibroDTO preparacion(UUID ejemplarId, String vozId) {
+        Long yo = SecurityUtils.usuarioActual();
+        Ejemplar e = paraPreparar(yo, ejemplarId);
+        return contar(yo, e, vozDelCatalogo(vozId));
+    }
+
+    private PreparacionLibroDTO contar(Long yo, Ejemplar e, String voz) {
+        UUID archivo = e.getArchivo().getId();
+        Map<Integer, String> estados = trabajos.estadosDeVoz(archivo, voz);
+        Set<Integer> enCola = trabajos.capitulosEnCola(archivo, voz);
+        List<Integer> capitulos = enVoz(yo, e);
+        int listos = 0;
+        int cola = 0;
+        int error = 0;
+        for (int capitulo : capitulos) {
+            String estado = estados.get(capitulo);
+            if (LISTO.equals(estado)) listos++;
+            else if (ERROR.equals(estado)) error++;
+            else if (enCola.contains(capitulo) || GENERANDO.equals(estado)) cola++;
+        }
+        return PreparacionLibroDTO.builder().total(capitulos.size()).listos(listos).enCola(cola).error(error).build();
+    }
+
+    private Ejemplar paraPreparar(Long yo, UUID ejemplarId) {
+        Ejemplar e = ValidationUtils.encontrado(ejemplares.delUsuario(ejemplarId, yo), Message.Msj.libroNoEncontrado);
+        ValidationUtils.exigir(e.getArchivo() != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
+        ValidationUtils.exigir(Archivo.LISTO.equals(e.getArchivo().getEstadoConversion()),
+                Message.Msj.capitulosNoDisponibles, CodigoError.DATO_INVALIDO);
+        return e;
+    }
+
+    private String vozDelCatalogo(String vozId) {
+        String voz = ValidationUtils.vozId(vozId);
+        ValidationUtils.exigir(voces.getAll().stream().anyMatch(v -> voz.equals(v.getId())),
+                Message.Msj.vozNoDisponible, CodigoError.DATO_INVALIDO, voz);
+        return voz;
+    }
+
+    /**
+     * Indices de los capitulos con enVoz efectivo = true. Sin estructura legible
+     * (disco fuera) pero con n_capitulos, todos: como un libro v1.
+     */
+    private List<Integer> enVoz(Long yo, Ejemplar e) {
+        List<CapituloDTO> capitulos = capitulosEnVoz.capitulos(yo, e);
+        if (capitulos.isEmpty()) {
+            Integer total = e.getArchivo().getNCapitulos();
+            return total == null ? List.of() : IntStream.range(0, total).boxed().toList();
+        }
+        List<Integer> lista = new ArrayList<>();
+        for (CapituloDTO c : capitulos) {
+            if (c.isEnVoz()) lista.add(c.getIndice());
+        }
+        return lista;
+    }
+
+    /** Indices con enVoz efectivo = false (vacio en un libro v1 o sin estructura). */
+    private Set<Integer> fueraDeLaVoz(Long yo, Ejemplar e) {
+        Set<Integer> fuera = new HashSet<>();
+        for (CapituloDTO c : capitulosEnVoz.capitulos(yo, e)) {
+            if (!c.isEnVoz()) fuera.add(c.getIndice());
+        }
+        return fuera;
     }
 }
