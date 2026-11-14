@@ -1,0 +1,42 @@
+import { BIBLIOTECA_PREFIJO } from '@config'
+import api from '@servicios/api'
+import type { ResultDTO } from '@tipos'
+
+/*
+ * Sesiones de lectura y escucha (contrato C4, 0.4.0): el latido de cada minuto
+ * mientras se lee o suena la voz, y el resumen para las estadísticas.
+ */
+
+export interface LatidoDTO {
+  ejemplarId: string
+  modo: 'LECTURA' | 'VOZ'
+  /** Lo genera el cliente (uuid): el servidor crea la sesión o la alarga. */
+  sesionId?: string
+  capitulo: number
+  posicion: number
+  /** Segundos desde el latido anterior (0–120). */
+  segundos: number
+  dispositivo?: string
+}
+
+export interface LatidoRespuestaDTO {
+  sesionId: string
+  segundosTotales: number
+}
+
+export interface ResumenSesionesDTO {
+  minutosLectura: number
+  minutosVoz: number
+  dias: { fecha: string; minutos: number }[]
+  rachaActual: number
+  rachaMaxima: number
+  libros: { ejemplarId: string; minutos: number }[]
+}
+
+const B = BIBLIOTECA_PREFIJO
+
+export const enviarLatido = async (datos: LatidoDTO): Promise<ResultDTO<LatidoRespuestaDTO>> =>
+  (await api.post<ResultDTO<LatidoRespuestaDTO>>(`${B}/sesiones/latido`, datos)).data
+
+export const obtenerResumen = async (desde: string, hasta: string): Promise<ResultDTO<ResumenSesionesDTO>> =>
+  (await api.get<ResultDTO<ResumenSesionesDTO>>(`${B}/sesiones/resumen`, { params: { desde, hasta } })).data
