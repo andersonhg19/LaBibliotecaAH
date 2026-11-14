@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import Barra from '@componentes/atoms/Barra'
 import Button from '@componentes/atoms/Button'
 import Chip from '@componentes/atoms/Chip'
+import Esqueleto from '@componentes/atoms/Esqueleto'
 import Estrellas from '@componentes/atoms/Estrellas'
 import Input from '@componentes/atoms/Input'
 import Spinner from '@componentes/atoms/Spinner'
@@ -15,13 +16,15 @@ import AppText from '@componentes/atoms/Text'
 import Portada from '@componentes/estanteria/Portada'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
+import LamparaCasa from '@componentes/molecules/LamparaCasa'
+import PrepararLibro from '@componentes/molecules/PrepararLibro'
+import { elevarAvisos } from '@componentes/organisms/ToastContainer'
 import { usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
 import { useAccionUnica } from '@hooks/useAccionUnica'
 import { exigir, useCarga } from '@hooks/useCarga'
 import { nombreColor, nombreTipo, ordenarAnotaciones } from '@logica/anotaciones'
-import { numerarCapitulos } from '@logica/capitulos'
 import { esHojaDeCalculo } from '@logica/documentos'
 import {
   ESTADOS,
@@ -33,9 +36,9 @@ import {
   seEstaPreparando,
   sePuedeLeer,
 } from '@logica/formato'
-import { idDeFrase } from '@logica/tiempos'
 import type { Rutas } from '@navegacion/linking'
 import SubirLibros from '@pantallas/biblioteca/SubirLibros'
+import IndiceLibro from '@pantallas/libro/IndiceLibro'
 import { anotacionesService, comentariosService, estantesService, librosService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes, spacing } from '@tema'
 import { luzLampara } from '@tema/madera'
@@ -52,12 +55,21 @@ import type {
   GuardarEjemplarDTO,
 } from '@tipos'
 import { estadoElegible } from '@utils/aria'
+import { celebrarFin } from '@utils/confeti'
 import { confirmarAccion } from '@utils/confirmar'
 import { escucharLibro } from '@utils/escuchar'
 import { MENSAJES, mensajeDelServidor } from '@utils/mensajes'
+import { hayVueloPara, volarPortada } from '@utils/vuelo'
 import { esquemaComentario, esquemaDatosLibro, validar } from '@validaciones/index'
 
 type Pestana = 'capitulos' | 'notas' | 'diario' | 'datos'
+
+/** UX5-02: por debajo de este ancho, «Seguir leyendo / Escuchar» van en una barra fija abajo. */
+export const ANCHO_BARRA_ACCIONES = 720
+/** Por debajo de este alto (teléfono en horizontal) también va la barra fija. */
+export const ALTO_MINIMO_SIN_BARRA = 500
+/** Alto de esa barra (sin la zona segura). */
+const ALTO_BARRA_ACCIONES = 76
 
 interface Props {
   ejemplarId: string
@@ -98,13 +110,18 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const { prefs } = usePreferencias()
   const { showToast } = useToast()
   const navigation = useNavigation<NativeStackNavigationProp<Rutas>>()
-  const { width } = useWindowDimensions()
+  const { width, height } = useWindowDimensions()
   const [libro, setLibro] = useState<EjemplarDetalleDTO | null>(null)
   const [pestana, setPestana] = useState<Pestana>('capitulos')
   const [guardando, setGuardando] = useState(false)
   const [tituloEntero, setTituloEntero] = useState(false)
   const [yaLoTengo, setYaLoTengo] = useState(false)
   const enCurso = useRef(false)
+  /* F2: la tapa vuela desde la portada que se tocó (sin la llegada de siempre). */
+  const refTapa = useRef<View>(null)
+  const [vuela] = useState(() => hayVueloPara(ejemplarId))
+  /* También con el teléfono en horizontal (poco alto): ahí los botones quedaban bajo el pliegue. */
+  const conBarra = !embebida && (width < ANCHO_BARRA_ACCIONES || height < ALTO_MINIMO_SIN_BARRA)
 
   const tarea = useCallback(async () => {
     setLibro(exigir(await librosService.detalle(ejemplarId)) ?? null)
@@ -113,6 +130,15 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   useEffect(() => {
     cargar()
   }, [cargar])
+
+  useEffect(() => {
+    if (libro && vuela) volarPortada(libro.id, refTapa.current)
+    // Solo al llegar el libro por primera vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libro?.id])
+
+  /* UX5-13: con la barra de acciones abajo, los avisos suben por encima. */
+  useEffect(() => (conBarra ? elevarAvisos(ALTO_BARRA_ACCIONES + 8) : undefined), [conBarra])
 
   /* Mientras el taller lo prepara, se vuelve a preguntar. */
   useEffect(() => {
@@ -138,6 +164,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       if (!r.correct) throw Object.assign(new Error(r.message), { codigo: r.errorCode })
       setLibro((l) => (l ? { ...l, ...r.object } : l))
       if (!seAplico(cambio, r.object)) showToast('warning', MENSAJES.noSeAplico)
+      else if (cambio.estado === 'LEIDO' && antes.estado !== 'LEIDO') terminado(antes)
       else if (aviso) showToast('success', aviso)
       onCambio?.()
     } catch (e) {
@@ -153,7 +180,17 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
     }
   }
 
-  if (cargando && !libro) return <Spinner fullScreen />
+  /* F5: terminar un libro se celebra una vez (confeti de papel; con reducir movimiento, solo la placa). */
+  const terminado = (l: EjemplarDetalleDTO) => {
+    celebrarFin(l.id, refTapa.current)
+      .then((r) => {
+        if (r.primera)
+          showToast('success', '¡Libro terminado!', `«${l.titulo}», ${fechaCorta(new Date().toISOString())}.`)
+      })
+      .catch(() => {})
+  }
+
+  if (cargando && !libro) return <Esqueleto variante="ficha" ancho={embebida ? 380 : width} />
   if (error && !libro) return <EstadoError mensaje={error} onReintentar={cargar} />
   if (!libro) return null
 
@@ -172,7 +209,6 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   const alinear = portadaAncha ? 'left' : 'center'
   const tam = tamanoTitulo(libro.titulo)
   const tituloLargo = libro.titulo.length > 90
-  const numeros = numerarCapitulos(libro.capitulos, libro.titulo)
 
   const motivoNoLegible = esDeseo
     ? 'Es un deseo: cuando tengas el archivo, tráelo con «Ya lo tengo».'
@@ -190,17 +226,18 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
             styles.marcoPortada,
             web({
               backgroundImage: luzLampara(isDark),
-              animationName: 'bah-llega',
-              animationDuration: '420ms',
-              animationFillMode: 'both',
+              ...(vuela ? {} : { animationName: 'bah-llega', animationDuration: '420ms', animationFillMode: 'both' }),
             }),
           ]}
         >
-          <Portada libro={libro} ancho={anchoPortada} />
+          <View ref={refTapa}>
+            <Portada libro={libro} ancho={anchoPortada} />
+          </View>
         </View>
         <View style={[styles.datos, portadaAncha && styles.datosAncha]}>
           <AppText
             variant="display"
+            nivel={2}
             align={alinear}
             style={[styles.titulo, { fontSize: tam, lineHeight: Math.round(tam * 1.12) }]}
             numberOfLines={tituloEntero ? undefined : 4}
@@ -354,7 +391,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               />
             </View>
           ) : null}
-          {!esDeseo && !esHoja ? (
+          {!esDeseo && !esHoja && !conBarra ? (
             <View style={styles.botones}>
               <Button
                 title={libro.porcentaje > 0 ? 'Seguir' : 'Leer'}
@@ -425,7 +462,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       </View>
 
       {pestana === 'capitulos' ? (
-        <View>
+        <View style={styles.lista}>
           {libro.capitulos.length === 0 ? (
             <AppText variant="caption">
               {esDeseo ? 'Un deseo aún no tiene índice.' : 'El índice aparece cuando el libro está preparado.'}
@@ -440,42 +477,22 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
                 </View>
               ))
             : null}
-          {(esHoja ? [] : libro.capitulos).map((c, i) => {
-            const actual = libro.progreso?.capitulo === c.indice
-            const numero = numeros[i]
-            const nombre = numero == null ? 'la portadilla' : `el capítulo ${numero}`
-            return (
-              <View key={c.indice} style={[styles.capitulo, { borderBottomColor: colors.border }]}>
-                <Pressable
-                  style={styles.capituloTexto}
-                  onPress={() => legible && leer(idDeFrase(c.indice, 0))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Leer ${nombre}: ${c.titulo}${actual ? ', vas por aquí' : ''}`}
-                >
-                  {numero == null ? (
-                    // La portadilla no se numera (UX-30): un rombo de latón en su lugar.
-                    <View style={styles.capNum} accessible={false}>
-                      <View style={[styles.rombo, { backgroundColor: colors.primaryLight }]} />
-                    </View>
-                  ) : (
-                    <Text style={[styles.capNum, { color: colors.primaryLight }]} accessible={false}>
-                      {String(numero).padStart(2, '0')}
-                    </Text>
-                  )}
-                  <Text style={[styles.capTitulo, { color: colors.text }]} numberOfLines={2}>
-                    {c.titulo}
-                    {actual ? '  ◂ vas aquí' : ''}
-                  </Text>
-                  <Text style={[styles.capMin, { color: colors.textMuted }]}>{duracion(c.minutos)}</Text>
-                </Pressable>
-                <BotonIcono
-                  icono="play"
-                  etiqueta={`Escuchar ${nombre}`}
-                  onPress={() => legible && escuchar(idDeFrase(c.indice, 0))}
-                />
-              </View>
-            )
-          })}
+          {!esHoja && !esDeseo && legible && libro.capitulos.some((c) => typeof c.enVoz === 'boolean') ? (
+            <View style={styles.lista}>
+              <PrepararLibro ejemplarId={libro.id} vozId={prefs.vozId} />
+              <LamparaCasa />
+            </View>
+          ) : null}
+          {!esHoja && libro.capitulos.length ? (
+            <IndiceLibro
+              libro={libro}
+              legible={legible}
+              onLeer={(f) => leer(f)}
+              onEscuchar={(f) => escuchar(f)}
+              onCapitulos={(capitulos) => setLibro((l) => (l ? { ...l, capitulos } : l))}
+              onRecargar={cargar}
+            />
+          ) : null}
         </View>
       ) : null}
       {pestana === 'notas' ? (
@@ -536,7 +553,48 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   )
 
   if (embebida) return Contenido
-  return <ScrollView contentContainerStyle={styles.scroll}>{Contenido}</ScrollView>
+  const barra =
+    conBarra && !esDeseo && !esHoja ? (
+      <View
+        style={[
+          styles.barraAcciones,
+          { backgroundColor: colors.surface, borderTopColor: colors.primaryLight },
+          web({
+            position: 'fixed',
+            paddingBottom: 'calc(10px + env(safe-area-inset-bottom))',
+            boxShadow: '0 -6px 18px rgba(0,0,0,0.28)',
+          }),
+        ]}
+        testID="barra-acciones-ficha"
+      >
+        <Button
+          title={libro.porcentaje > 0 ? 'Seguir leyendo' : 'Leer'}
+          accessibilityLabel={libro.porcentaje > 0 ? 'Seguir leyendo' : 'Leer'}
+          icono="libroAbierto"
+          onPress={() => leer()}
+          disabled={!legible}
+          size="large"
+          style={styles.flex}
+          testID="boton-leer"
+        />
+        <Button
+          title="Escuchar"
+          icono="auriculares"
+          variant="secondary"
+          onPress={() => escuchar()}
+          disabled={!legible}
+          size="large"
+          style={styles.flex}
+          testID="boton-escuchar"
+        />
+      </View>
+    ) : null
+  return (
+    <View style={styles.flex}>
+      <ScrollView contentContainerStyle={[styles.scroll, barra ? styles.scrollConBarra : null]}>{Contenido}</ScrollView>
+      {barra}
+    </View>
+  )
 }
 
 /** Notas y resaltados del libro, en orden de lectura. */
@@ -821,6 +879,19 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   tocable: { flex: 1, minHeight: 44 },
   scroll: { paddingBottom: 120 },
+  scrollConBarra: { paddingBottom: 120 + ALTO_BARRA_ACCIONES },
+  barraAcciones: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderTopWidth: 1,
+  },
   contenido: { padding: spacing.md, gap: spacing.md, maxWidth: 980, width: '100%', alignSelf: 'center' },
   contenidoEmbebido: { padding: spacing.md },
   cabecera: { alignItems: 'center', gap: spacing.md },

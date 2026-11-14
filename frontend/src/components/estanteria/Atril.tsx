@@ -74,7 +74,9 @@ const Atril: React.FC<Props> = ({ libros, onAbrir, onElegir, anchoPortada = 112,
     return (
       <View style={styles.vacio} testID="estante-leyendo">
         <Placa titulo="Leyendo ahora" />
-        <Text style={[styles.vacioTexto, { color: tinta }]}>Nada en el atril todavía.</Text>
+        <Text style={[styles.vacioTexto, { color: tinta }, !isDark && styles.sobrePapel]}>
+          Nada en el atril todavía.
+        </Text>
         <Button title="Elegir un libro" icono="book" size="small" variant="secondary" onPress={onElegir} />
       </View>
     )
@@ -130,7 +132,7 @@ const Atril: React.FC<Props> = ({ libros, onAbrir, onElegir, anchoPortada = 112,
                   />
                 </View>
                 <Text
-                  style={[styles.cifra, { color: tinta }]}
+                  style={[styles.cifra, { color: tinta }, !isDark && styles.sobrePapel]}
                   accessibilityLabel={`${l.titulo}: vas por el ${Math.round(p)} %${queda ? `, ${queda}` : ''}`}
                 >
                   <Text style={styles.cifraFuerte}>{Math.round(p)} %</Text>
@@ -155,8 +157,8 @@ const Atril: React.FC<Props> = ({ libros, onAbrir, onElegir, anchoPortada = 112,
                 pressed && { opacity: 0.8 },
               ]}
             >
-              <Text style={[styles.masCifra, { color: tinta }]}>+{reparto.resto}</Text>
-              <Text style={[styles.masTexto, { color: tinta }]}>Ver todos ›</Text>
+              <Text style={[styles.masCifra, { color: tinta }, !isDark && styles.sobrePapel]}>+{reparto.resto}</Text>
+              <Text style={[styles.masTexto, { color: tinta }, !isDark && styles.sobrePapel]}>Ver todos ›</Text>
             </Pressable>
           ) : null}
         </ScrollView>
@@ -241,6 +243,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
+  /* UX5-03: de día, la tinta sobre la madera clara se quedaba en ~2,9:1; con una placa de papel, > 12:1. */
+  sobrePapel: { backgroundColor: 'rgba(251,247,238,0.92)', paddingHorizontal: 6, borderRadius: 4, overflow: 'hidden' },
   masCifra: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.xxl, fontVariant: ['lining-nums'] },
   masTexto: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs },
   libros: { flexGrow: 0, flexShrink: 1 },

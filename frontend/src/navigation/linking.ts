@@ -19,6 +19,8 @@ export type Rutas = {
   /** v1.6: el archivador; carpeta = id de la carpeta abierta (sin ella, la raíz). URL /documentos?carpeta=… */
   Documentos: { carpeta?: string } | undefined
   Notas: undefined
+  /** 0.4.0 (F12): minutos por día y racha. */
+  Estadisticas: undefined
   Ajustes: undefined
   AdminUsers: undefined
   AdminRoles: undefined
@@ -38,6 +40,7 @@ export const RUTAS: LinkingOptions<Rutas>['config'] = {
     Hoja: 'hoja/:id',
     Documentos: 'documentos',
     Notas: 'notas',
+    Estadisticas: 'estadisticas',
     Ajustes: 'ajustes',
     AdminUsers: 'ajustes/admin/usuarios',
     AdminRoles: 'ajustes/admin/roles',

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 
 import Svg, { Path } from 'react-native-svg'
 
@@ -33,6 +33,8 @@ const Mano: React.FC = () => (
 
 const GuiaSacar: React.FC<{ onEntendido: () => void; compacta?: boolean }> = ({ onEntendido, compacta }) => {
   const { colors, isDark } = useTheme()
+  /* UX5-08: a 320 px la frase no cabía en dos líneas y se perdía «para sacarlo». */
+  const estrecho = useWindowDimensions().width < 360
   /* En el teléfono, UNA línea: no empuja la estantería fuera de la primera pantalla. */
   if (compacta) {
     return (
@@ -55,7 +57,7 @@ const GuiaSacar: React.FC<{ onEntendido: () => void; compacta?: boolean }> = ({ 
             <Mano />
           </View>
         </View>
-        <Text style={[styles.lineaCorta, { color: colors.text }]} numberOfLines={2}>
+        <Text style={[styles.lineaCorta, { color: colors.text }]} numberOfLines={estrecho ? 3 : 2}>
           Mantén pulsado un libro y súbelo para sacarlo.
         </Text>
         <Button title="Entendido" size="small" onPress={onEntendido} testID="guia-entendido" />

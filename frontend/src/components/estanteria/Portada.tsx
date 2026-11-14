@@ -12,6 +12,7 @@ import { fontSize, fuentes } from '@tema'
 import { cuero } from '@tema/madera'
 import { web } from '@tema/web'
 import type { EjemplarDTO } from '@tipos'
+import '@utils/vuelo'
 
 interface Props {
   libro: EjemplarDTO
@@ -53,6 +54,8 @@ const Portada: React.FC<Props> = ({ libro, ancho, alto, sombra = true }) => {
   )
   return (
     <View
+      /* F2: la marca para que la tapa vuele hasta la ficha (utils/vuelo). */
+      {...({ dataSet: { portada: libro.id } } as object)}
       style={[
         /* Esquinas un punto gastadas: la del lomo casi recta, las del canto más redondas. */
         {

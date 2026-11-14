@@ -20,6 +20,7 @@ import LoginScreen from '@pantallas/auth/LoginScreen'
 import RegisterScreen from '@pantallas/auth/RegisterScreen'
 import BibliotecaScreen from '@pantallas/biblioteca/BibliotecaScreen'
 import DocumentosScreen from '@pantallas/biblioteca/DocumentosScreen'
+import EstadisticasScreen from '@pantallas/estadisticas/EstadisticasScreen'
 import HojaScreen from '@pantallas/hoja/HojaScreen'
 import LectorScreen from '@pantallas/lector/LectorScreen'
 import LibroScreen from '@pantallas/libro/LibroScreen'
@@ -66,6 +67,7 @@ const TITULOS: Partial<Record<keyof Rutas, string>> = {
   Hoja: 'Hoja de cálculo',
   Documentos: 'Mis documentos',
   Notas: 'Mis notas',
+  Estadisticas: 'Tus lecturas',
   Ajustes: 'Ajustes',
   AdminUsers: 'Usuarios',
   AdminRoles: 'Roles',
@@ -134,6 +136,7 @@ const AppNavigator: React.FC = () => {
               <Pila.Screen name="Hoja" component={pantalla(HojaScreen)} />
               <Pila.Screen name="Documentos" component={pantalla(DocumentosScreen)} />
               <Pila.Screen name="Notas" component={pantalla(NotasScreen)} />
+              <Pila.Screen name="Estadisticas" component={pantalla(EstadisticasScreen)} />
               <Pila.Screen name="Ajustes" component={pantalla(AjustesScreen)} />
               {/* La administración vive dentro de la casa (UX-14): cada pantalla pinta su
                   Sala y su Encabezado (atrás de 44 px), no la cabecera genérica. */}

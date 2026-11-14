@@ -1,7 +1,7 @@
 import { GeometriaHoja, MESA, cssHojas } from '@componentes/lector/hojas'
 import { CSS_TRADUCCION } from '@componentes/lector/traduccion'
 import type { Preferencias } from '@contextos/PreferenciasContext'
-import { FUENTES_LECTOR } from '@tema/fuentes'
+import { FUENTES_LECTOR, formatoFuente } from '@tema/fuentes'
 import { PAPELES } from '@tema/papel'
 
 /** Por debajo de este ancho de pantalla, la columna es estrecha (móvil en vertical). */
@@ -24,8 +24,8 @@ export function cssDelLibro(p: Preferencias, o: { estrecho?: boolean; hojas?: Ge
   const f = FUENTES_LECTOR.find((x) => x.clave === p.fuente) ?? FUENTES_LECTOR[0]
   const caras = FUENTES_LECTOR.map(
     (x) =>
-      `@font-face{font-family:'${x.nombre}';src:url('${origen()}/fuentes/${x.archivo}') format('truetype');font-style:normal;font-display:swap}
-@font-face{font-family:'${x.nombre}';src:url('${origen()}/fuentes/${x.cursiva}') format('truetype');font-style:italic;font-display:swap}`,
+      `@font-face{font-family:'${x.nombre}';src:url('${origen()}/fuentes/${x.archivo}') format('${formatoFuente(x.archivo)}');font-style:normal;font-display:swap}
+@font-face{font-family:'${x.nombre}';src:url('${origen()}/fuentes/${x.cursiva}') format('${formatoFuente(x.cursiva)}');font-style:italic;font-display:swap}`,
   ).join('\n')
   const alineacion = o.estrecho ? 'left' : 'justify'
   return `${caras}

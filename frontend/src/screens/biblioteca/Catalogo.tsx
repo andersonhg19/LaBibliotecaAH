@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import Barra from '@componentes/atoms/Barra'
 import Button from '@componentes/atoms/Button'
 import Chip from '@componentes/atoms/Chip'
+import Esqueleto from '@componentes/atoms/Esqueleto'
 import Icono from '@componentes/atoms/Icono'
 import Input from '@componentes/atoms/Input'
 import Spinner from '@componentes/atoms/Spinner'
@@ -443,7 +444,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
         ListHeaderComponent={controles}
         ListEmptyComponent={
           cargando ? (
-            <Spinner />
+            <Esqueleto variante="portadas" ancho={width} />
           ) : error ? (
             <EstadoError mensaje={error} onReintentar={() => pedir(0)} />
           ) : (

@@ -44,6 +44,29 @@ export const FUENTES_LECTOR = [
     archivo: 'Lora-Regular.ttf',
     cursiva: 'Lora-Italic.ttf',
   },
+  /*
+   * 0.4.0 (F13): dos letras pensadas para leer mejor. Atkinson Hyperlegible
+   * (Braille Institute) distingue bien las letras parecidas (I l 1, O 0); la
+   * OpenDyslexic, con la base más pesada, ayuda a algunas personas con
+   * dislexia. Las dos con licencia OFL 1.1 (public/fuentes/OFL-*.txt).
+   */
+  {
+    clave: 'atkinson',
+    nombre: 'Atkinson Hyperlegible',
+    css: "'Atkinson Hyperlegible', Verdana, sans-serif",
+    archivo: 'AtkinsonHyperlegible-Regular.ttf',
+    cursiva: 'AtkinsonHyperlegible-Italic.ttf',
+  },
+  {
+    clave: 'opendyslexic',
+    nombre: 'OpenDyslexic',
+    css: "'OpenDyslexic', Verdana, sans-serif",
+    archivo: 'OpenDyslexic-Regular.woff2',
+    cursiva: 'OpenDyslexic-Italic.woff2',
+  },
 ] as const
+
+/** El formato de @font-face según la extensión del archivo. */
+export const formatoFuente = (archivo: string): string => (archivo.endsWith('.woff2') ? 'woff2' : 'truetype')
 
 export type ClaveFuenteLector = (typeof FUENTES_LECTOR)[number]['clave']

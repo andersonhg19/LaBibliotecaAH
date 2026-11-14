@@ -61,6 +61,33 @@ export const usaCabeceraCompacta = (ancho: number, alto: number) => ancho < 600 
  * nombre, alternar vista y un menú "⋯"; "Traer libros" pasa a un botón
  * flotante de latón (plan de diseño C). Antes la cabecera se comía la pantalla.
  */
+/** El «+» encogido mide 44 px (el mínimo táctil) en vez de 60. */
+export const FLOTANTE_ENCOGIDO = 44 / 60
+
+/**
+ * ¿Se está bajando por la lista? Escucha el desplazamiento de cualquier lista
+ * de la pantalla (fase de captura: los scroll no suben) y dice si encoger.
+ */
+function useFlotanteEncogido(activo: boolean): boolean {
+  const [encogido, setEncogido] = useState(false)
+  useEffect(() => {
+    if (!activo || typeof document === 'undefined' || typeof window === 'undefined') return
+    const ultimos = new WeakMap<EventTarget, number>()
+    const alDesplazar = (e: Event) => {
+      const t = e.target as (HTMLElement & Document) | null
+      if (!t) return
+      const y = (t as HTMLElement).scrollTop ?? window.scrollY ?? 0
+      const antes = ultimos.get(t) ?? 0
+      ultimos.set(t, y)
+      if (y - antes > 6 && y > 40) setEncogido(true)
+      else if (antes - y > 6 || y <= 40) setEncogido(false)
+    }
+    document.addEventListener('scroll', alDesplazar, { capture: true, passive: true })
+    return () => document.removeEventListener('scroll', alDesplazar, { capture: true } as EventListenerOptions)
+  }, [activo])
+  return encogido
+}
+
 const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const { colors, isDark } = useTheme()
   const { user } = useAuth()
@@ -78,6 +105,8 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const escritorio = width >= 1100
   const compacta = usaCabeceraCompacta(width, height)
   const horizontal = compacta && esApaisado(height)
+  /* UX5-06: al bajar por la lista el «+» se encoge (tapa menos); al subir vuelve. */
+  const encogido = useFlotanteEncogido(compacta)
 
   useEffect(() => {
     AsyncStorage.getItem(CLAVE_VISTA)
@@ -182,7 +211,11 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
             {saludo()}, {nombre}
           </Text>
         ) : null}
-        <AppText variant="display" style={horizontal ? styles.nombreBajo : styles.nombreCompacto} numberOfLines={1}>
+        <AppText
+          variant="display"
+          style={horizontal || width < 360 ? styles.nombreBajo : styles.nombreCompacto}
+          numberOfLines={1}
+        >
           Mi biblioteca
         </AppText>
       </View>
@@ -210,6 +243,12 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.acciones}>
           <BotonIcono icono="archivador" etiqueta="Mis documentos" onPress={() => navigation.navigate('Documentos')} />
           <BotonIcono icono="nota" etiqueta="Mis notas" onPress={() => navigation.navigate('Notas')} />
+          <BotonIcono
+            icono="barras"
+            etiqueta="Tus lecturas"
+            onPress={() => navigation.navigate('Estadisticas')}
+            testID="abrir-estadisticas"
+          />
           <BotonIcono icono="settings" etiqueta="Ajustes" onPress={() => navigation.navigate('Ajustes')} />
         </View>
       </View>
@@ -244,7 +283,8 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
     ) : (
       <ScrollView contentContainerStyle={styles.scroll}>
         {cabecera}
-        {guia ? <GuiaSacar onEntendido={entendido} compacta={compacta} /> : null}
+        {/* UX5-07: en horizontal la pista no se enseña (vuelve en vertical hasta tocar «Entendido»). */}
+        {guia && !horizontal ? <GuiaSacar onEntendido={entendido} compacta={compacta} /> : null}
         <View style={styles.estanteria}>
           <Estanteria
             modo={modo}
@@ -262,6 +302,12 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const opcionesMenu: { icono: string; nombre: string; accion: () => void; testID?: string }[] = [
     { icono: 'archivador', nombre: 'Mis documentos', accion: () => navigation.navigate('Documentos') },
     { icono: 'nota', nombre: 'Mis notas', accion: () => navigation.navigate('Notas') },
+    {
+      icono: 'barras',
+      nombre: 'Tus lecturas',
+      accion: () => navigation.navigate('Estadisticas'),
+      testID: 'abrir-estadisticas',
+    },
     { icono: 'lomos', nombre: 'Tus colecciones', accion: () => setColecciones(true), testID: 'abrir-colecciones' },
     { icono: 'deseo', nombre: 'Añadir a deseos', accion: () => setDeseo(true), testID: 'nuevo-deseo' },
     {
@@ -310,7 +356,20 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
         ) : null}
       </View>
       {compacta ? (
-        <View style={[styles.flotanteHueco, horizontal && styles.flotanteBajo]}>{botonTraer(true)}</View>
+        <View
+          style={[
+            styles.flotanteHueco,
+            horizontal && styles.flotanteBajo,
+            web({
+              transform: encogido ? `scale(${FLOTANTE_ENCOGIDO})` : 'none',
+              transformOrigin: 'bottom right',
+              transition: 'transform 180ms cubic-bezier(.2,.8,.2,1)',
+            }),
+          ]}
+          testID="flotante-traer"
+        >
+          {botonTraer(true)}
+        </View>
       ) : null}
       <Hoja visible={menu} titulo="Mi biblioteca" onCerrar={() => setMenu(false)} testID="hoja-menu">
         {opcionesMenu.map((o) => (

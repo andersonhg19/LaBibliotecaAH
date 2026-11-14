@@ -33,7 +33,7 @@ interface Props {
  */
 const BarraBaldas: React.FC<Props> = ({ prefs, onCambiar, version }) => {
   const { colors } = useTheme()
-  const { width } = useWindowDimensions()
+  const { width, height } = useWindowDimensions()
   const [hoja, setHoja] = useState(false)
   const [facetas, setFacetas] = useState<FacetasDTO | null>(null)
   const { filtros } = prefs
@@ -59,7 +59,10 @@ const BarraBaldas: React.FC<Props> = ({ prefs, onCambiar, version }) => {
   return (
     <View style={styles.barra} testID="barra-baldas">
       <View style={styles.fila}>
-        {width >= 600 ? <Text style={[styles.rotulo, { color: colors.textSecondary }]}>Baldas por</Text> : null}
+        {/* UX5-07: en horizontal (pantalla baja) sin el rótulo: cada píxel de alto cuenta. */}
+        {width >= 600 && height >= 500 ? (
+          <Text style={[styles.rotulo, { color: colors.textSecondary }]}>Baldas por</Text>
+        ) : null}
         <Segmentos<Agrupacion>
           etiqueta="Agrupar las baldas por"
           valor={prefs.agrupar}

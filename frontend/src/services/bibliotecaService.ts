@@ -2,6 +2,7 @@ import { BIBLIOTECA_PREFIJO, MODO_DEMO } from '@config'
 import api from '@servicios/api'
 import type {
   AnotacionDTO,
+  CapituloResumen,
   CarpetaBorradaDTO,
   CarpetaContenidoDTO,
   CarpetaDTO,
@@ -9,6 +10,7 @@ import type {
   EjemplarDTO,
   EjemplarDetalleDTO,
   EstadoAudioDTO,
+  EstadoCasaDTO,
   EstanteDTO,
   FacetasDTO,
   FiltroLibrosDTO,
@@ -16,6 +18,7 @@ import type {
   OrdenCarpeta,
   PageDTO,
   Pestana,
+  PreparacionLibroDTO,
   ProgresoDTO,
   ResultDTO,
   TipoEjemplar,
@@ -139,6 +142,47 @@ export function cuerpoEstadoAudio(
   reintentar = false,
 ): Record<string, unknown> {
   return reintentar ? { ...d, reintentar: true } : { ...d }
+}
+
+/*
+ * 0.4.0 · «EN EL AUDIOLIBRO» POR CAPÍTULO (contrato C3). Las únicas rutas con
+ * PUT/GET del cliente: así las definió el contrato compartido de la 0.4.0.
+ */
+export const capitulosVozService = {
+  /** enVoz null = volver a lo que decide el taller para ese capítulo. */
+  cambiar: async (ejemplarId: string, indice: number, enVoz: boolean | null): Promise<ResultDTO<CapituloResumen>> => {
+    const r = await api.put<ResultDTO<CapituloResumen>>(
+      `${B}/ejemplares/${encodeURIComponent(ejemplarId)}/capitulos/${indice}/voz`,
+      { enVoz },
+    )
+    return r.data
+  },
+  /** true = solo la historia (región cuerpo) en el audiolibro; false = borra las preferencias. */
+  soloHistoria: async (ejemplarId: string, soloHistoria: boolean): Promise<ResultDTO<unknown>> => {
+    const r = await api.put<ResultDTO<unknown>>(`${B}/ejemplares/${encodeURIComponent(ejemplarId)}/capitulos/voz`, {
+      soloHistoria,
+    })
+    return r.data
+  },
+}
+
+/** 0.4.0 · «Preparar el libro entero» (contrato C5): encola en baja prioridad lo que falta. */
+export const preparacionService = {
+  preparar: (ejemplarId: string, vozId: string) => post<boolean>('/voz/preparar-libro', { ejemplarId, vozId }),
+  estado: async (ejemplarId: string, vozId: string): Promise<ResultDTO<PreparacionLibroDTO>> => {
+    const r = await api.get<ResultDTO<PreparacionLibroDTO>>(`${B}/voz/preparar-libro`, {
+      params: { ejemplarId, vozId },
+    })
+    return r.data
+  },
+}
+
+/** 0.4.0 · La lámpara del estado de la casa (contrato C6). */
+export const estadoCasaService = {
+  obtener: async (): Promise<ResultDTO<EstadoCasaDTO>> => {
+    const r = await api.get<ResultDTO<EstadoCasaDTO>>(`${B}/estado-casa`)
+    return r.data
+  },
 }
 
 export const audioService = {

@@ -96,7 +96,7 @@ const Encabezado: React.FC<Props> = ({ titulo, subtitulo, atras, acciones = [], 
         <View style={styles.hueco} />
       )}
       <View style={styles.centro}>
-        <AppText variant="subtitle" numberOfLines={1} align="center" accessibilityRole="header">
+        <AppText variant="subtitle" numberOfLines={1} align="center" accessibilityRole="header" nivel={1}>
           {titulo}
         </AppText>
         {subtitulo ? (

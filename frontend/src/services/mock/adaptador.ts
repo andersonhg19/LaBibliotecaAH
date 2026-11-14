@@ -638,6 +638,36 @@ const RUTAS: [RegExp, Manejador][] = [
   ],
 
   [/\/voces\/all$/, () => ok(VOCES_DEMO)],
+
+  /* 0.4.0: sesiones (C4), preparar el libro (C5) y la casa (C6), simulados. */
+  [
+    /\/sesiones\/latido$/,
+    (_m, c) => ok({ sesionId: c?.sesionId ?? 'demo-sesion', segundosTotales: Math.max(0, Number(c?.segundos) || 0) }),
+  ],
+  [
+    /\/sesiones\/resumen$/,
+    () => {
+      const hoy = Date.now()
+      const dias = [0, 1, 2, 4, 5, 9].map((n, i) => ({
+        fecha: new Date(hoy - n * 86_400_000).toISOString().slice(0, 10),
+        minutos: [25, 40, 12, 33, 18, 50][i],
+      }))
+      return ok({
+        minutosLectura: 120,
+        minutosVoz: 58,
+        dias,
+        rachaActual: 3,
+        rachaMaxima: 5,
+        libros: [{ ejemplarId: 'ej-guardian', minutos: 95 }],
+      })
+    },
+  ],
+  [
+    /\/voz\/preparar-libro$/,
+    (_m, c, config) =>
+      config?.method === 'get' ? ok({ total: CAPITULOS_DEMO.length, listos: 2, enCola: 0, error: 0 }) : ok(true),
+  ],
+  [/\/estado-casa$/, () => ok({ taller: 'OK', traductor: 'OK', disco: 'OK', colaVoz: 0, mensaje: null })],
   [/\/audio\/estado$/, (_m, c) => audioEstado(c)],
 ]
 

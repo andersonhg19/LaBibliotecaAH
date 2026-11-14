@@ -24,6 +24,8 @@ html,body{background:#22140C;overscroll-behavior-y:none}
 @keyframes bah-mano-corta{0%{transform:translate3d(0,0,0) scale(.6);opacity:0}15%{opacity:1}35%{transform:translate3d(0,0,0) scale(.55)}75%{transform:translate3d(0,-22px,0) scale(.55);opacity:1}100%{transform:translate3d(0,-22px,0) scale(.6);opacity:0}}
 @keyframes bah-aparece{0%{opacity:0}100%{opacity:1}}
 @keyframes bah-luz{0%,100%{opacity:.92}50%{opacity:1}}
+@keyframes bah-crece{0%{transform:scaleY(0)}100%{transform:scaleY(1)}}
+@keyframes bah-brillo{0%{background-position:100% 0}100%{background-position:-100% 0}}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:0.001ms!important;animation-iteration-count:1!important;transition-duration:0.001ms!important;scroll-behavior:auto!important}
 }

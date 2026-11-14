@@ -185,6 +185,20 @@ export interface CapituloResumen {
   indice: number
   titulo: string
   minutos: number
+  /*
+   * 0.4.0 (contrato C3): lo que sabe el taller de cada sección. Todo opcional:
+   * los libros v1 sin reclasificar no lo traen y la web numera por los títulos.
+   */
+  /** «capitulo», «parte», «prologo», «notas»… */
+  tipo?: string | null
+  region?: 'antes' | 'cuerpo' | 'despues' | null
+  /** Número visible («01»); null = sin número. Ausente = libro v1. */
+  numero?: number | null
+  /** Si entra en el audiolibro (preferencia del usuario, o el defecto). Ausente = sí. */
+  enVoz?: boolean
+  enVozPorDefecto?: boolean
+  /** Minutos que de verdad lee la voz (sin notas ni tablas). */
+  minutosVoz?: number | null
 }
 
 export interface EjemplarDetalleDTO extends EjemplarDTO {
@@ -399,4 +413,49 @@ export interface TraduccionCapituloDTO {
   estado: 'LISTO' | 'PENDIENTE' | 'ERROR'
   frases: { id: string; texto: string }[]
   error?: string | null
+}
+
+/** 0.4.0 · GET /v1/voz/preparar-libro (contrato C5): cómo va la preparación del libro entero. */
+export interface PreparacionLibroDTO {
+  total: number
+  listos: number
+  enCola: number
+  error: number
+}
+
+/** 0.4.0 · GET /v1/estado-casa (contrato C6). */
+export interface EstadoCasaDTO {
+  taller: 'OK' | 'LENTO' | 'CAIDO'
+  traductor: 'OK' | 'CAIDO'
+  disco: 'OK' | 'DESCONECTADO'
+  colaVoz: number
+  mensaje: string | null
+}
+
+/** 0.4.0 · POST /v1/sesiones/latido (contrato C4). */
+export type ModoSesion = 'LECTURA' | 'VOZ'
+export interface LatidoDTO {
+  ejemplarId: string
+  modo: ModoSesion
+  /** uuid que genera el cliente al empezar la sesión. */
+  sesionId?: string
+  capitulo: number
+  posicion: number
+  /** Segundos desde el latido anterior (0..120). */
+  segundos: number
+  dispositivo?: string
+}
+export interface LatidoRespuestaDTO {
+  sesionId: string
+  segundosTotales: number
+}
+
+/** 0.4.0 · GET /v1/sesiones/resumen (contrato C4). */
+export interface ResumenSesionesDTO {
+  minutosLectura: number
+  minutosVoz: number
+  dias: { fecha: string; minutos: number }[]
+  rachaActual: number
+  rachaMaxima: number
+  libros: { ejemplarId: string; minutos: number }[]
 }

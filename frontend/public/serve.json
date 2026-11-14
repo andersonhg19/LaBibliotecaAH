@@ -54,6 +54,19 @@
       ]
     },
     {
+      "source": "fuentes/*.woff2",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "font/woff2"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000, immutable"
+        }
+      ]
+    },
+    {
       "source": "_expo/**",
       "headers": [
         {
