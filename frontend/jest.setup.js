@@ -38,6 +38,3 @@ const __shouldIgnore = (args) =>
   typeof args[0] === 'string' && __IGNORED_LOGS.some((p) => args[0].includes(p));
 console.error = (...args) => { if (!__shouldIgnore(args)) __origError(...args); };
 console.warn = (...args) => { if (!__shouldIgnore(args)) __origWarn(...args); };
-
-// Con la CPU repartida (jest en paralelo en casa/CI), 1 s por defecto de waitFor/findBy no basta (auditoria OP-06).
-require('@testing-library/react-native').configure({ asyncUtilTimeout: 5000 });

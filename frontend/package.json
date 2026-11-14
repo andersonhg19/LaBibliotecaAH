@@ -24,6 +24,9 @@
     "setupFiles": [
       "./jest.setup.js"
     ],
+    "setupFilesAfterEnv": [
+      "./jest.despues.js"
+    ],
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/public/",
