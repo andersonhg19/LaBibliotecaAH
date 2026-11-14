@@ -265,10 +265,12 @@ describe('numerar los capítulos de verdad (2026-11-12, «La diosa de tres cabez
 
   it('«Capítulo 10» no se confunde con el primero', () => {
     const caps = [
-      { indice: 0, titulo: 'Prólogo', minutos: 3 },
+      { indice: 0, titulo: 'La llegada', minutos: 3 },
       { indice: 1, titulo: 'Capítulo 10', minutos: 3 },
     ]
     expect(textoPosicion(caps, 1, 'X')).toBe('Capítulo 2 de 2')
+    // (0.4.0, CF-02: un «Prólogo» delante del primer capítulo ya no se numera)
+    expect(textoPosicion([{ ...caps[0], titulo: 'Prólogo' }, caps[1]], 1, 'X')).toBe('Capítulo 1 de 1')
   })
 })
 
