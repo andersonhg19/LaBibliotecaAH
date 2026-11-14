@@ -1,7 +1,7 @@
 # Contratos entre componentes — La Biblioteca AH
 
 > Fuente de verdad técnica compartida por `backend/`, `taller/` y `frontend/`.
-> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.7 — 2026-11-14.**
+> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.8 — 2026-11-14 (La Biblioteca AH 0.4.0).**
 
 ## Cambios
 
@@ -15,7 +15,8 @@ PK(archivo_id, de))`, índice único sobre `(archivo_id, lower(de))`, `ON DELETE
 - `PUT /v1/ejemplares/{ejemplarId}/pronunciacion` cuerpo = **la lista completa** `[{"de": "Hermione", "a": "Jermáyoni"}]`
   (sustituye todo; `[]` = vaciarlo) → lo mismo que el GET. Validación (120): como mucho **200** entradas
   (`demasiadasPronunciaciones`); `de` 1–80 caracteres con alguna letra o cifra, `a` 1–120, sin caracteres de control ni
-  saltos de línea (`pronunciacionInvalida`, con la posición); palabras repetidas sin distinguir mayúsculas
+  saltos de línea y, en `a`, sin `<`, `>`, `{`, `}` ni `\` (R3-1: no hay inyección, pero la voz los leería en voz
+  alta) (`pronunciacionInvalida`, con la posición); palabras repetidas sin distinguir mayúsculas
   (`pronunciacionDuplicada`); sin cuerpo o cuerpo que no es una lista → `cuerpoInvalido` / `campoTipoInvalido`. Se
   recortan los espacios. Ejemplar ajeno o inexistente → 102 `libroNoEncontrado`; deseo (sin archivo) → 120
   `libroSinArchivo`. GET/PUT: excepción documentada a «todo es POST», como C3.
