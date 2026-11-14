@@ -141,8 +141,14 @@ export const BotonLaton: React.FC<{
           })
         : null}
       {esWeb && conAnillo
-        ? React.createElement('div', {
-            'aria-hidden': true,
+        ? // V-NUEVO-9: el anillo se ANUNCIA (barra de progreso con «Preparado al N %»), no solo se ve.
+          React.createElement('div', {
+            role: 'progressbar',
+            'aria-label': 'Preparando la voz',
+            'aria-valuemin': 0,
+            'aria-valuemax': 100,
+            'aria-valuenow': pct ?? 0,
+            'aria-valuetext': `Preparado al ${pct ?? 0} %`,
             'data-testid': 'anillo-preparacion',
             style: {
               position: 'absolute',
@@ -158,8 +164,7 @@ export const BotonLaton: React.FC<{
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={etiqueta}
-        accessibilityValue={pct != null ? { min: 0, max: 100, now: pct, text: `Preparado al ${pct} %` } : undefined}
+        accessibilityLabel={pct != null ? `${etiqueta} (preparado al ${pct} %)` : etiqueta}
         testID={testID}
         style={({ pressed }) => [
           styles.boton,

@@ -84,9 +84,27 @@ function ponerEstilosLector() {
   s.textContent =
     '@keyframes bahCinta{0%{transform:translateY(-100%)}70%{transform:translateY(6%)}100%{transform:translateY(0)}}' +
     '@keyframes bahMenu{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}' +
-    /* UX5-04: el libro (foliate) también enseña dónde está el foco del teclado. */
-    'foliate-view:focus-visible{outline:2px solid #C9A227;outline-offset:-3px}'
+    /* UX5-04: el libro (foliate) también enseña dónde está el foco del teclado. E4: el foco real cae DENTRO
+       (shadow + iframe) y ni :focus-visible ni :focus-within lo ven desde fuera: se marca a mano (abajo), y solo
+       si se llegó con el teclado. */
+    'foliate-view:focus-visible,html.bah-teclado foliate-view.bah-con-foco{outline:2px solid #C9A227!important;outline-offset:-3px}'
   document.head.appendChild(s)
+  // Con el teclado (Tab) se marca; con el ratón o el dedo, no (tocar la página no la enmarca).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') document.documentElement.classList.add('bah-teclado')
+  })
+  document.addEventListener('pointerdown', () => document.documentElement.classList.remove('bah-teclado'))
+  // El foco llega al libro (el evento sale retargeteado al <foliate-view>) o se va de él.
+  const marcarLibro = () => {
+    const a = document.activeElement
+    document.querySelectorAll('foliate-view').forEach((f) => f.classList.toggle('bah-con-foco', f === a))
+  }
+  const luego = () => setTimeout(marcarLibro, 0)
+  document.addEventListener('focusin', marcarLibro)
+  document.addEventListener('focusout', luego)
+  // Al entrar el foco en el iframe del libro, esta ventana lo «pierde» (blur) sin focusin propio.
+  window.addEventListener('blur', luego)
+  window.addEventListener('focus', luego)
 }
 
 /*
