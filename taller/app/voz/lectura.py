@@ -255,7 +255,23 @@ def _telefono(m: re.Match[str]) -> str | None:
     grupos = re.findall(r"\d+", texto)
     if sum(len(g) for g in grupos) < 7:
         return None
+    if _TRES_TRES_TRES.fullmatch(texto):
+        # «912 345 678» suelto puede ser una cantidad con espacios de miles: solo si antes se dice que es un teléfono
+        antes = m.string[max(0, m.start() - 40) : m.start()]
+        if not _ANTES_DE_TELEFONO.search(antes):
+            return None
     return ("más " if texto.startswith("+") else "") + ", ".join(_grupo_telefono(g) for g in grupos)
+
+
+# sin «+» (R3): 3-3-4 («300 123 4567», «604 444 5566»), 3-3-2-2 / 3-2-2-2 («601 234 56 78», «912 34 56 78») y 3-3-3
+# (este último solo tras «teléfono», «tel.», «llama»…). Grupos así no son años, páginas ni cantidades con miles.
+_TELEFONO_SIN_MAS = r"\d{3}(?P<sep>[ .])\d{3}(?P=sep)\d{4}|\d{3} \d{2,3} \d{2} \d{2}|\d{3} \d{3} \d{3}"
+_TRES_TRES_TRES = re.compile(r"\d{3} \d{3} \d{3}")
+_ANTES_DE_TELEFONO = re.compile(
+    r"(?:tel[eé]fono|tel\.|tlf\.?|m[oó]vil|celular|fijo|whats\s?app|ll[aá]m(?:a|e|en|ar|ame|enos)|marca|n[uú]mero)"
+    r"\W*(?:\w+\W+){0,2}$",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------- URL, correo, ruta
@@ -345,9 +361,10 @@ def _unidad_al_cuadrado(m: re.Match[str]) -> str:
 
 
 def _zwsp(m: re.Match[str]) -> str:
-    """Espacio de ancho cero: separa palabras solo si el texto lo usa como separador (V-16); dentro de una palabra
-    («Pala<ZWSP>bras», un punto de corte permitido) se quita sin partirla (V-NUEVO-8). Mismo criterio que el lector."""
-    return " " if zwsp_separa(m.string) else ""
+    """Espacio de ancho cero: separa palabras solo en un tramo que lo usa como separador (V-16, R2-1); dentro de una
+    palabra («Pala<ZWSP>bras», un punto de corte permitido) se quita sin partirla (V-NUEVO-8). Mismo criterio que el
+    lector."""
+    return " " if zwsp_separa(m.string, m.start()) else ""
 
 
 def _construir_neutras() -> list[_Regla]:
@@ -372,11 +389,11 @@ def _construir_reglas() -> list[_Regla]:
     )
     # «5 m²», «3 km²», «2 m³»: la unidad entera («m dos» si no)
     r.append(_Regla(r"(?<=\d)\s?(km|cm|mm|m)([²³])(?!\w)", _unidad_al_cuadrado))
-    # teléfonos: con prefijo de país, con el prefijo entre paréntesis o 300-123-4567 (V-NUEVO-7)
+    # teléfonos: con prefijo de país, con el prefijo entre paréntesis, 300-123-4567 (V-NUEVO-7) o sin «+» (R3)
     r.append(
         _Regla(
             r"(?<![\w+])(?:\+\d{1,3}(?:[ .-]?\d{1,4}){2,5}|\(\d{1,4}\)\s?\d{2,4}(?:[ -]\d{2,4}){1,3}"
-            r"|\d{3}-\d{3}-\d{4})(?![\d,.]?\d)",
+            rf"|\d{{3}}-\d{{3}}-\d{{4}}|(?<![.,])(?:{_TELEFONO_SIN_MAS}))(?![\d,.]?\d)",
             _telefono,
         )
     )
@@ -713,13 +730,15 @@ def sin_letras_no_latinas(lectura: Lectura) -> Lectura:
 
 MAX_REGLAS_PRONUNCIACION = 500
 MAX_LARGO_REGLA = 100
+MAX_LARGO_PRONUNCIACION = 120  # (B17) lo que acepta biblioteca-service para «a» (varchar 120)
 
 
 def reglas_de_pronunciacion(datos: object) -> list[tuple[str, str]]:
     """(B17) Diccionario de pronunciación del trabajo de voz: `[{"de": "Hermione", "a": "Jermáyoni"}, …]`.
 
     Lo que no tenga esa forma se ignora (nunca tumba el trabajo). Como mucho MAX_REGLAS_PRONUNCIACION reglas de
-    MAX_LARGO_REGLA caracteres; las más largas primero (así «Harry Potter» gana a «Harry»)."""
+    MAX_LARGO_REGLA caracteres (MAX_LARGO_PRONUNCIACION la pronunciación); las más largas primero (así «Harry Potter»
+    gana a «Harry»)."""
     reglas: list[tuple[str, str]] = []
     if not isinstance(datos, list):
         return reglas
@@ -728,5 +747,5 @@ def reglas_de_pronunciacion(datos: object) -> list[tuple[str, str]]:
             continue
         de, a = r.get("de"), r.get("a")
         if isinstance(de, str) and isinstance(a, str) and de.strip() and len(de) <= MAX_LARGO_REGLA:
-            reglas.append((de.strip(), a.strip()[:MAX_LARGO_REGLA]))
+            reglas.append((de.strip(), a.strip()[:MAX_LARGO_PRONUNCIACION]))
     return sorted(reglas, key=lambda x: -len(x[0]))

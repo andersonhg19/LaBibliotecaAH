@@ -340,6 +340,8 @@ export class MotorAudio {
   private sondeoVoz: ReturnType<typeof setTimeout> | null = null
   private reintento: ReturnType<typeof setTimeout> | null = null
   private intentosRed = 0
+  /** V-NUEVO-10: fallos de red seguidos al bajar el audio a la cinta (espera creciente propia). */
+  private fallosRedCinta = 0
   private ultimaPausa = 0
   private ultimoLocal = 0
   private ultimoServidor = 0
@@ -1083,11 +1085,13 @@ export class MotorAudio {
     this.ponerFuente(pos1x, reproducir)
   }
 
-  /** Sin red: se vuelve a pedir solo, cada vez esperando un poco más. */
-  private programarReintento() {
+  /**
+   * Sin red: se vuelve a pedir solo, cada vez esperando un poco más. `intento` = cuántas veces seguidas ha fallado
+   * ya ESTO (por defecto, la petición de estado al servidor).
+   */
+  private programarReintento(intento = this.intentosRed++) {
     if (this.reintento) clearTimeout(this.reintento)
-    const espera = REINTENTOS_MS[Math.min(this.intentosRed, REINTENTOS_MS.length - 1)]
-    this.intentosRed++
+    const espera = REINTENTOS_MS[Math.min(intento, REINTENTOS_MS.length - 1)]
     this.reintento = setTimeout(() => {
       this.reintento = null
       if (this.estado.fase === 'error' && this.estado.tipoError === 'red') this.reintentar()
@@ -1152,6 +1156,7 @@ export class MotorAudio {
         if (turno !== this.turno) return
         this.fallosCinta = 0
         this.fallosAcceso = 0
+        this.fallosRedCinta = 0
         if (this.estado.carga != null) this.poner({ carga: null })
         despues()
       })
@@ -1176,7 +1181,9 @@ export class MotorAudio {
     if (tipo === 'red' || tipo === 'servidor') {
       console.warn('[voz] cinta: sin red al bajar el capítulo; se reintentará', e)
       this.fallar('red', TEXTOS_VOZ.sinRedReintentando)
-      this.programarReintento()
+      // V-NUEVO-10: cuenta propia. El estado del servidor sí responde (y pone a cero intentosRed), así que con esa
+      // cuenta la cinta repedía el audio cada 2 s mientras el corte durase; ahora 2, 4, 8, 15 y 30 s.
+      this.programarReintento(this.fallosRedCinta++)
       return
     }
     if (tipo === 'acceso') {

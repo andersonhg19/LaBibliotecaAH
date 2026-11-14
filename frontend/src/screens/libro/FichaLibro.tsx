@@ -18,6 +18,7 @@ import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import LamparaCasa from '@componentes/molecules/LamparaCasa'
 import PrepararLibro from '@componentes/molecules/PrepararLibro'
+import Pronunciacion from '@componentes/molecules/Pronunciacion'
 import { elevarAvisos } from '@componentes/organisms/ToastContainer'
 import { usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
@@ -493,6 +494,8 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               onRecargar={cargar}
             />
           ) : null}
+          {/* B17: debajo del índice, para corregir cómo dice la voz un nombre del libro. */}
+          {!esHoja && !esDeseo && legible ? <Pronunciacion ejemplarId={libro.id} /> : null}
         </View>
       ) : null}
       {pestana === 'notas' ? (
@@ -591,7 +594,16 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
     ) : null
   return (
     <View style={styles.flex}>
-      <ScrollView contentContainerStyle={[styles.scroll, barra ? styles.scrollConBarra : null]}>{Contenido}</ScrollView>
+      {/* Z5 (validación web r2): en el iPhone (390×844) las pestañas quedaban DEBAJO de la barra fija y un toque en
+          ellas abría el lector («Seguir leyendo»). Con scroll-padding, lo que recibe el foco o se lleva a la vista
+          (teclado, VoiceOver, scrollIntoView) se coloca por encima de la barra. */}
+      <ScrollView
+        style={barra ? web({ scrollPaddingBottom: ALTO_BARRA_ACCIONES + 24 }) : undefined}
+        contentContainerStyle={[styles.scroll, barra ? styles.scrollConBarra : null]}
+        testID="ficha-scroll"
+      >
+        {Contenido}
+      </ScrollView>
       {barra}
     </View>
   )

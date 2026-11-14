@@ -171,10 +171,10 @@ def test_un_fallo_al_escribir_una_parte_no_tumba_el_capitulo(tmp_path, monkeypat
     preparar(rutas, frases_de(5))
     original = audio.codificar_m4a
 
-    def codificar(raw, salida):
+    def codificar(raw, salida, *resto):  # (R2-2) también se llama para recodificar con ganancia y techo
         if ".parte-" in salida.name:
             raise audio.ErrorAudio(cap.Msj.ERROR_AUDIO, detalle="disco lleno")
-        original(raw, salida)
+        original(raw, salida, *resto)
 
     monkeypatch.setattr(audio, "codificar_m4a", codificar)
     asyncio.run(generar_capitulo(rutas, AID, "edge.prueba", 0, MotorFalso(), "prueba"))

@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type -- la fábrica de jest.mock no admite tipos de fuera */
 import type { EstadoAudioDTO, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import { Cinta } from '@utils/cinta'
+import { errorDeRed } from '@utils/fallosCinta'
 import { DependenciasMotor, MotorAudio } from '@utils/motorAudio'
 
 const g = globalThis as unknown as Record<string, unknown>
@@ -274,6 +275,8 @@ function montar(
   o: {
     pedir?: DependenciasMotor['pedirEstado']
     falla?: (u: string) => boolean
+    /** V-NUEVO-10: el audio falla como un corte de red (el navegador ve así un 404 sin cabecera CORS). */
+    fallaRed?: (u: string) => boolean
     lenta?: (u: string) => Promise<void> | null
     cargarPartes?: DependenciasMotor['cargarPartes']
     sinDatosMs?: number
@@ -291,6 +294,7 @@ function montar(
     const espera = o.lenta?.(u)
     if (espera) await espera
     if (o.falla?.(u)) throw new Error('audio 404')
+    if (o.fallaRed?.(u)) throw errorDeRed(new Error('Failed to fetch'))
     const b = new ArrayBuffer(8)
     ;(g.__META as WeakMap<ArrayBuffer, unknown>).set(b, { dur: durDe(u), clave: u })
     return b
@@ -787,5 +791,32 @@ describe('Validación web 0.4.0: atascos y avisos de la cinta', () => {
     // Sigue parado en «Dos» con el aviso: no aparece sonando «Tres» sin decir nada.
     expect([tras.fase, tras.capitulo]).toEqual(['error', 1])
     expect(m.descargas.some((u) => u.includes('cap-2'))).toBe(false)
+  })
+
+  it('V-NUEVO-10 si el audio del capítulo falla siempre por red, se repide con espera creciente (2, 4, 8, 15, 30 s)', async () => {
+    jest.useFakeTimers()
+    try {
+      const m = montar({ fallaRed: (u) => u.includes('cap-1') })
+      m.motor.abrir(LIBRO, { capitulo: 1, vozId: 'v', velocidad: 1 })
+      const momentos: number[] = []
+      const t0 = Date.now()
+      let vistas = 0
+      for (let s = 0; s < 90; s++) {
+        await jest.advanceTimersByTimeAsync(1_000)
+        const n = m.descargas.filter((u) => u.includes('cap-1')).length
+        for (; vistas < n; vistas++) momentos.push(Math.round((Date.now() - t0) / 1000))
+      }
+      const e = m.motor.obtener()
+      expect([e.fase, e.tipoError, e.capitulo]).toEqual(['error', 'red', 1])
+      // antes: una petición cada ~2 s (45 en 90 s); ahora 0, 2, 6, 14, 29, 59, 89
+      expect(momentos.length).toBeLessThanOrEqual(8)
+      const huecos = momentos.slice(1).map((t, i) => t - momentos[i])
+      // (muestreado cada segundo: ±1 s)
+      ;[2, 4, 8, 15].forEach((esperado, i) => expect(Math.abs(huecos[i] - esperado)).toBeLessThanOrEqual(1))
+      expect(Math.max(...huecos)).toBeLessThanOrEqual(31)
+      m.motor.detener()
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

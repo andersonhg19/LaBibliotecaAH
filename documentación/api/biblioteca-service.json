@@ -631,6 +631,17 @@
         ],
         "type" : "object"
       },
+      "PronunciacionEntradaDTO" : {
+        "properties" : {
+          "a" : {
+            "type" : "string"
+          },
+          "de" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ResultDTO" : {
         "properties" : {
           "correct" : {
@@ -1807,6 +1818,80 @@
         ]
       }
     },
+    "/v1/ejemplares/{ejemplarId}/pronunciacion" : {
+      "get" : {
+        "operationId" : "ver",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Diccionario de pronunciacion del libro ({entradas: [{de, a}], regenerando})",
+        "tags" : [
+          "Pronunciacion"
+        ]
+      },
+      "put" : {
+        "operationId" : "guardar",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "ejemplarId",
+            "required" : true,
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "items" : {
+                  "$ref" : "#/components/schemas/PronunciacionEntradaDTO"
+                },
+                "type" : "array"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Sustituye el diccionario entero ([{\"de\": \"Hermione\", \"a\": \"Jermáyoni\"}], hasta 200; [] = vaciar) y regenera los capitulos ya listos que contienen alguna palabra cambiada",
+        "tags" : [
+          "Pronunciacion"
+        ]
+      }
+    },
     "/v1/estado-casa" : {
       "get" : {
         "operationId" : "estado_1",
@@ -2754,6 +2839,10 @@
     {
       "description" : "Retomar exactamente donde lo dejaste, en cualquier dispositivo",
       "name" : "Progreso"
+    },
+    {
+      "description" : "Como dice la voz las palabras de un libro",
+      "name" : "Pronunciacion"
     },
     {
       "description" : "Minutos leidos y escuchados, por dia y en rachas",

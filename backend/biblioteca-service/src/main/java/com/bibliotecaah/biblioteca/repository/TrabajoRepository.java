@@ -28,6 +28,21 @@ public interface TrabajoRepository {
      * y de las precargas (20), pero antes de las conversiones nuevas (100 van en otro hilo).
      */
     int PRIORIDAD_PREPARAR_LIBRO = 40;
+    /**
+     * (B17) Regenerar un capitulo YA LISTO porque cambio el diccionario de
+     * pronunciacion: detras de lo que alguien escucha (10) y de las precargas
+     * (20), delante de "preparar el libro" (40). Si alguien pide ese capitulo,
+     * priorizarVoz lo sube a 10 como a cualquier otro.
+     */
+    int PRIORIDAD_REGENERAR = 30;
+
+    /**
+     * (B17) Fragmento SQL (un parametro: archivo_id) que da {"pronunciacion": [{de, a}...]}
+     * con el diccionario del archivo, o {} si no tiene: se mezcla (||) en el payload de VOZ_CAPITULO.
+     */
+    String PRONUNCIACION_DEL_ARCHIVO = "COALESCE((SELECT jsonb_build_object('pronunciacion', "
+            + "jsonb_agg(jsonb_build_object('de', p.de, 'a', p.a) ORDER BY lower(p.de))) "
+            + "FROM bah_lib_pronunciacion p WHERE p.archivo_id = ? HAVING count(*) > 0), '{}'::jsonb)";
 
     UUID encolarConversion(UUID archivoId);
 
@@ -94,4 +109,26 @@ public interface TrabajoRepository {
 
     /** (C6) true si un capitulo que alguien espera (prioridad <= 10) lleva mas de {@code minutos} sin empezar. */
     boolean vozUrgenteAtascada(int minutos);
+
+    // ------------------------------------------------------------------ B17: diccionario de pronunciacion
+
+    /** (voz_id, capitulo) de los audios LISTO de ese archivo. */
+    java.util.List<Map<String, Object>> audiosListos(UUID archivoId);
+
+    /** (voz_id, capitulo) de los trabajos de voz EN_CURSO con latido de ese archivo (se generan con el diccionario viejo). */
+    java.util.List<Map<String, Object>> vozEnCurso(UUID archivoId);
+
+    /** Los trabajos de voz PENDIENTES del archivo pasan a llevar el diccionario actual. Devuelve cuantos. */
+    int actualizarPronunciacionEnCola(UUID archivoId);
+
+    /**
+     * Encola la regeneracion de un capitulo (payload con "regenerar": true y el
+     * diccionario actual) si no hay ya uno PENDIENTE de ese capitulo y voz. El
+     * estado de bah_lib_audio NO cambia: el audio viejo sigue LISTO y sonando
+     * hasta que el taller deja el nuevo. true si lo encolo.
+     */
+    boolean encolarRegeneracion(UUID archivoId, String vozId, int capitulo);
+
+    /** Trabajos de regeneracion vivos (PENDIENTE o EN_CURSO con latido) de ese archivo. */
+    int regenerando(UUID archivoId);
 }

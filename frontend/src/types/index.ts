@@ -425,6 +425,18 @@ export interface PreparacionLibroDTO {
   error: number
 }
 
+/** B17 · Una palabra del diccionario de pronunciación del libro: cómo está escrita y cómo la dice la voz. */
+export interface EntradaPronunciacion {
+  de: string
+  a: string
+}
+
+/** B17 · GET/PUT /v1/ejemplares/{id}/pronunciacion: el diccionario del libro y cuántos capítulos se rehacen. */
+export interface PronunciacionDTO {
+  entradas: EntradaPronunciacion[]
+  regenerando: number
+}
+
 /** 0.4.0 · GET /v1/estado-casa (contrato C6). */
 export interface EstadoCasaDTO {
   taller: 'OK' | 'LENTO' | 'CAIDO'

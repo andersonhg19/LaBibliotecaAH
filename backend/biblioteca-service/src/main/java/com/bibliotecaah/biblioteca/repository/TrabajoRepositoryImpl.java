@@ -45,9 +45,11 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
                         + "AND (estado IN ('LISTO', 'ERROR') OR (estado = 'GENERANDO' AND actualizado > " + HACE_UN_RATO + ")))",
                 Integer.class, VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, vozId, capitulo);
         if (vivos != null && vivos > 0) return false;
+        /* (B17) el payload lleva el diccionario de pronunciacion del libro, si tiene */
         jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
-                        + "VALUES (?, ?, ?, jsonb_build_object('vozId', ?::text, 'capitulo', ?::int), ?)",
-                UUID.randomUUID(), VOZ_CAPITULO, archivoId, vozId, capitulo, prioridad);
+                        + "VALUES (?, ?, ?, jsonb_build_object('vozId', ?::text, 'capitulo', ?::int) || "
+                        + PRONUNCIACION_DEL_ARCHIVO + ", ?)",
+                UUID.randomUUID(), VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, prioridad);
         log.info("Encolada voz {} capitulo {} del archivo {} (prioridad {})", vozId, capitulo, archivoId, prioridad);
         return true;
     }
@@ -170,5 +172,47 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
                         + "AND estado = 'PENDIENTE' AND prioridad <= ? AND creado < now() - make_interval(mins => ?))",
                 Boolean.class, VOZ_CAPITULO, PRIORIDAD_CAPITULO_PEDIDO, minutos);
         return Boolean.TRUE.equals(atascada);
+    }
+
+    // ------------------------------------------------------------------ B17
+
+    @Override
+    public List<Map<String, Object>> audiosListos(UUID archivoId) {
+        return jdbc.queryForList("SELECT voz_id, capitulo FROM bah_lib_audio WHERE archivo_id = ? AND estado = 'LISTO' "
+                + "ORDER BY capitulo, voz_id", archivoId);
+    }
+
+    @Override
+    public List<Map<String, Object>> vozEnCurso(UUID archivoId) {
+        return jdbc.queryForList("SELECT DISTINCT payload->>'vozId' AS voz_id, (payload->>'capitulo')::int AS capitulo "
+                + "FROM bah_lib_trabajo WHERE tipo = ? AND archivo_id = ? AND estado = 'EN_CURSO' "
+                + "AND actualizado > " + HACE_UN_RATO, VOZ_CAPITULO, archivoId);
+    }
+
+    @Override
+    public int actualizarPronunciacionEnCola(UUID archivoId) {
+        return jdbc.update("UPDATE bah_lib_trabajo SET payload = (payload - 'pronunciacion') || "
+                + PRONUNCIACION_DEL_ARCHIVO + " WHERE tipo = ? AND archivo_id = ? AND estado = 'PENDIENTE'",
+                archivoId, VOZ_CAPITULO, archivoId);
+    }
+
+    @Override
+    public boolean encolarRegeneracion(UUID archivoId, String vozId, int capitulo) {
+        int n = jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
+                        + "SELECT ?, ?, ?, jsonb_build_object('vozId', ?::text, 'capitulo', ?::int, 'regenerar', true) || "
+                        + PRONUNCIACION_DEL_ARCHIVO + ", ? WHERE NOT EXISTS (SELECT 1 FROM bah_lib_trabajo t "
+                        + "WHERE t.tipo = ? AND t.archivo_id = ? AND t.estado = 'PENDIENTE' "
+                        + "AND t.payload->>'vozId' = ? AND (t.payload->>'capitulo')::int = ?)",
+                UUID.randomUUID(), VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, PRIORIDAD_REGENERAR,
+                VOZ_CAPITULO, archivoId, vozId, capitulo);
+        if (n > 0) log.info("Encolada la regeneracion de la voz {} capitulo {} del archivo {}", vozId, capitulo, archivoId);
+        return n > 0;
+    }
+
+    @Override
+    public int regenerando(UUID archivoId) {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM bah_lib_trabajo WHERE tipo = ? AND archivo_id = ? "
+                + "AND payload->>'regenerar' = 'true' AND " + VIVO, Integer.class, VOZ_CAPITULO, archivoId);
+        return Objects.requireNonNullElse(n, 0);
     }
 }

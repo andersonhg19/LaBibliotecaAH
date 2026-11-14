@@ -9,6 +9,7 @@ import type {
   ComentarioDTO,
   EjemplarDTO,
   EjemplarDetalleDTO,
+  EntradaPronunciacion,
   EstadoAudioDTO,
   EstadoCasaDTO,
   EstanteDTO,
@@ -20,6 +21,7 @@ import type {
   Pestana,
   PreparacionLibroDTO,
   ProgresoDTO,
+  PronunciacionDTO,
   ResultDTO,
   TipoEjemplar,
   TraduccionCapituloDTO,
@@ -173,6 +175,26 @@ export const preparacionService = {
     const r = await api.get<ResultDTO<PreparacionLibroDTO>>(`${B}/voz/preparar-libro`, {
       params: { ejemplarId, vozId },
     })
+    return r.data
+  },
+}
+
+/**
+ * B17 · «CÓMO SE PRONUNCIA»: el diccionario de pronunciación del libro (es del libro, no de la persona: el audio se
+ * comparte). GET/PUT como las rutas de voz por capítulo. Guardar sustituye la lista entera.
+ */
+export const pronunciacionService = {
+  obtener: async (ejemplarId: string): Promise<ResultDTO<PronunciacionDTO>> => {
+    const r = await api.get<ResultDTO<PronunciacionDTO>>(
+      `${B}/ejemplares/${encodeURIComponent(ejemplarId)}/pronunciacion`,
+    )
+    return r.data
+  },
+  guardar: async (ejemplarId: string, entradas: EntradaPronunciacion[]): Promise<ResultDTO<PronunciacionDTO>> => {
+    const r = await api.put<ResultDTO<PronunciacionDTO>>(
+      `${B}/ejemplares/${encodeURIComponent(ejemplarId)}/pronunciacion`,
+      entradas,
+    )
     return r.data
   },
 }

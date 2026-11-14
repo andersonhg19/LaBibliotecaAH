@@ -105,18 +105,19 @@ class ReglasDeArquitecturaTest {
 
         /**
          * (0.4.0) Excepciones DOCUMENTADAS a "todo es POST": las fija el contrato compartido
-         * con la web (contratos C3-C6). Siguen devolviendo el ResultDTO.
+         * con la web (contratos C3-C6 y B17). Siguen devolviendo el ResultDTO.
          */
         private static final Set<String> NO_POST_POR_CONTRATO = Set.of(
                 "CapituloVozController.cambiar", "CapituloVozController.soloHistoria",
-                "SesionController.resumen", "VozController.preparacion", "EstadoCasaController.estado");
+                "SesionController.resumen", "VozController.preparacion", "EstadoCasaController.estado",
+                "PronunciacionController.ver", "PronunciacionController.guardar");
 
         @Test
         @DisplayName("todo endpoint devuelve ResponseEntity<ResultDTO> y es POST (salvo binarios y las excepciones del contrato 0.4.0)")
         void todoDevuelveElContrato() {
             List<String> culpables = new ArrayList<>();
             List<Class<?>> controllers = clasesDe(RAIZ + ".controller", true);
-            assertThat(controllers).hasSize(13); // (0.4.0) + CapituloVoz, Sesion y EstadoCasa
+            assertThat(controllers).hasSize(14); // (0.4.0) + CapituloVoz, Sesion, EstadoCasa y Pronunciacion (B17)
             for (Class<?> c : controllers) {
                 for (Method m : c.getDeclaredMethods()) {
                     boolean esPost = m.isAnnotationPresent(PostMapping.class);

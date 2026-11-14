@@ -5,6 +5,31 @@
 
 ## Cambios
 
+### v1.8 — 2026-11-14 (0.4.0 ronda 3: diccionario de pronunciación por libro, B17; todo aditivo)
+Flyway **V7** (solo una tabla nueva): `bah_lib_pronunciacion(archivo_id, de varchar(80), a varchar(120), usuario_id,
+PK(archivo_id, de))`, índice único sobre `(archivo_id, lower(de))`, `ON DELETE CASCADE` con el archivo.
+- El diccionario es **del libro (archivo)**, no de la persona: el audio se comparte por archivo y voz, así que dos
+  ejemplares del mismo archivo (de dos personas) ven y editan el mismo diccionario.
+- `GET /v1/ejemplares/{ejemplarId}/pronunciacion` → `{entradas: [{de, a}], regenerando}` (ordenado por palabra sin
+  mayúsculas; `regenerando` = trabajos de regeneración vivos de ese archivo).
+- `PUT /v1/ejemplares/{ejemplarId}/pronunciacion` cuerpo = **la lista completa** `[{"de": "Hermione", "a": "Jermáyoni"}]`
+  (sustituye todo; `[]` = vaciarlo) → lo mismo que el GET. Validación (120): como mucho **200** entradas
+  (`demasiadasPronunciaciones`); `de` 1–80 caracteres con alguna letra o cifra, `a` 1–120, sin caracteres de control ni
+  saltos de línea (`pronunciacionInvalida`, con la posición); palabras repetidas sin distinguir mayúsculas
+  (`pronunciacionDuplicada`); sin cuerpo o cuerpo que no es una lista → `cuerpoInvalido` / `campoTipoInvalido`. Se
+  recortan los espacios. Ejemplar ajeno o inexistente → 102 `libroNoEncontrado`; deseo (sin archivo) → 120
+  `libroSinArchivo`. GET/PUT: excepción documentada a «todo es POST», como C3.
+- **Payload de VOZ_CAPITULO**: todo trabajo de voz que encola biblioteca-service lleva `"pronunciacion": [{de, a}]` si
+  el archivo tiene diccionario (sin diccionario, el payload es el de siempre). Al guardar, los trabajos PENDIENTES del
+  archivo pasan a llevar el diccionario nuevo.
+- **Regenerar al cambiarlo**: con las palabras que cambian (añadidas, quitadas o con otra pronunciación) se buscan, en
+  el texto que lee la voz (`frases/cap-NNN.json`, campo `voz`), los capítulos con audio `LISTO` (o generándose ahora
+  con el diccionario viejo) que contienen alguna; si ese texto no se puede leer, se regenera por si acaso. Para cada
+  uno (y cada voz) se encola `VOZ_CAPITULO` con `"regenerar": true` y prioridad **30** (si no hay ya uno PENDIENTE de
+  ese capítulo y voz). **`bah_lib_audio` sigue `LISTO`**: el audio viejo suena hasta que el taller sustituye los m4a y
+  `tiempos.json` (escritura atómica) y deja `LISTO` con la duración nueva. Si el capítulo se pide mientras espera, sube
+  a prioridad 10 como cualquier otro. El texto mostrado y el resaltado no cambian.
+
 ### v1.7 — 2026-11-14 (0.4.0: capítulos clasificados, voz por capítulo, sesiones de lectura, preparar el libro, estado de la casa)
 Todo es **aditivo** y retrocompatible: los libros ya convertidos (estructura v1) y los clientes viejos siguen igual.
 Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
@@ -539,6 +564,8 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 | PUT `/v1/ejemplares/{ejemplarId}/capitulos/voz` (v1.7) | `{soloHistoria: boolean}` | `[CapituloDTO]` |
 | POST `/v1/voz/preparar-libro` (v1.7) | `{ejemplarId, vozId}` | `{total, listos, enCola, error, encolados}` (prioridad 40; idempotente) |
 | GET `/v1/voz/preparar-libro?ejemplarId=&vozId=` (v1.7) | — | `{total, listos, enCola, error}` |
+| GET `/v1/ejemplares/{ejemplarId}/pronunciacion` (v1.8, B17) | — | `{entradas: [{de, a}], regenerando}` |
+| PUT `/v1/ejemplares/{ejemplarId}/pronunciacion` (v1.8, B17) | `[{de, a}]` (lista completa, ≤ 200) | `{entradas, regenerando}`; regenera los capítulos LISTO con alguna palabra cambiada (prioridad 30) |
 | POST `/v1/sesiones/latido` (v1.7) | `{ejemplarId, modo, sesionId?, capitulo?, posicion?, segundos (0..120), dispositivo?}` | `{sesionId, segundosTotales}` |
 | GET `/v1/sesiones/resumen?desde=&hasta=` (v1.7) | — | `{desde, hasta, minutosLectura, minutosVoz, dias, rachaActual, rachaMaxima, libros}` |
 | GET `/v1/estado-casa` (v1.7) | — | `{taller, traductor, disco, colaVoz, mensaje}` (caché 15 s) |
@@ -758,10 +785,25 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
   español, «7:30 a. m.» → «siete y media de la mañana», «5 p. m.» → «cinco de la tarde».
 - `cap-NNN.tiempos.json` gana `"versionAudio": 2` y `"envolvente": {"hz": 10, "v": [0..100]}` (energía RMS en dB
   normalizada del audio 1x, un valor cada 100 ms; para la 2x se toman de dos en dos). Ausentes = audio anterior a 0.4.0.
-- payload VOZ_CAPITULO opcional `"pronunciacion": [{"de": "Hermione", "a": "Jermáyoni"}, …]` (≤ 500 reglas de ≤ 100
-  caracteres; palabra entera, sin distinguir mayúsculas; las más largas primero). Solo cambia lo que se dice. El audio es
+- payload VOZ_CAPITULO opcional `"pronunciacion": [{"de": "Hermione", "a": "Jermáyoni"}, …]` (≤ 500 reglas; `de` ≤ 100
+  caracteres y `a` ≤ 120; palabra entera, sin distinguir mayúsculas; las más largas primero). Solo cambia lo que se dice. El audio es
   por archivo y voz (no por usuario): biblioteca-service debe mandar el diccionario del LIBRO y, si cambia, regenerar.
 - Caché: la clave sigue siendo sha1(texto que se manda + voz + versión del motor) y la versión del motor NO cambia: solo
   las frases cuyo texto cambia con la capa nueva se vuelven a pedir. El audio ya generado (m4a LISTO) no se regenera:
   sigue sonando como antes (volumen y pausas de 0.3.3) hasta que se regenere ese capítulo.
+- (Ronda 3, B17) payload VOZ_CAPITULO opcional **`"regenerar": true`**: si el capítulo ya tiene audio (1x, 2x y
+  tiempos), el taller NO pasa `bah_lib_audio` a GENERANDO ni escribe partes: genera el nuevo con el diccionario del
+  payload, sustituye los archivos de forma atómica y deja LISTO con la duración nueva. Si falla, el audio anterior sigue
+  LISTO (no se marca ERROR ni PENDIENTE). Sin audio que conservar, es una generación normal.
+- (Ronda 3, R2-1) Espacio de ancho cero: se decide **por tramo**, no por párrafo. Una racha de 3 o más palabras unidas
+  solo por ZWSP se separa con espacio aunque el resto de la frase tenga espacios normales o duros; un ZWSP suelto
+  dentro de una palabra («Pala‹ZWSP›bras») se quita. Mismo criterio en el lector (conversión) y en la voz.
+- (Ronda 3) Teléfonos sin «+» leídos por grupos: 3-3-4 («300 123 4567», «604 444 5566», también con puntos),
+  3-3-2-2 y 3-2-2-2 («601 234 56 78», «912 34 56 78»); 3-3-3 («912 345 678») solo tras «teléfono», «tel.», «móvil»,
+  «llama al»… (suelto puede ser una cantidad con espacios de miles). Años seguidos, páginas y cantidades no cambian.
+- (Ronda 3, R2-2) **Sonoridad del m4a final**: además del pico, se mide la sonoridad de cada variante (1x y 2x) y, si
+  se aparta más de 0,5 LU de −18 en un capítulo de ≥ 3 s, se recodifica corrigiendo a la vez la ganancia (lo que
+  falte) y el techo del limitador (lo que sobre de pico), hasta 4 pruebas, sin pasar de +6 dB ni bajar el techo de
+  −10 dBFS. Lo que entra al AAC va en s16 (en coma flotante, el AAC de la 2x subía el pico hasta +7 dB). La voz
+  multilingüe con que se lee un libro en otro idioma se calibra aparte (`edge.en-US-AndrewMultilingualNeural`…).
 
