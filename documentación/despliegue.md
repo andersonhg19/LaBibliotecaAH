@@ -11,7 +11,7 @@ Oh Churus corre en el mismo equipo y **no se toca**: la biblioteca usa proyecto,
 | Compose y `.env` | `C:\srv\biblioteca-ah\` (el `.env` solo existe allí; nunca en git) |
 | Libros, EPUB normalizados, audio, portadas | `E:\LaBibliotecaAH\datos` → `/datos` (**sin respaldo**, ver «Respaldos») |
 | Base de datos | volumen Docker `biblioteca-ah_bah-postgres-data` |
-| Respaldos | `D:\respaldos\biblioteca\AAAA-MM-DD_HHMM\` + `respaldo.log` (disco USB) y espejo en `C:\respaldos-espejo\biblioteca\` (disco interno) |
+| Respaldos | `D:\respaldos\biblioteca\AAAA-MM-DD_HHMM\` + `respaldo.log` (disco USB), espejo en `C:\respaldos-espejo\biblioteca\` (disco interno) y copia del log en `C:\srv\biblioteca-ah\respaldo.log` |
 | Vigía | tarea `BibliotecaAH-Vigia` cada 10 min → `C:\srv\biblioteca-ah\vigia.log` + notificación de Windows |
 | Web | `https://casa.tail60fcb5.ts.net:7050` → `127.0.0.1:3100` (solo tailnet) |
 | API (gateway) | `https://casa.tail60fcb5.ts.net:7051` → `127.0.0.1:8920` (solo tailnet) |
@@ -20,13 +20,37 @@ Puertos locales (todos en 127.0.0.1): postgres 5433, gateway 8920, auth 8921, bi
 Eureka (discovery, 8860) ya **no** se publica en el host desde la 0.4.0: solo lo usan los servicios por la red del
 compose. Oh Churus usa 3000/5432/8760/8820-8823 y Tailscale 7000/7001.
 
-Límites de CPU por contenedor (`CPUS_*` del `.env`; por defecto Java 1,5 · postgres 2 · taller 2 · traductor 4 ·
-web 0,5). **QA** pone en su `.env` valores más bajos para no competir con producción: `CPUS_JAVA=0.75`,
-`CPUS_POSTGRES=0.5`, `CPUS_TALLER=1`, `CPUS_TRADUCTOR=1`, `CPUS_WEB=0.25`. Todos los contenedores llevan
+Versiones (0.4.0): backend Java 17 con **Spring Boot 3.5.16 / Spring Cloud 2025.0.3** (trae Flyway 11: por eso
+auth-service y biblioteca-service llevan también `flyway-database-postgresql`), web construida con **Node 22.23.5**
+(imagen fijada por digest; la misma línea que el CI y `.nvmrc`), postgres 14.15.
+
+Límites de CPU por contenedor (`CPUS_*` del `.env`). Son **techos**, no reservas: un contenedor en reposo no gasta
+nada. El PC tiene 12 hilos; cada uno de los 4 servicios Java tiene su propio `CPUS_JAVA`.
+
+| `.env` | `CPUS_JAVA` (×4) | `CPUS_POSTGRES` | `CPUS_TALLER` | `CPUS_TRADUCTOR` | `CPUS_WEB` | techo total |
+|---|---|---|---|---|---|---|
+| Producción (= valores por defecto del compose) | 1.5 | 2 | 2 | 4 | 0.5 | 14,5 |
+| QA (más bajo, para no competir con producción) | 0.75 | 0.5 | 1 | 1 | 0.25 | 5,75 |
+
+Producción: el traductor necesita 4 porque `TRADUCTOR_HILOS=4`, y el taller 2 para la voz (edge-tts + ffmpeg). QA:
+son los valores con los que se levantó la 0.3.3 entera (8/8 healthy en ~1 min); más bajo no se ha probado (Spring
+Boot arranca mucho más despacio con medio núcleo y se arriesgan los reintentos de los healthchecks). Líneas para `C:\srv\biblioteca-ah-qa\.env` (se aplican al
+recrear QA con `up -d`):
+
+```
+CPUS_JAVA=0.75
+CPUS_POSTGRES=0.5
+CPUS_TALLER=1
+CPUS_TRADUCTOR=1
+CPUS_WEB=0.25
+```
+
+En producción no hace falta añadir nada; si se quieren explícitos: `CPUS_JAVA=1.5`, `CPUS_POSTGRES=2`,
+`CPUS_TALLER=2`, `CPUS_TRADUCTOR=4`, `CPUS_WEB=0.5`. Todos los contenedores llevan
 `no-new-privileges` y `cap_drop: [ALL]` (postgres recupera solo CHOWN, DAC_OVERRIDE, FOWNER, SETGID y SETUID para su
 arranque). Probado el 2026-11-14 levantando la 0.3.3 entera así: 8/8 healthy, login, catálogo, taller y traductor.
 
-## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11 , la 0.3.0, la 0.3.1, la 0.3.2 y la 0.3.3 el 2026-11-12)
+## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11 , la 0.3.0, la 0.3.1, la 0.3.2 y la 0.3.3 el 2026-11-12; la 0.4.0 lleva además su orden propio, abajo)
 
 Con `TAG` ya cambiado en `C:\srv\biblioteca-ah\.env`, desde la consola (Git Bash):
 
@@ -47,8 +71,37 @@ ssh casa "$C up -d --no-build"
 ssh casa "$C ps --format '{{.Service}} {{.Status}}'; curl.exe -s http://127.0.0.1:8920/actuator/health; curl.exe -s http://127.0.0.1:8926/salud; curl.exe -s -o NUL -w ' web %{http_code}' http://127.0.0.1:3100/"
 ```
 
-`main` está protegida: solo entra lo que tiene el check de CI en verde, así que el paso 0a debería dar siempre
-`success`; si da otra cosa (o nada, porque el commit no está subido), se para.
+Cuando `main` esté protegida (se aplica después de integrar la 0.4.0; hasta entonces **no** lo está) solo entrará lo
+que tenga los 5 checks del CI en verde y el paso 0a debería dar siempre `success`. Mientras tanto el 0a es la única
+barrera: si da otra cosa (o nada, porque el commit no está subido), se para.
+
+### Despliegue de la 0.4.0 (orden recomendado)
+
+Cambia mucho por debajo (Spring Boot 3.5 con Flyway 11, Node 22, compose con límites de CPU y sin puerto de Eureka)
+y trae la migración **V6** de `biblioteca_db`, solo aditiva: crea `bah_lib_capitulo_voz` y `bah_lib_sesion` y un
+índice (`auth_db` no cambia). En orden:
+
+1. **Antes**, en casa, copiar los scripts nuevos de operación (el `respaldo.ps1` de `C:\srv\biblioteca-ah` es el
+   viejo): `Copy-Item <repo>\ops\respaldo.ps1, <repo>\ops\vigia.ps1, <repo>\ops\instalar-vigia.ps1 C:\srv\biblioteca-ah\`.
+2. Pasos 0a, 0b y **1** de arriba. La última línea de `C:\srv\biblioteca-ah\respaldo.log` tiene que ser
+   `RESUMEN: ... espejo OK ...`; anotar la carpeta `D:\respaldos\biblioteca\AAAA-MM-DD_HHMM`: es la vuelta atrás
+   del camino B.
+3. `.env`: `Copy-Item C:\srv\biblioteca-ah\.env C:\srv\biblioteca-ah\.env.antes-0.4.0` y cambiar solo `TAG=0.4.0`
+   (los `CPUS_*` tienen valor por defecto; `PUERTO_DISCOVERY` ya no se usa y se puede quitar).
+4. Pasos 2, 3 y 4 (construir, levantar, humo). Con el compose nuevo se **recrean todos** los contenedores (cambian
+   cpus y capacidades). En el log de biblioteca-service debe salir `Migrating schema "public" to version "6 - voz por
+   capitulo y sesiones"` y después `Started`.
+5. **Reclasificar la estructura** de los libros ya convertidos (sección «Reclasificar la estructura», una vez).
+6. Instalar el vigía (sección «Vigía») y comprobar `OK: biblioteca-ah sano, ...` en `vigia.log`.
+7. Ya integrada y desplegada: aplicar la protección de `main` (comando en el informe de la rama `ops`).
+
+**Vuelta atrás 0.4.0 → 0.3.3 (camino A, sin tocar la base):** `Copy-Item .env.antes-0.4.0 .env` (o `TAG=0.3.3`) y
+repetir el paso 3. **Verificado** el 2026-11-14: la imagen `bah/biblioteca-service:0.3.3` (Flyway 9) arranca sobre
+la base con la V6 real que dejó la 0.4.0 (Flyway 11), en un postgres desechable con el respaldo de QA 0.4.0 →
+`Successfully validated 6 migrations`, `Current version of schema "public": 6`, `Started`. Las tablas de la V6 se
+quedan sin usar (preferencias de voz y sesiones se conservan para cuando se vuelva a la 0.4.0). La `estructura.json`
+v2 que deja la reclasificación la lee también la 0.3.3 (solo usa `capitulos[]`, cuyos campos se conservan). Con el
+compose viejo Eureka vuelve a publicarse en 8860. Solo si la 0.4.0 estropeó datos: camino B con el respaldo del paso 2.
 
 ## Volver atrás
 
@@ -99,6 +152,28 @@ Probado el 2026-11-14 en un postgres desechable con el respaldo de QA y una V6 s
 fila de Flyway): tras el camino B la base tiene sus 14 tablas, Flyway `1 2 3 4 5`, zona `America/Bogota`, ningún
 resto de la V6, y volver a aplicar la V6 no choca. La base `*_antes_*` se borra a mano (`dropdb`) cuando ya no haga
 falta.
+
+## Reclasificar la estructura tras desplegar la 0.4.0 (una vez; se puede repetir sin riesgo)
+
+Los libros convertidos antes de la 0.4.0 tienen `estructura.json` v1 (sin tipo ni región de capítulo ni `enVoz`):
+todos sus capítulos van en voz y sin numerar. Tras levantar la 0.4.0, una cuenta **ADMIN** pide la reclasificación,
+igual que el relleno de géneros (crear antes el `login-admin.json` temporal como en el paso 1 de la sección
+siguiente):
+
+```bash
+T=$(ssh casa "curl.exe -s -X POST http://127.0.0.1:8920/AUTH-SERVICE/biblioteca/v1/auth/login -H 'Content-Type: application/json' --data-binary '@C:\srv\biblioteca-ah\login-admin.json'" | sed -E 's/.*"token":"([^"]+)".*/\1/')
+ssh casa "curl.exe -s -X POST http://127.0.0.1:8920/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/reclasificar-estructura -H 'Authorization: Bearer $T'"
+# -> {"correct":true,...,"object":{"archivosEncolados":N,"yaReclasificados":0,"yaEnCola":0,"sinEstructura":M}}
+ssh casa 'Remove-Item C:\srv\biblioteca-ah\login-admin.json'
+```
+
+Qué hace: encola un trabajo `RECLASIFICAR_ESTRUCTURA` (prioridad 200, detrás de cualquier conversión o voz) por cada
+archivo `LISTO` cuya `estructura.json` no es v2. El taller lee el original y reescribe `estructura.json` a v2
+**conservando** índice, título, href y palabras de cada capítulo: nunca cambia el número de capítulos (progreso,
+notas y audio intactos; comprobado en QA sobre 309 libros sin un solo cambio en esos datos). Idempotente: con los
+trabajos pendientes responde `archivosEncolados: 0` y `yaEnCola: N`; cuando terminan, `yaReclasificados: N`. Sin rol
+ADMIN → 403; sin `/datos` (E: desconectado) → 503 `datosNoDisponibles`. Volver a llamar al final permite comprobar
+que `archivosEncolados` es 0.
 
 ## Relleno de géneros tras desplegar la v1.4 (una vez; se puede repetir sin riesgo)
 
@@ -196,8 +271,15 @@ línea por petición con número de textos, caracteres, idiomas y ms; nunca el t
   del **nombre** de la carpeta (las que no siguen el patrón, p. ej. `manual-no-borrar`, no se tocan).
 - Un respaldo que falla **no** deja una carpeta con pinta de buena: se renombra a `AAAA-MM-DD_HHMM-FALLIDO`. Si solo
   falla el espejo, el principal es válido y el log lo dice.
-- La última línea de `respaldo.log` (está en los dos sitios) dice `RESUMEN:` o `FALLA:`; si el respaldo ocupa menos de
-  la mitad que el anterior, el `RESUMEN:` lleva un `AVISO:`. El vigía lee esas líneas.
+- **D: desconectado** (lo más probable: es USB): el dump se hace igual, directamente en el espejo de C:, con su sha256
+  verificado, y el log dice `FALLA: principal: destino D:\respaldos\biblioteca no disponible (...); dump hecho solo
+  en el espejo ... (el espejo SI es valido)`; sale con 1. Ese día hay respaldo (en C:) y el vigía avisa.
+- `respaldo.log` se escribe en D:, en el espejo y **siempre** en `C:\srv\biblioteca-ah\respaldo.log` (`-LogFijo`):
+  la `FALLA:` queda escrita aunque falten los dos discos de respaldo. Su última línea dice `RESUMEN:` o `FALLA:`; si
+  el respaldo ocupa menos de la mitad que el anterior, el `RESUMEN:` lleva un `AVISO:`. El vigía lee los tres logs.
+- Pruebas del script y del vigía (sin Docker ni discos reales: un `docker` falso y una unidad que no existe), desde
+  el repo: `powershell -NoProfile -ExecutionPolicy Bypass -Command "Import-Module Pester; Invoke-Pester ops\pruebas"`
+  (Pester 3.4, el que trae Windows).
 - **Solo las bases de datos** (unos KB): los libros, el audio y las portadas NO se copian, por decisión de Anderson
   (2026-11-11), para no gastar el almacenamiento del servidor. **Riesgo aceptado**: si se pierde E: (disco USB), se
   pierde la biblioteca; y como el espejo está en el mismo PC, un robo, un rayo o un ransomware se llevan también los
@@ -211,8 +293,10 @@ para que se vean las notificaciones). Solo lee; no reinicia nada. Avisa con una 
 `AVISO [clave]` en `C:\srv\biblioteca-ah\vigia.log` si:
 
 - un contenedor de `biblioteca-ah` falta, no corre, está `unhealthy` o lleva más de 10 min arrancando;
-- el último respaldo es `FALLA:`, trae `AVISO:` o tiene más de 26 h;
-- C:, D: o E: tienen menos del 10 % o de 20 GB libres, o D:/E: no están conectados;
+- el último respaldo (la línea más reciente de los tres `respaldo.log`: D:, espejo y `C:\srv\biblioteca-ah`) es
+  `FALLA:`, trae `AVISO:` o tiene más de 26 h;
+- C:, D: o E: tienen menos del 10 % o de 20 GB libres, o D:/E: no están conectados (el log de respaldo de un disco
+  desconectado se salta sin errores; si ese disco no está en `-Discos`, avisa `respaldo-<letra>`);
 - no existe `E:\LaBibliotecaAH\datos`;
 - 7050/7051 no están en `tailscale serve` o aparecen en **Funnel** (internet público).
 
