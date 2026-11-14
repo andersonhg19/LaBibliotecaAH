@@ -709,7 +709,7 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
   nunca entra en la caché; uno truncado de antes se descarta al leerlo.
 - Volumen −18 LUFS integrado, pico ≤ −1,5 dBTP, 1x y 2x; la 2x se hace desde el PCM. Silencios internos ≤ 0,40 s.
   (Arreglos B10/B8) El limitador trabaja sobremuestreado ×4 (techo −3 dBFS) y el pico verdadero se MIDE en cada m4a final
-  (1x y 2x): la variante que pase de −1,5 dBTP se recodifica con el techo más bajo (hasta 3 veces). El silencio interno se
+  (1x y 2x): la variante que pase de −1,5 dBTP se recodifica (hasta 4 candidatos: techo más bajo y, si pierde > 1 LU, algo más de ganancia) y se queda la que cumple y suena más fuerte. El silencio interno se
   mide por energía, también en las colas de las palabras que mete edge, y se deja en 0,36 s.
 - (V-NUEVO-2) Un libro cuyo idioma (`estructura.json` → `idioma`, normalizado: «en-US», «English», «eng» → en) no es
   español y lo lee la voz multilingüe de edge (en, fr, de, it, pt, la, ca, gl, eu, nl, pl, ru, uk, el, ja, zh, ko, ar,
