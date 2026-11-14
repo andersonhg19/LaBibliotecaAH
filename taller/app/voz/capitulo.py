@@ -44,7 +44,7 @@ from ..dominio.modelo import ErrorDefinitivo, ErrorReintentable, TrabajoCancelad
 from ..dominio.voces import genero_de
 from . import audio, volumen
 from .alineacion import alinear_palabras
-from .lectura import Lectura, preparar_lectura, sin_letras_no_latinas, voz_multilingue
+from .lectura import Lectura, idioma_de_libro, preparar_lectura, sin_letras_no_latinas, voz_multilingue
 from .motor import FraseSinAudio, MotorDeVoz, Sintesis, audio_truncado
 
 log = logging.getLogger(__name__)
@@ -61,7 +61,14 @@ PAUSA_TITULO = 1.00
 PAUSA_ANTES_TITULO = 1.00
 SILENCIO_INICIO = 0.40
 SILENCIO_INTERNO_MAX = 0.40
-UMBRAL_COMPACTAR = 0.45
+# (B8) lo que se deja de un silencio interno largo: algo menos del máximo (margen para la ventana de 10 ms con que se
+# busca el silencio y para quien lo mida con otro umbral)
+SILENCIO_INTERNO_DEJAR = 0.36
+# huecos entre los tiempos de dos palabras por encima de esto se miran por energía: edge mete la cola del silencio
+# dentro de las palabras («¿Vienes?» acaba 0,1–0,2 s después de que deje de sonar), así que un hueco de tiempos de
+# 0,40 s puede ser un silencio audible de 0,6 s (validación 0.4.0, B8)
+UMBRAL_COMPACTAR = 0.10
+CHASQUIDO_MAX = 2  # ventanas de 10 ms con algo de sonido que se toleran dentro de un silencio (un clic, un respiro)
 # Versión del audio que se escribe en tiempos.json: 2 = pausas, volumen (−18 LUFS), 2x desde el PCM, envolvente
 VERSION_AUDIO = 2
 ENVOLVENTE_HZ = 10
@@ -180,12 +187,51 @@ def pausa_tras(frase: dict) -> float:
     return PAUSA_FRASE
 
 
+def _silenciosa(muestras: array.array[int], i: int) -> bool:
+    ventana = muestras[i : i + VENTANA_SILENCIO]
+    return not ventana or max(map(abs, ventana)) <= UMBRAL_SILENCIO
+
+
+def _silencio_en_hueco(muestras: array.array[int], a: int, b: int, tope_a: int, tope_b: int) -> tuple[int, int] | None:
+    """Tramo silencioso (en muestras) que contiene el hueco [a, b) entre dos palabras, buscado por energía: parte de
+    la ventana silenciosa más cercana al centro del hueco y crece hacia los dos lados (entrando en las colas de las
+    palabras, nunca más allá de `tope_a`/`tope_b`) tolerando chasquidos de hasta CHASQUIDO_MAX ventanas."""
+    w = VENTANA_SILENCIO
+    centro = (a + b) // 2
+    inicio = None
+    for d in range(0, max(b - a, w) // 2 + w, w):
+        for i in (centro - d, centro + d):
+            if tope_a <= i and i + w <= tope_b and _silenciosa(muestras, i):
+                inicio = i
+                break
+        if inicio is not None:
+            break
+    if inicio is None:
+        return None
+    izq, malas, i = inicio, 0, inicio - w
+    while i >= tope_a and malas <= CHASQUIDO_MAX:
+        if _silenciosa(muestras, i):
+            izq, malas = i, 0
+        else:
+            malas += 1
+        i -= w
+    der, malas, i = inicio + w, 0, inicio + w
+    while i + w <= tope_b and malas <= CHASQUIDO_MAX:
+        if _silenciosa(muestras, i):
+            der, malas = i + w, 0
+        else:
+            malas += 1
+        i += w
+    return izq, der
+
+
 def compactar_internos(
     datos: bytes, palabras: list[tuple[str, float, float]]
 ) -> tuple[bytes, list[tuple[str, float, float]]]:
-    """Recorta a SILENCIO_INTERNO_MAX los silencios entre dos palabras de una misma frase que pasan de
-    UMBRAL_COMPACTAR (V-04: edge deja 0,86 s tras «?» o «!» en «—¿Vienes? —preguntó ella—»). Solo quita muestras que
-    de verdad son silencio y desplaza las palabras siguientes, así los tiempos siguen siendo exactos."""
+    """Recorta a SILENCIO_INTERNO_DEJAR los silencios entre dos palabras de una misma frase que pasan de
+    SILENCIO_INTERNO_MAX (V-04/B8: edge deja 0,6–0,86 s tras «?» o «!» en «—¿Vienes? —preguntó ella—»). El silencio se
+    mide por energía, también dentro de las colas de las palabras. Solo quita muestras que de verdad son silencio y
+    desplaza los tiempos de las palabras, así siguen siendo exactos y en orden."""
     if len(palabras) < 2:
         return datos, palabras
     f, bps = audio.FRECUENCIA, audio.BYTES_POR_MUESTRA
@@ -195,16 +241,17 @@ def compactar_internos(
     if sys.byteorder != "little":
         muestras.byteswap()
     cortes: list[tuple[int, int]] = []
+    maximo, dejar = round(SILENCIO_INTERNO_MAX * f), round(SILENCIO_INTERNO_DEJAR * f / 2)
     for prev, sig in itertools.pairwise(palabras):
         if sig[1] - prev[2] <= UMBRAL_COMPACTAR:
             continue
-        ini = round((prev[2] + SILENCIO_INTERNO_MAX / 2) * f)
-        fin = round((sig[1] - SILENCIO_INTERNO_MAX / 2) * f)
-        if fin <= ini or fin > n:
-            continue
-        if max((abs(x) for x in muestras[ini:fin]), default=0) > UMBRAL_SILENCIO:
-            continue  # hay algo (respiración, sonido): no se toca
-        cortes.append((ini, fin))
+        # nunca más allá de la mitad de cada palabra (ni del corte anterior)
+        tope_a = max(round((prev[1] + prev[2]) / 2 * f), cortes[-1][1] if cortes else 0)
+        tope_b = min(round((sig[1] + sig[2]) / 2 * f), n)
+        tramo = _silencio_en_hueco(muestras, round(prev[2] * f), round(sig[1] * f), tope_a, tope_b)
+        if tramo is None or tramo[1] - tramo[0] <= maximo:
+            continue  # hay algo (respiración, sonido) o ya es corto: no se toca
+        cortes.append((tramo[0] + dejar, tramo[1] - dejar))
     if not cortes:
         return datos, palabras
     salida = bytearray()
@@ -213,10 +260,12 @@ def compactar_internos(
         salida += datos[cursor * bps : ini * bps]
         cursor = fin
     salida += datos[cursor * bps : n * bps]
-    nuevas: list[tuple[str, float, float]] = []
-    for texto, a, b in palabras:
-        quitado = sum(fin - ini for ini, fin in cortes if fin <= round(a * f)) / f
-        nuevas.append((texto, a - quitado, b - quitado))
+
+    def quitado_antes(t: float) -> float:
+        s = round(t * f)
+        return sum(max(0, min(fin, s) - ini) for ini, fin in cortes) / f
+
+    nuevas = [(texto, a - quitado_antes(a), b - quitado_antes(b)) for texto, a, b in palabras]
     return bytes(salida), nuevas
 
 
@@ -496,11 +545,12 @@ class Manifiesto:
 
 
 def _idioma_libro(rutas: Rutas, archivo_id: str) -> str | None:
-    """Idioma del libro (estructura.json): decide si se buscan frases en otro idioma. Nunca lanza."""
+    """Idioma del libro (estructura.json) si no es español y la voz multilingüe lo lee: entonces TODO el libro va con
+    esa voz (V-NUEVO-2); si es español (o no se sabe), se buscan frases sueltas en otro idioma. Nunca lanza."""
     try:
         datos = json.loads((rutas.normalizados(archivo_id) / "estructura.json").read_text(encoding="utf-8"))
         idioma = datos.get("idioma")
-        return str(idioma).lower()[:2] if idioma else None
+        return idioma_de_libro(str(idioma)) if idioma else None
     except (OSError, ValueError, AttributeError):
         return None
 

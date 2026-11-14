@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import array
 import json
+import logging
 import math
 import os
 import re
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from ..dominio.mensajes import Msj
 from ..dominio.modelo import ErrorReintentable
+
+log = logging.getLogger(__name__)
 
 FRECUENCIA = 24000
 BYTES_POR_MUESTRA = 2
@@ -68,19 +72,28 @@ def duracion_pcm(pcm_bytes: int) -> float:
 
 # (0.4.0) Volumen (V-05): ganancia fija por capítulo + limitador de picos. `latency=1` compensa el retardo del
 # limitador (mismas muestras y en el mismo sitio: los tiempos no cambian) y `level=0` evita que reajuste el nivel.
-# El techo de muestra va 1 dB por debajo del objetivo de pico verdadero (−1,5 dBTP): el AAC sube algo los picos.
+# (B10) El limitador trabaja SOBREMUESTREADO ×4 (así ve los picos entre muestras: el pico verdadero) con el techo
+# 1,5 dB por debajo del objetivo (−1,5 dBTP), porque el AAC de 48 kbps aún sube los picos; y después se MIDE el pico
+# verdadero del m4a final: si pasa del objetivo, esa variante se recodifica con el techo más bajo.
 LUFS_OBJETIVO = -18.0
 PICO_OBJETIVO_DBTP = -1.5
-TECHO_MUESTRA_DB = -2.5
+TECHO_MUESTRA_DB = -3.0
 COMPENSACION_2X_DB = 0.6
+SOBREMUESTREO = 4
+MARGEN_REINTENTO_DB = 0.5  # cuánto más se baja el techo, además de lo que sobró, al recodificar
+MAX_RECODIFICACIONES = 3
 
 
-def filtro_volumen(ganancia_db: float | None) -> str | None:
-    """Cadena de filtros ffmpeg: ganancia + limitador sin retardo. None = sin tocar el volumen."""
+def filtro_volumen(ganancia_db: float | None, techo_db: float = TECHO_MUESTRA_DB) -> str | None:
+    """Cadena de filtros ffmpeg: ganancia + limitador sobremuestreado sin retardo. None = sin tocar el volumen."""
     if ganancia_db is None:
         return None
-    techo = 10 ** (TECHO_MUESTRA_DB / 20)
-    return f"volume={ganancia_db:.2f}dB,alimiter=limit={techo:.4f}:level=0:latency=1:attack=5:release=50"
+    techo = 10 ** (techo_db / 20)
+    alto = FRECUENCIA * SOBREMUESTREO
+    return (
+        f"volume={ganancia_db:.2f}dB,aresample={alto},"
+        f"alimiter=limit={techo:.4f}:level=0:latency=1:attack=5:release=50,aresample={FRECUENCIA}"
+    )
 
 
 def _entrada_pcm(ruta_pcm: Path) -> list[str]:
@@ -94,10 +107,12 @@ def _salida_aac(destino: Path) -> list[str]:
     ]
 
 
-def codificar_m4a(ruta_pcm: Path, salida: Path, ganancia_db: float | None = None) -> None:
+def codificar_m4a(
+    ruta_pcm: Path, salida: Path, ganancia_db: float | None = None, techo_db: float = TECHO_MUESTRA_DB
+) -> None:
     """PCM → AAC-LC mono 48 kbps en .m4a con moov al principio (faststart). Escritura atómica."""
     tmp = _temporal(salida)
-    filtro = filtro_volumen(ganancia_db)
+    filtro = filtro_volumen(ganancia_db, techo_db)
     _ejecutar(
         ["ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm)]
         + (["-af", filtro] if filtro else [])
@@ -106,9 +121,45 @@ def codificar_m4a(ruta_pcm: Path, salida: Path, ganancia_db: float | None = None
     os.replace(tmp, salida)
 
 
+def _codificar_2x(ruta_pcm: Path, salida: Path, ganancia_db: float | None, techo_db: float) -> None:
+    """Solo la variante 2x (para recodificarla con otro techo)."""
+    tmp = _temporal(salida)
+    filtro = filtro_volumen(ganancia_db, techo_db)
+    cadena = (filtro + "," if filtro else "") + "atempo=2.0"
+    if filtro:
+        cadena += "," + str(filtro_volumen(COMPENSACION_2X_DB, techo_db))
+    _ejecutar(["ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm), "-af", cadena, *_salida_aac(tmp)])
+    os.replace(tmp, salida)
+
+
 def codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia_db: float | None = None) -> None:
     """(0.4.0) El capítulo a 1x y a 2x en una sola pasada y AMBOS desde el PCM (V-14): la 2x ya no se recodifica
-    desde el AAC de la 1x (una pérdida menos) y los dos llevan el mismo volumen. Escritura atómica."""
+    desde el AAC de la 1x (una pérdida menos) y los dos llevan el mismo volumen. Escritura atómica.
+    (B10) Después se mide el pico verdadero de cada m4a y la variante que pase de PICO_OBJETIVO_DBTP se recodifica
+    con el techo del limitador más bajo (como mucho MAX_RECODIFICACIONES veces; nunca falla por esto)."""
+    _codificar_1x_y_2x(ruta_pcm, salida_1x, salida_2x, ganancia_db)
+    if ganancia_db is None:
+        return
+    variantes: list[tuple[Path, Callable[[float], None]]] = [
+        (salida_1x, lambda techo: codificar_m4a(ruta_pcm, salida_1x, ganancia_db, techo)),
+        (salida_2x, lambda techo: _codificar_2x(ruta_pcm, salida_2x, ganancia_db, techo)),
+    ]
+    for salida, recodificar in variantes:
+        techo = TECHO_MUESTRA_DB
+        for _ in range(MAX_RECODIFICACIONES):
+            pico = medir_pico_verdadero(salida)
+            if pico is None or pico <= PICO_OBJETIVO_DBTP:
+                break
+            techo -= pico - PICO_OBJETIVO_DBTP + MARGEN_REINTENTO_DB
+            log.info("Pico verdadero %.1f dBTP en %s: se recodifica con el techo a %.1f dB", pico, salida.name, techo)
+            recodificar(techo)
+        else:
+            pico = medir_pico_verdadero(salida)
+            if pico is not None and pico > PICO_OBJETIVO_DBTP:
+                log.warning("%s sigue con el pico verdadero en %.1f dBTP", salida.name, pico)
+
+
+def _codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia_db: float | None = None) -> None:
     tmp1, tmp2 = _temporal(salida_1x), _temporal(salida_2x)
     filtro = filtro_volumen(ganancia_db)
     # atempo deja la 2x ~0,6 LU más baja y crea picos nuevos: se compensa y se vuelve a limitar (medido 2026-11-14)
@@ -128,6 +179,27 @@ def codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia
 
 
 _LUFS = re.compile(r"I:\s+(-?[\d.]+|-inf) LUFS")
+_PICO = re.compile(r"True peak:\s+Peak:\s+(-?[\d.]+|-inf) dBFS")
+
+
+def medir_pico_verdadero(ruta: Path) -> float | None:
+    """(B10) Pico verdadero (dBTP, EBU R128) de un archivo de audio tal cual sonará (el m4a ya codificado); None si
+    no se puede medir."""
+    try:
+        r = subprocess.run(
+            [
+                *("ffmpeg", "-nostats", "-hide_banner", "-nostdin", "-i", str(ruta)),
+                *("-af", "ebur128=peak=true", "-f", "null", "-"),
+            ],
+            capture_output=True,
+            timeout=600,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    hallados = _PICO.findall(r.stderr.decode("utf-8", "replace"))
+    if r.returncode != 0 or not hallados or hallados[-1] == "-inf":
+        return None
+    return float(hallados[-1])
 
 
 def medir_lufs(ruta_pcm: Path, ganancia_db: float | None = None) -> float | None:

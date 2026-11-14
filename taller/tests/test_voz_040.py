@@ -18,6 +18,7 @@ from app.voz.capitulo import (
     PAUSA_PARRAFO,
     PAUSA_TITULO,
     SILENCIO_INICIO,
+    SILENCIO_INTERNO_DEJAR,
     SILENCIO_INTERNO_MAX,
     Ensamblador,
     FraseSintetizada,
@@ -215,8 +216,54 @@ def test_compactar_silencio_interno_de_dialogo():
     m.extend(_voz(0.6))
     palabras = [("Vienes", 0.0, 0.5), ("preguntó", 1.36, 1.96)]
     datos, nuevas = compactar_internos(m.tobytes(), palabras)
-    assert len(datos) / 2 / F == pytest.approx(0.5 + SILENCIO_INTERNO_MAX + 0.6, abs=2e-3)
-    assert nuevas[1][1] - nuevas[0][2] == pytest.approx(SILENCIO_INTERNO_MAX, abs=2e-3)
+    assert len(datos) / 2 / F == pytest.approx(0.5 + SILENCIO_INTERNO_DEJAR + 0.6, abs=0.011)
+    assert nuevas[1][1] - nuevas[0][2] == pytest.approx(SILENCIO_INTERNO_DEJAR, abs=0.011)
+    assert SILENCIO_INTERNO_DEJAR < SILENCIO_INTERNO_MAX
+
+
+def _silencio_mas_largo(datos: bytes, umbral: int = 103) -> float:
+    """Silencio continuo más largo (|muestra| ≤ umbral; 103 ≈ −50 dBFS, como el silencedetect del validador)."""
+    m = array.array("h")
+    m.frombytes(datos)
+    mejor = actual = 0
+    for x in m:
+        actual = actual + 1 if abs(x) <= umbral else 0
+        mejor = max(mejor, actual)
+    return mejor / F
+
+
+def test_b8_silencio_de_dialogo_metido_en_las_colas_de_las_palabras():
+    # validación 0.4.0 (B8): edge alarga «¿Vienes?» con 0,1 s de silencio y adelanta «preguntó» otro tanto, así que el
+    # hueco ENTRE TIEMPOS es de 0,40 s (no se compactaba) pero el silencio que se oye es de 0,59 s
+    m = _voz(0.5)
+    m.extend([0] * round(0.29 * F))
+    m.extend([40, -60, 50] * 80)  # un clic/respiro casi inaudible (−55 dB) a mitad
+    m.extend([0] * round(0.29 * F))
+    m.extend(_voz(0.6))
+    palabras = [("Vienes", 0.0, 0.6), ("preguntó", 1.0, 1.69)]
+    assert _silencio_mas_largo(m.tobytes(), umbral=200) > 0.55
+    datos, nuevas = compactar_internos(m.tobytes(), palabras)
+    assert _silencio_mas_largo(datos) <= SILENCIO_INTERNO_MAX
+    assert len(datos) / 2 / F == pytest.approx(0.5 + SILENCIO_INTERNO_DEJAR + 0.6, abs=0.021)
+    # los tiempos siguen en orden y la palabra siguiente empieza donde suena
+    assert nuevas[0][2] <= nuevas[1][1] and nuevas[1][2] <= len(datos) / 2 / F + 1e-6
+    assert nuevas[1][1] == pytest.approx(0.5 + SILENCIO_INTERNO_DEJAR - 0.09, abs=0.03)
+
+
+def test_b8_tiempos_monotonos_con_varios_cortes():
+    m = array.array("h")
+    palabras = []
+    t = 0.0
+    for k in range(4):
+        m.extend(_voz(0.4))
+        palabras.append((f"p{k}", t, t + 0.5))  # cada palabra «se come» 0,1 s del silencio siguiente
+        m.extend([0] * round(0.7 * F))
+        t += 1.1
+    datos, nuevas = compactar_internos(m.tobytes(), palabras)
+    planos = [x for _p, a, b in nuevas for x in (a, b)]
+    assert planos == sorted(planos)
+    sin_cola = (len(datos) // 2 - round(0.7 * F)) * 2  # el silencio del final no es interno
+    assert _silencio_mas_largo(datos[:sin_cola]) <= SILENCIO_INTERNO_MAX
 
 
 def test_no_compacta_si_hay_sonido_o_el_hueco_es_corto():
@@ -300,6 +347,32 @@ def test_volumen_objetivo_y_pico(tmp_path):
     assert audio.duracion(dos) / audio.duracion(uno) == pytest.approx(0.5, abs=0.005)
     # la calibración queda guardada para la próxima vez
     assert volumen.ganancia(tmp_path / "cache", "edge.nueva") != 3.0
+
+
+@hay_ffmpeg
+@pytest.mark.parametrize(
+    "senal",
+    [
+        r"aevalsrc=0.9*sgn(sin(2*PI*700*t))*lt(mod(t\,0.5)\,0.25):s=24000:d=20",  # cuadrada a ráfagas
+        r"aevalsrc=0.9*(2*mod(t*523\,1)-1):s=24000:d=20",  # diente de sierra
+        r"aevalsrc=0.1*sin(2*PI*300*t)+0.5*lt(mod(t\,1)\,0.003):s=24000:d=30",  # chasquidos
+    ],
+)
+def test_b10_pico_verdadero_del_m4a_final(tmp_path, senal):
+    # validación 0.4.0 (B10): el limitador de MUESTRA a −2,5 dBFS dejaba el m4a final hasta +1,8 dBTP (Alonso 2x);
+    # con señales duras y +6 dB de ganancia salía a +5,7 dBTP. El pico verdadero se mide sobre el m4a, 1x y 2x
+    raw = tmp_path / "x.raw"
+    subprocess.run(
+        [*("ffmpeg", "-v", "error", "-f", "lavfi", "-i", senal), *("-f", "s16le", "-ar", str(F), "-ac", "1", str(raw))],
+        check=True,
+    )
+    uno, dos = tmp_path / "a.m4a", tmp_path / "b.m4a"
+    audio.codificar_1x_y_2x(raw, uno, dos, 6.0)
+    for m4a in (uno, dos):
+        pico = audio.medir_pico_verdadero(m4a)
+        assert pico is not None and pico <= audio.PICO_OBJETIVO_DBTP
+    assert audio.duracion(dos) / audio.duracion(uno) == pytest.approx(0.5, abs=0.005)
+    assert audio.medir_pico_verdadero(tmp_path / "no-existe.m4a") is None
 
 
 def test_ganancia_inicial_por_voz(tmp_path):
