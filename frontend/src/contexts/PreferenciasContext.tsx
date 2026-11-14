@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import { VOZ_POR_DEFECTO } from '@config'
 import { normalizarVelocidad } from '@logica/velocidad'
-import type { ClaveFuenteLector } from '@tema/fuentes'
+import { type ClaveFuenteLector, FUENTES_LECTOR } from '@tema/fuentes'
 import { activarSonidos } from '@utils/sonidos'
 
 /*
@@ -38,6 +38,8 @@ export interface Preferencias {
   modo: ModoLector
   /** Si la persona eligió el modo en este dispositivo; si no, se elige según la ventana (logica de modoLectura). */
   modoElegido?: boolean
+  /** Si eligió el papel; si no, el papel sigue al ambiente (Marfil de día, Noche de noche: UX5-14). */
+  papelElegido?: boolean
 }
 
 export const PREFERENCIAS_INICIALES: Preferencias = {
@@ -75,7 +77,9 @@ export const leerPreferencias = (json: string | null): Preferencias => {
     if (!['marfil', 'pergamino', 'noche'].includes(r.temaPapel)) r.temaPapel = 'noche'
     if (!['paginado', 'continuo', 'libro'].includes(r.modo)) r.modo = 'paginado'
     r.modoElegido = r.modoElegido === true
-    if (!['literata', 'garamond', 'lora'].includes(r.fuente)) r.fuente = 'literata'
+    if (!FUENTES_LECTOR.some((f) => f.clave === r.fuente)) r.fuente = 'literata'
+    /* UX5-14: un papel que no sea Noche se eligió a mano; Noche era el de fábrica y se guardaba sin elegirlo. */
+    r.papelElegido = r.papelElegido === true || (!!g?.temaPapel && r.temaPapel !== 'noche')
     return r
   } catch {
     return PREFERENCIAS_INICIALES
@@ -107,3 +111,7 @@ export const PreferenciasProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   return <PreferenciasContext.Provider value={{ prefs, cambiar, cargadas }}>{children}</PreferenciasContext.Provider>
 }
+
+/** El papel con el que se abre el lector: el elegido o, si no, el del ambiente (UX5-14). */
+export const papelEfectivo = (p: Preferencias, ambienteOscuro: boolean): TemaPapel =>
+  p.papelElegido ? p.temaPapel : ambienteOscuro ? 'noche' : 'marfil'

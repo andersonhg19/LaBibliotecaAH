@@ -33,11 +33,12 @@ import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import Hoja from '@componentes/molecules/Hoja'
 import { elevarAvisos } from '@componentes/organisms/ToastContainer'
-import { usePreferencias } from '@contextos/PreferenciasContext'
+import { papelEfectivo, usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
 import { motor, useVoz } from '@contextos/VozContext'
 import { mensajeDeError } from '@hooks/useCarga'
+import { useLatidoLectura } from '@hooks/useLatidoLectura'
 import { COLORES_RESALTADO, nombreColor } from '@logica/anotaciones'
 import { sePuedeLeer } from '@logica/formato'
 import { decidirReanudacion, describirPosicion } from '@logica/progreso'
@@ -52,13 +53,18 @@ import { reducirMovimiento, web } from '@tema/web'
 import type { AnotacionDTO, EjemplarDetalleDTO, ProgresoDTO } from '@tipos'
 import { estadoElegible } from '@utils/aria'
 import { escucharLibro } from '@utils/escuchar'
+import { useInerte } from '@utils/inerte'
 import { MENSAJES } from '@utils/mensajes'
 import { acotar } from '@utils/motorAudio'
 import { esteDispositivo, guardarProgresoLocal, leerProgresoLocal } from '@utils/progresoLocal'
 import { esquemaNota, validar } from '@validaciones/index'
 
 type Props = NativeStackScreenProps<Rutas, 'Leer'>
-type HojaAbierta = 'indice' | 'ajustes' | 'buscar' | 'nota' | 'anotacion' | 'traducir' | null
+type HojaAbierta = 'indice' | 'ajustes' | 'buscar' | 'nota' | 'anotacion' | 'traducir' | 'mas' | null
+/** F10: dónde quedó lo último que leíste. */
+type EstadoGuardado = 'casa' | 'pendiente' | null
+/** UX5-08: por debajo de este ancho, Buscar y Marcar van al menú «⋯» (el título no cabía). */
+const ANCHO_BARRA_COMPACTA = 360
 
 const CADA_LOCAL = 5000
 const CADA_SERVIDOR = 15000
@@ -76,7 +82,9 @@ function ponerEstilosLector() {
   s.id = 'bah-lector-estilos'
   s.textContent =
     '@keyframes bahCinta{0%{transform:translateY(-100%)}70%{transform:translateY(6%)}100%{transform:translateY(0)}}' +
-    '@keyframes bahMenu{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}'
+    '@keyframes bahMenu{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}' +
+    /* UX5-04: el libro (foliate) también enseña dónde está el foco del teclado. */
+    'foliate-view:focus-visible{outline:2px solid #C9A227;outline-offset:-3px}'
   document.head.appendChild(s)
 }
 
@@ -95,7 +103,7 @@ function ponerEstilosLector() {
  */
 const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   const { id, frase, cfi } = route.params
-  const { colors } = useTheme()
+  const { colors, isDark } = useTheme()
   const { prefs, cambiar } = usePreferencias()
   const { showToast } = useToast()
   const voz = useVoz()
@@ -217,6 +225,30 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [listo, cromo, pistaPendiente])
   const cerrarPista = useCallback(() => setVerPista(false), [])
 
+  /* UX5-04: escondidas, las barras no reciben el foco del teclado; mientras el foco está dentro, no se van. */
+  const barraArriba = useInerte<View>(!cromo)
+  const barraAbajo = useInerte<View>(!cromo)
+  useEffect(() => {
+    if (!listo || Platform.OS !== 'web') return
+    const nodos = [barraArriba.current, barraAbajo.current] as unknown as (HTMLElement | null)[]
+    const entra = () => {
+      if (tCromo.current) clearTimeout(tCromo.current)
+    }
+    const sale = (e: FocusEvent) => {
+      const a = e.relatedTarget as Node | null
+      if (!nodos.some((n) => n && a && n.contains(a))) ocultarLuego(LECTOR_PAPEL.barraSeVaMs)
+    }
+    nodos.forEach((n) => {
+      n?.addEventListener?.('focusin', entra)
+      n?.addEventListener?.('focusout', sale)
+    })
+    return () =>
+      nodos.forEach((n) => {
+        n?.removeEventListener?.('focusin', entra)
+        n?.removeEventListener?.('focusout', sale)
+      })
+  }, [listo, barraArriba, barraAbajo, ocultarLuego])
+
   /* Con una hoja, la selección o el aviso abiertos la barra se queda. */
   const ocupado = !!hoja || !!seleccion || !!ofrecer || vistaPrevia != null
   useEffect(() => {
@@ -238,16 +270,42 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   const tServidor = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ultimoServidor = useRef(0)
 
+  /* F10: el sello «Guardado en casa» / «Se guardará al volver la red» dice lo que pasó de verdad. */
+  const [guardado, setGuardado] = useState<EstadoGuardado>(null)
   const subir = useCallback(() => {
     const p = ultimo.current
     if (!p) return
     ultimoServidor.current = Date.now()
-    progresoService.guardar(p).catch((e) => console.warn('[lector]', MENSAJES.progresoFallo, e))
+    progresoService
+      .guardar(p)
+      .then((r) => setGuardado(r && r.correct === false ? 'pendiente' : 'casa'))
+      .catch((e) => {
+        setGuardado('pendiente')
+        console.warn('[lector]', MENSAJES.progresoFallo, e)
+      })
   }, [])
+  /* Sin red, lo pendiente se sube en cuanto vuelve. */
+  useEffect(() => {
+    if (guardado !== 'pendiente' || Platform.OS !== 'web' || typeof window === 'undefined') return
+    const alVolver = () => subir()
+    window.addEventListener('online', alVolver)
+    return () => window.removeEventListener('online', alVolver)
+  }, [guardado, subir])
+
+  /* C4: el latido de la sesión de LECTURA (no cuenta mientras la voz lee este libro: eso es escucha). */
+  const ubicRef = useRef<Ubicacion | null>(null)
+  const { actividad } = useLatidoLectura(listo ? id : null, () => {
+    const u = ubicRef.current
+    const m = motor.obtener()
+    if (!u || (m.libro?.ejemplarId === id && m.fase === 'reproduciendo')) return null
+    return { capitulo: u.capitulo, posicion: u.fraccion }
+  })
 
   const lugar = useRef<Lugar | null>(null)
   const alReubicar = useCallback(
     (u: Ubicacion) => {
+      ubicRef.current = u
+      if (u.porUsuario) actividad()
       setUbic(u)
       setSeleccion(null)
       const ahora = { cfi: u.cfi, fraccion: u.fraccion }
@@ -285,7 +343,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
         }, espera)
       }
     },
-    [id, subir],
+    [id, subir, actividad],
   )
 
   useEffect(() => {
@@ -504,7 +562,8 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
   }
 
   // ---------------------------------------------------------------- derivados
-  const papel = PAPELES[prefs.temaPapel]
+  const temaPapel = papelEfectivo(prefs, isDark)
+  const papel = PAPELES[temaPapel]
   /* «Traducir» y «Ver en español» solo si el libro no está en español (QA RW-06). */
   const traducible = ofrecerTraduccion(libro?.idioma, info.idioma)
   const vozAqui = voz.libro?.ejemplarId === id && voz.fase !== 'inactivo'
@@ -549,7 +608,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 
   /* El modo de esta ventana (Pasar páginas · Hojas · Libro abierto): lo elegido o, si no, el que le va. */
   const modo = modoEfectivo(prefs, width, height)
-  const prefsLector = useMemo(() => ({ ...prefs, modo }), [prefs, modo])
+  const prefsLector = useMemo(() => ({ ...prefs, modo, temaPapel }), [prefs, modo, temaPapel])
   const traduccionLector = useMemo(() => ({ modo: modoTr, frases: frasesTr }), [modoTr, frasesTr])
   const suave = reducirMovimiento() ? {} : { transition: 'transform 280ms ease, opacity 280ms ease' }
   const pieAbajo = hayMini ? ALTO_MINI : 0
@@ -675,6 +734,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* Barra de arriba: vive en el margen del libro y se va sola. */}
       <View
+        ref={barraArriba}
         aria-hidden={!cromo}
         pointerEvents={cromo ? 'auto' : 'none'}
         style={[
@@ -705,9 +765,22 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text numberOfLines={1} style={[styles.titulo, { color: papel.tinta }]}>
             {libro.titulo}
           </Text>
-          <Text numberOfLines={1} style={[styles.sub, { color: papel.tinta }]}>
-            {ubic?.etiqueta || ' '}
-          </Text>
+          <View style={styles.filaSub}>
+            <Text numberOfLines={1} style={[styles.sub, styles.flex, { color: papel.tinta }]}>
+              {ubic?.etiqueta || ' '}
+            </Text>
+            {guardado ? (
+              <Text
+                numberOfLines={1}
+                style={[styles.sello, { color: papel.tinta }]}
+                accessibilityLabel={guardado === 'casa' ? 'Guardado en casa' : 'Sin red: se guardará al volver la red'}
+                accessibilityLiveRegion="polite"
+                testID="sello-guardado"
+              >
+                {guardado === 'casa' ? '✓ En casa' : '⏳ Al volver la red'}
+              </Text>
+            ) : null}
+          </View>
         </View>
         <BotonIcono
           icono="indice"
@@ -716,20 +789,32 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
           onPress={() => setHoja('indice')}
           testID="abrir-indice"
         />
-        <BotonIcono
-          icono="search"
-          etiqueta="Buscar en el libro"
-          color={papel.tinta}
-          onPress={() => setHoja('buscar')}
-        />
-        <BotonIcono
-          icono="bookmark"
-          etiqueta={marcadorAqui ? 'Quitar el marcador de esta página' : 'Marcar esta página'}
-          color={marcadorAqui ? LECTOR_PAPEL.cinta : papel.tinta}
-          activo={!!marcadorAqui}
-          onPress={alternarMarcador}
-          testID="marcar-pagina"
-        />
+        {width < ANCHO_BARRA_COMPACTA ? (
+          <BotonIcono
+            icono="more"
+            etiqueta="Más: buscar y marcar"
+            color={papel.tinta}
+            onPress={() => setHoja('mas')}
+            testID="lector-mas"
+          />
+        ) : (
+          <>
+            <BotonIcono
+              icono="search"
+              etiqueta="Buscar en el libro"
+              color={papel.tinta}
+              onPress={() => setHoja('buscar')}
+            />
+            <BotonIcono
+              icono="bookmark"
+              etiqueta={marcadorAqui ? 'Quitar el marcador de esta página' : 'Marcar esta página'}
+              color={marcadorAqui ? LECTOR_PAPEL.cinta : papel.tinta}
+              activo={!!marcadorAqui}
+              onPress={alternarMarcador}
+              testID="marcar-pagina"
+            />
+          </>
+        )}
         <BotonIcono
           icono="texto"
           etiqueta="Letra, papel y márgenes"
@@ -959,6 +1044,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* Barra de abajo: el capítulo (‹ anterior · dónde vas · siguiente ›) y el avance del libro. También se va sola. */}
       <View
+        ref={barraAbajo}
         aria-hidden={!cromo}
         pointerEvents={cromo ? 'auto' : 'none'}
         style={[
@@ -1101,6 +1187,21 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
         ))}
       </Hoja>
 
+      {/* UX5-08: en 320 px, Buscar y Marcar viven aquí. */}
+      <Hoja visible={hoja === 'mas'} titulo="Más" onCerrar={() => setHoja(null)}>
+        <Button title="Buscar en el libro" icono="search" variant="secondary" onPress={() => setHoja('buscar')} />
+        <Button
+          title={marcadorAqui ? 'Quitar el marcador de esta página' : 'Marcar esta página'}
+          icono="bookmark"
+          variant="secondary"
+          onPress={() => {
+            setHoja(null)
+            alternarMarcador()
+          }}
+          testID="marcar-pagina-mas"
+        />
+      </Hoja>
+
       {/* Letra, papel, márgenes. */}
       <Hoja visible={hoja === 'ajustes'} titulo="Leer a tu manera" onCerrar={() => setHoja(null)}>
         <AppText variant="label">Cómo leer</AppText>
@@ -1116,8 +1217,8 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
               key={k}
               rol="radio"
               etiqueta={PAPELES[k].nombre}
-              activo={prefs.temaPapel === k}
-              onPress={() => cambiar({ temaPapel: k })}
+              activo={temaPapel === k}
+              onPress={() => cambiar({ temaPapel: k, papelElegido: true })}
             />
           ))}
         </View>
@@ -1360,6 +1461,8 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
 }
 
 const styles = StyleSheet.create({
+  filaSub: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sello: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs, opacity: 0.85, flexShrink: 0 },
   flex: { flex: 1 },
   arriba: {
     flexDirection: 'row',
