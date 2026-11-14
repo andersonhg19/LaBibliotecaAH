@@ -47,6 +47,18 @@ export function saludo(fecha: Date = new Date()): string {
   return 'Buenas noches'
 }
 
+/*
+ * E8 (validación web r2): con el «+» en la cabecera (SE, 320) «Mi biblioteca» se cortaba («Mi bibliote…»).
+ * Ahí el título se encoge hasta caber entero en lo que dejan el escudo y los tres botones de 44 px (en < 360 px
+ * el escudo se quita) y no baja de 16 px. Unos 0,6 em por letra en la fuente de los títulos (13 letras).
+ */
+export const ESCUDO_CON_MAS = 32
+export function tituloCompactoConMas(ancho: number): { tamano: number; conEscudo: boolean } {
+  const conEscudo = ancho >= 360
+  const disponible = ancho - 24 - 3 * 44 - 4 * 8 - (conEscudo ? ESCUDO_CON_MAS : 0)
+  return { tamano: Math.max(16, Math.min(28, Math.floor(disponible / 7.8))), conEscudo }
+}
+
 /** Cabecera compacta: en el teléfono y en cualquier pantalla baja (horizontal, UX-12). */
 export const usaCabeceraCompacta = (ancho: number, alto: number) => ancho < 600 || alto < 520
 
@@ -207,9 +219,10 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
     </Pressable>
   )
 
+  const conMas = masEnCabecera ? tituloCompactoConMas(width) : null
   const cabecera = compacta ? (
     <View style={[styles.compacta, horizontal && styles.compactaBaja]} testID="cabecera-compacta">
-      <Escudo tamano={horizontal ? 32 : 40} />
+      {conMas ? conMas.conEscudo ? <Escudo tamano={ESCUDO_CON_MAS} /> : null : <Escudo tamano={horizontal ? 32 : 40} />}
       <View style={horizontal ? undefined : styles.flex}>
         {!horizontal ? (
           <Text style={[styles.saludoCompacto, { color: colors.textSecondary }]} numberOfLines={1}>
@@ -219,8 +232,15 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
         ) : null}
         <AppText
           variant="display"
-          style={horizontal || width < 360 ? styles.nombreBajo : styles.nombreCompacto}
+          style={
+            conMas
+              ? { fontSize: conMas.tamano, lineHeight: Math.round(conMas.tamano * 1.18) }
+              : horizontal || width < 360
+                ? styles.nombreBajo
+                : styles.nombreCompacto
+          }
           numberOfLines={1}
+          testID="titulo-biblioteca"
         >
           Mi biblioteca
         </AppText>

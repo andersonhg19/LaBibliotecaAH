@@ -8,7 +8,7 @@ import { esNoche, leerModo } from '@contextos/ThemeContext'
 import { cuentaDePestana, plural, seAplico, tiempoRestante } from '@logica/formato'
 import { AIRE_LOMO, CUEROS, DORADOS, GROSOR_MIN, capacidadBalda, dimensionesLomo, posturas } from '@logica/lomos'
 import { FILTRO_NOTAS_INICIAL, citaParaCompartir, filtrarGrupos, porFecha, totalNotas } from '@logica/notas'
-import { usaCabeceraCompacta } from '@pantallas/biblioteca/BibliotecaScreen'
+import { tituloCompactoConMas, usaCabeceraCompacta } from '@pantallas/biblioteca/BibliotecaScreen'
 import { extremosDeAnios } from '@pantallas/biblioteca/Catalogo'
 import { cajones } from '@pantallas/biblioteca/DocumentosScreen'
 import { columnasDeMueble, filasDeModulos } from '@pantallas/biblioteca/Estanteria'
@@ -395,5 +395,20 @@ describe('Pulido: el mueble se adapta al contenido', () => {
   it('la lámpara del PC es 1,5 veces la del teléfono', () => {
     expect(anchoLampara(true, true)).toBe(198)
     expect(anchoLampara(false, true)).toBe(132)
+  })
+})
+
+describe('E8 (validación web r2): «Mi biblioteca» entero con el «+» en la cabecera', () => {
+  it('se encoge hasta caber en 320 y SE (sin bajar de 16 px) y en 320 se quita el escudo', () => {
+    const anchoTexto = (px: number) => 'Mi biblioteca'.length * px * 0.6
+    for (const ancho of [320, 340, 359, 375]) {
+      const { tamano, conEscudo } = tituloCompactoConMas(ancho)
+      const disponible = ancho - 24 - 3 * 44 - 4 * 8 - (conEscudo ? 32 : 0)
+      expect(tamano).toBeGreaterThanOrEqual(16)
+      expect(anchoTexto(tamano)).toBeLessThanOrEqual(disponible)
+    }
+    expect(tituloCompactoConMas(320).conEscudo).toBe(false)
+    expect(tituloCompactoConMas(375)).toEqual({ tamano: 19, conEscudo: true })
+    expect(tituloCompactoConMas(1000).tamano).toBe(28)
   })
 })
