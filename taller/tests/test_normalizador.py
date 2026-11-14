@@ -49,6 +49,9 @@ def test_voz_titulos_y_abreviaturas():
 def test_voz_quita_notas_al_pie():
     assert preparar_voz("Como dijo Borges[12], el libro.") == "Como dijo Borges, el libro."
     assert preparar_voz("Una nota¹ aquí.") == "Una nota aquí."
+    # (V-NUEVO-6) tras una letra suelta es una potencia
+    assert preparar_voz("Comió x² de pan y a³.") == "Comió x al cuadrado de pan y a al cubo."
+    assert preparar_voz("Una palabra² con nota.") == "Una palabra con nota."
     texto = "Leyó el libro1."
     assert preparar_voz(texto, excluidos={13}) == "Leyó el libro."
 

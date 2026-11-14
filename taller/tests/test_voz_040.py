@@ -375,6 +375,34 @@ def test_b10_pico_verdadero_del_m4a_final(tmp_path, senal):
     assert audio.medir_pico_verdadero(tmp_path / "no-existe.m4a") is None
 
 
+def test_b10_se_queda_el_candidato_que_cumple_el_pico_y_suena_mas(tmp_path, monkeypatch):
+    salida = tmp_path / "cap-000-2x.m4a"
+    salida.write_bytes(b"original")
+    # medidas: original (pico alto) → c0 cumple pero pierde 2 LU → c1 más ganancia: pico alto → c2 cumple y suena bien
+    medidas = iter([(-18.0, 0.5), (-20.0, -3.0), (-19.0, 0.2), (-18.6, -2.0)])
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: next(medidas))
+    pedidos: list[tuple[float, float]] = []
+
+    def recodificar(destino, g, techo):
+        pedidos.append((round(g, 2), round(techo, 2)))
+        destino.write_bytes(f"{g:.2f}/{techo:.2f}".encode())
+
+    audio._ajustar_picos(salida, recodificar, 3.0)
+    assert pedidos == [(3.0, -5.5), (4.0, -5.5), (4.0, -7.7)]
+    assert salida.read_bytes() == b"4.00/-7.70"
+    assert list(tmp_path.iterdir()) == [salida]  # los candidatos se borran
+
+
+def test_b10_si_ningun_candidato_cumple_queda_el_original(tmp_path, monkeypatch):
+    real = audio.medir_m4a
+    salida = tmp_path / "cap-000.m4a"
+    salida.write_bytes(b"original")
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: (-18.0, 0.0))
+    audio._ajustar_picos(salida, lambda d, g, t: d.write_bytes(b"x"), 3.0)
+    assert salida.read_bytes() == b"original" and list(tmp_path.iterdir()) == [salida]
+    assert real(tmp_path / "no-existe.m4a") == (None, None)
+
+
 def test_ganancia_inicial_por_voz(tmp_path):
     assert volumen.ganancia(tmp_path, "edge.es-CO-GonzaloNeural") == 4.8
     assert volumen.ganancia(tmp_path, "edge.desconocida") == volumen.GANANCIA_POR_DEFECTO

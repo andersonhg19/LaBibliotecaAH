@@ -289,6 +289,13 @@ def _construir_reglas() -> list[_Regla]:
         )
     )
     reglas.append(_Regla(r"(?<=\d)[¹²³⁰⁴-⁹]+", lambda m: f" elevado a {m.group(0).translate(_SUPERINDICES)}"))
+    # tras una letra suelta es una potencia, no una nota: «x²» → «x al cuadrado» (V-NUEVO-6)
+    reglas.append(
+        _Regla(
+            r"(?<![^\W\d_])([A-Za-z])([²³])(?!\w)",
+            lambda m: f"{m.group(1)} al {'cuadrado' if m.group(2) == '²' else 'cubo'}",
+        )
+    )
     reglas.append(_Regla(r"[¹²³⁰⁴-⁹]+", lambda m: ""))
     # 2) "Capítulo IV", "Parte II" (en títulos y en el texto)
     reglas.append(_Regla(rf"(?<!\w){_PALABRAS_TITULO}\s+({_ROMANO})\b", lambda m: _rom_cardinal(m, 1), grupo=1))

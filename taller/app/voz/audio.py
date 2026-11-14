@@ -81,7 +81,8 @@ TECHO_MUESTRA_DB = -3.0
 COMPENSACION_2X_DB = 0.6
 SOBREMUESTREO = 4
 MARGEN_REINTENTO_DB = 0.5  # cuánto más se baja el techo, además de lo que sobró, al recodificar
-MAX_RECODIFICACIONES = 3
+MAX_RECODIFICACIONES = 4
+TOLERANCIA_LUFS_RECODIFICAR = 1.0  # sonoridad que puede perder una variante al bajarle el techo
 
 
 def filtro_volumen(ganancia_db: float | None, techo_db: float = TECHO_MUESTRA_DB) -> str | None:
@@ -135,28 +136,64 @@ def _codificar_2x(ruta_pcm: Path, salida: Path, ganancia_db: float | None, techo
 def codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia_db: float | None = None) -> None:
     """(0.4.0) El capítulo a 1x y a 2x en una sola pasada y AMBOS desde el PCM (V-14): la 2x ya no se recodifica
     desde el AAC de la 1x (una pérdida menos) y los dos llevan el mismo volumen. Escritura atómica.
-    (B10) Después se mide el pico verdadero de cada m4a y la variante que pase de PICO_OBJETIVO_DBTP se recodifica
-    con el techo del limitador más bajo (como mucho MAX_RECODIFICACIONES veces; nunca falla por esto)."""
+    (B10) Después se mide cada m4a: el AAC de 48 kbps sube los picos hasta 4 dB en algunas voces (Alonso), así que
+    la variante que pase de PICO_OBJETIVO_DBTP se recodifica con el techo del limitador más bajo y, si eso le quita
+    más de 1 LU de sonoridad, con algo más de ganancia (el limitador sigue frenando los picos); se queda la que cumple
+    el pico y suena más fuerte. Como mucho MAX_RECODIFICACIONES pruebas. Nunca falla por esto."""
     _codificar_1x_y_2x(ruta_pcm, salida_1x, salida_2x, ganancia_db)
     if ganancia_db is None:
         return
-    variantes: list[tuple[Path, Callable[[float], None]]] = [
-        (salida_1x, lambda techo: codificar_m4a(ruta_pcm, salida_1x, ganancia_db, techo)),
-        (salida_2x, lambda techo: _codificar_2x(ruta_pcm, salida_2x, ganancia_db, techo)),
+    variantes: list[tuple[Path, Callable[[Path, float, float], None]]] = [
+        (salida_1x, lambda destino, g, techo: codificar_m4a(ruta_pcm, destino, g, techo)),
+        (salida_2x, lambda destino, g, techo: _codificar_2x(ruta_pcm, destino, g, techo)),
     ]
     for salida, recodificar in variantes:
-        techo = TECHO_MUESTRA_DB
-        for _ in range(MAX_RECODIFICACIONES):
-            pico = medir_pico_verdadero(salida)
-            if pico is None or pico <= PICO_OBJETIVO_DBTP:
-                break
-            techo -= pico - PICO_OBJETIVO_DBTP + MARGEN_REINTENTO_DB
-            log.info("Pico verdadero %.1f dBTP en %s: se recodifica con el techo a %.1f dB", pico, salida.name, techo)
-            recodificar(techo)
-        else:
-            pico = medir_pico_verdadero(salida)
+        _ajustar_picos(salida, recodificar, ganancia_db)
+
+
+def _ajustar_picos(salida: Path, recodificar: Callable[[Path, float, float], None], ganancia_db: float) -> None:
+    """Prueba candidatos (techo más bajo si el pico no cumple; algo más de ganancia si cumple pero perdió más de
+    TOLERANCIA_LUFS_RECODIFICAR) y se queda con el que cumple el pico y suena más fuerte. Los picos del AAC no son
+    proporcionales al techo, por eso se miden todos en vez de calcular uno."""
+    lufs, pico = medir_m4a(salida)
+    if pico is None or pico <= PICO_OBJETIVO_DBTP:
+        return
+    referencia = min(lufs, LUFS_OBJETIVO) if lufs is not None else LUFS_OBJETIVO
+    techo, g = TECHO_MUESTRA_DB, ganancia_db
+    mejor: tuple[float, Path] | None = None  # (sonoridad, archivo) del mejor candidato que cumple el pico
+    candidatos: list[Path] = []
+    try:
+        for intento in range(MAX_RECODIFICACIONES):
             if pico is not None and pico > PICO_OBJETIVO_DBTP:
-                log.warning("%s sigue con el pico verdadero en %.1f dBTP", salida.name, pico)
+                techo -= pico - PICO_OBJETIVO_DBTP + MARGEN_REINTENTO_DB
+            elif lufs is not None:
+                g += (referencia - lufs) / 2
+            candidato = salida.with_name(f"{salida.stem}.c{intento}.{uuid.uuid4().hex[:6]}.tmp.m4a")
+            candidatos.append(candidato)
+            log.info(
+                "%s: %.1f LUFS y %.1f dBTP: se prueba con %.1f dB de ganancia y el techo a %.1f dB",
+                salida.name,
+                lufs if lufs is not None else float("nan"),
+                pico if pico is not None else float("nan"),
+                g,
+                techo,
+            )
+            recodificar(candidato, g, techo)
+            lufs, pico = medir_m4a(candidato)
+            if pico is not None and pico <= PICO_OBJETIVO_DBTP:
+                sonoridad = lufs if lufs is not None else -99.0
+                if mejor is None or sonoridad > mejor[0]:
+                    mejor = (sonoridad, candidato)
+                if lufs is None or lufs >= referencia - TOLERANCIA_LUFS_RECODIFICAR:
+                    break
+        if mejor is None:
+            log.warning("%s sigue con el pico verdadero por encima de %.1f dBTP", salida.name, PICO_OBJETIVO_DBTP)
+            return
+        os.replace(mejor[1], salida)
+        log.info("%s queda a %.1f LUFS con el pico verdadero ≤ %.1f dBTP", salida.name, mejor[0], PICO_OBJETIVO_DBTP)
+    finally:
+        for c in candidatos:
+            c.unlink(missing_ok=True)
 
 
 def _codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia_db: float | None = None) -> None:
@@ -185,6 +222,11 @@ _PICO = re.compile(r"True peak:\s+Peak:\s+(-?[\d.]+|-inf) dBFS")
 def medir_pico_verdadero(ruta: Path) -> float | None:
     """(B10) Pico verdadero (dBTP, EBU R128) de un archivo de audio tal cual sonará (el m4a ya codificado); None si
     no se puede medir."""
+    return medir_m4a(ruta)[1]
+
+
+def medir_m4a(ruta: Path) -> tuple[float | None, float | None]:
+    """(B10) (sonoridad integrada LUFS, pico verdadero dBTP) de un archivo de audio ya codificado, en una pasada."""
     try:
         r = subprocess.run(
             [
@@ -195,11 +237,14 @@ def medir_pico_verdadero(ruta: Path) -> float | None:
             timeout=600,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
-    hallados = _PICO.findall(r.stderr.decode("utf-8", "replace"))
-    if r.returncode != 0 or not hallados or hallados[-1] == "-inf":
-        return None
-    return float(hallados[-1])
+        return None, None
+    if r.returncode != 0:
+        return None, None
+    texto = r.stderr.decode("utf-8", "replace")
+    picos, sonoridades = _PICO.findall(texto), _LUFS.findall(texto)
+    pico = float(picos[-1]) if picos and picos[-1] != "-inf" else None
+    lufs = float(sonoridades[-1]) if sonoridades and sonoridades[-1] != "-inf" else None
+    return lufs, pico
 
 
 def medir_lufs(ruta_pcm: Path, ganancia_db: float | None = None) -> float | None:
