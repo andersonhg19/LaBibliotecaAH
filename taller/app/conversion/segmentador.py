@@ -112,17 +112,87 @@ def _agregar(texto: str, a: int, b: int, rangos: list[tuple[int, int]]) -> None:
         rangos.append(sub)
 
 
+# (0.4.0, V-11) Palabras con las que no debe acabar un trozo: se cortaría a mitad de sintagma («…caminó por el |
+# sendero») y la voz cierra cada trozo con entonación de final.
+_NO_FINAL = frozenset(
+    [
+        "el",
+        "la",
+        "los",
+        "las",
+        "lo",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "de",
+        "del",
+        "a",
+        "al",
+        "en",
+        "por",
+        "para",
+        "con",
+        "sin",
+        "sobre",
+        "entre",
+        "hacia",
+        "hasta",
+        "desde",
+        "y",
+        "e",
+        "o",
+        "u",
+        "ni",
+        "que",
+        "su",
+        "sus",
+        "mi",
+        "mis",
+        "tu",
+        "tus",
+        "se",
+        "le",
+        "les",
+        "me",
+        "te",
+        "nos",
+        "muy",
+        "más",
+    ]
+)
+_CONJUNCIONES = re.compile(r" (?=(?:y|e|o|u|ni|pero|aunque|porque|mientras|cuando|donde|sino|pues) )")
+
+
+def _corte_por_espacio(texto: str, desde: int, hasta: int) -> int:
+    """Último espacio en [desde, hasta) que no deja al final del trozo un artículo, preposición o conjunción."""
+    p = texto.rfind(" ", desde, hasta)
+    while p != -1:
+        palabra = texto[texto.rfind(" ", desde, p) + 1 : p].strip(",;:").lower()
+        if palabra not in _NO_FINAL:
+            return p
+        p = texto.rfind(" ", desde, p)
+    return -1
+
+
 def _partir_larga(texto: str, a: int, b: int) -> list[tuple[int, int]]:
     # iterativo: una "frase" de megabytes sin puntuación no debe agotar la pila (antes era recursivo)
     salida: list[tuple[int, int]] = []
     while b - a > MAX_FRASE:
         limite = a + MAX_FRASE
+        desde = a + MAX_FRASE // 3
         corte = -1
-        for separadores in ("; ", ": ", ", ", " "):
-            p = texto.rfind(separadores, a + MAX_FRASE // 3, limite)
+        for separadores in ("; ", ": ", ", "):
+            p = texto.rfind(separadores, desde, limite)
             if p != -1:
                 corte = p + len(separadores.rstrip())
                 break
+        if corte == -1:  # antes de una conjunción («… y …», «… pero …»)
+            conj = [m.start() for m in _CONJUNCIONES.finditer(texto, desde, limite)]
+            if conj:
+                corte = conj[-1]
+        if corte == -1:
+            corte = _corte_por_espacio(texto, desde, limite)
         if corte == -1:
             corte = limite
         fin_izq = corte

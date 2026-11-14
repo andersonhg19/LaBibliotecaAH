@@ -7,7 +7,15 @@ import pytest
 from app.config.rutas import Rutas
 from app.voz import audio
 from app.voz.alineacion import alinear_palabras
-from app.voz.capitulo import PAUSA_FRASE, PAUSA_PARRAFO, PAUSA_TITULO, FraseSintetizada, ensamblar, generar_capitulo
+from app.voz.capitulo import (
+    PAUSA_FRASE,
+    PAUSA_PARRAFO,
+    PAUSA_TITULO,
+    SILENCIO_INICIO,
+    FraseSintetizada,
+    ensamblar,
+    generar_capitulo,
+)
 from app.voz.motor import Sintesis, motor_para
 from tests.conftest import hay_ffmpeg
 
@@ -71,15 +79,17 @@ def test_ensamblar_tiempos_exactos(tmp_path):
 
     t = ensamblar(frases, sint, tmp_path / "x.raw", decodificar_falso, capitulo=0, voz_id="edge.x")
     f = {x["id"]: x for x in t["frases"]}
-    assert f["c000-s00000"]["t0"] == 0 and f["c000-s00000"]["t1"] == 1.0
-    assert f["c000-s00001"]["t0"] == pytest.approx(1.0 + PAUSA_TITULO)
-    assert f["c000-s00001"]["t1"] == pytest.approx(3.0 + PAUSA_TITULO)
-    assert f["c000-s00002"]["t0"] == f["c000-s00002"]["t1"] == pytest.approx(3.0 + PAUSA_TITULO + PAUSA_FRASE)
-    assert f["c000-s00003"]["t0"] == pytest.approx(3.0 + PAUSA_TITULO + PAUSA_FRASE)
-    assert t["duracion"] == pytest.approx(3.5 + PAUSA_TITULO + PAUSA_FRASE)  # sin pausa tras la última
+    i = SILENCIO_INICIO  # (0.4.0) respiro al empezar el capítulo
+    assert f["c000-s00000"]["t0"] == i and f["c000-s00000"]["t1"] == pytest.approx(i + 1.0)
+    assert f["c000-s00001"]["t0"] == pytest.approx(i + 1.0 + PAUSA_TITULO)
+    assert f["c000-s00001"]["t1"] == pytest.approx(i + 3.0 + PAUSA_TITULO)
+    # la frase sin voz queda donde acaba la anterior; la pausa se escribe al llegar la siguiente con voz
+    assert f["c000-s00002"]["t0"] == f["c000-s00002"]["t1"] == pytest.approx(i + 3.0 + PAUSA_TITULO)
+    assert f["c000-s00003"]["t0"] == pytest.approx(i + 3.0 + PAUSA_TITULO + PAUSA_FRASE)
+    assert t["duracion"] == pytest.approx(i + 3.5 + PAUSA_TITULO + PAUSA_FRASE)  # sin pausa tras la última
     assert f["c000-s00001"]["palabras"] == [
-        [0, 3, pytest.approx(1.1 + PAUSA_TITULO), pytest.approx(1.5 + PAUSA_TITULO)],
-        [4, 7, pytest.approx(1.6 + PAUSA_TITULO), pytest.approx(2.0 + PAUSA_TITULO)],
+        [0, 3, pytest.approx(i + 1.1 + PAUSA_TITULO), pytest.approx(i + 1.5 + PAUSA_TITULO)],
+        [4, 7, pytest.approx(i + 1.6 + PAUSA_TITULO), pytest.approx(i + 2.0 + PAUSA_TITULO)],
     ]
     assert (tmp_path / "x.raw").stat().st_size == round(t["duracion"] * audio.FRECUENCIA) * 2
     assert PAUSA_PARRAFO > PAUSA_FRASE

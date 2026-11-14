@@ -65,18 +65,24 @@ def href_toc(nodo: NodoToc) -> str:
     return h + ("#" + nodo.fragmento if nodo.fragmento else "")
 
 
-def _xhtml_capitulo(titulo: str, cuerpo: Elemento, idioma: str) -> str:
+def _xhtml_capitulo(
+    titulo: str, cuerpo: Elemento, idioma: str, tipo: str | None = None, epub_type: str | None = None
+) -> str:
     partes = [escape(cuerpo.text or "")]
     for hijo in cuerpo:
         partes.append(etree.tostring(hijo, encoding="unicode", method="xml", with_tail=True))
     contenido = "".join(partes)
     lang = quoteattr(idioma)
+    # (0.4.0, contratos C1) el tipo de la sección viaja en el EPUB: el epub:type original y el nuestro
+    atributos = (f" epub:type={quoteattr(epub_type)}" if epub_type else "") + (
+        f" data-bah-tipo={quoteattr(tipo)}" if tipo else ""
+    )
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n'
         f'<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" '
         f'xml:lang={lang} lang={lang}>\n<head>\n<meta charset="utf-8"/>\n<title>{escape(titulo)}</title>\n'
         '<link rel="stylesheet" type="text/css" href="estilo.css"/>\n</head>\n'
-        f"<body>\n{contenido}\n</body>\n</html>\n"
+        f"<body{atributos}>\n{contenido}\n</body>\n</html>\n"
     )
 
 
@@ -189,7 +195,9 @@ def toc_efectivo(libro: Libro) -> list[NodoToc]:
     return [NodoToc(c.titulo, i) for i, c in enumerate(libro.capitulos)]
 
 
-def escribir_epub(libro: Libro, destino: Path, archivo_id: str, portada_jpg: bytes | None) -> None:
+def escribir_epub(
+    libro: Libro, destino: Path, archivo_id: str, portada_jpg: bytes | None, tipos: list[str] | None = None
+) -> None:
     uid = f"urn:uuid:{archivo_id}"
     idioma = libro.metadatos.get("idioma") or "es"
     toc = toc_efectivo(libro)
@@ -205,7 +213,8 @@ def escribir_epub(libro: Libro, destino: Path, archivo_id: str, portada_jpg: byt
         poner("OEBPS/toc.ncx", _ncx(toc, uid, libro.metadatos.get("titulo") or "Sin título"))
         poner("OEBPS/estilo.css", CSS)
         for i, cap in enumerate(libro.capitulos):
-            poner(f"OEBPS/{href_capitulo(i)}", _xhtml_capitulo(cap.titulo, cap.cuerpo, idioma))
+            tipo = tipos[i] if tipos and i < len(tipos) else None
+            poner(f"OEBPS/{href_capitulo(i)}", _xhtml_capitulo(cap.titulo, cap.cuerpo, idioma, tipo, cap.epub_type))
         for ruta, (datos, _tipo) in sorted(libro.recursos.items()):
             poner(f"OEBPS/{ruta}", datos, comprimir=False)
         if portada_jpg is not None:

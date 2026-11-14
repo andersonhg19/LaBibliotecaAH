@@ -53,6 +53,7 @@ def test_arranque_con_trabajadores_y_bd_caida_no_tumba_el_servicio(tmp_path, mon
         assert [t["nombre"] for t in cuerpo["trabajadores"]] == [
             "conversion",
             "metadatos",
+            "estructura",
             "voz",
             "voz-2",
             "voz-urgente",

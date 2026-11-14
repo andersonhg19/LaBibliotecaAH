@@ -85,7 +85,7 @@ def romano_a_entero(texto: str) -> int | None:
 
 
 def numero_a_palabras(n: int) -> str:
-    """Cardinal en español para 0..999999."""
+    """Cardinal en español (hasta 999 999 999 999; más allá, las cifras)."""
     if n < 0:
         return "menos " + numero_a_palabras(-n)
     if n < 30:
@@ -100,17 +100,74 @@ def numero_a_palabras(n: int) -> str:
         return _CENTENAS[c * 100] + ("" if r == 0 else " " + numero_a_palabras(r))
     if n < 1_000_000:
         m, r = divmod(n, 1000)
-        if m == 1:
-            pre = "mil"
-        else:
-            pal = numero_a_palabras(m)
-            if pal.endswith("veintiuno"):
-                pal = pal[: -len("veintiuno")] + "veintiún"
-            elif pal.endswith("uno"):
-                pal = pal[:-1]
-            pre = pal + " mil"
+        pre = "mil" if m == 1 else apocopar(numero_a_palabras(m)) + " mil"
+        return pre + ("" if r == 0 else " " + numero_a_palabras(r))
+    if n < 1_000_000_000_000:
+        m, r = divmod(n, 1_000_000)
+        pre = "un millón" if m == 1 else apocopar(numero_a_palabras(m)) + " millones"
         return pre + ("" if r == 0 else " " + numero_a_palabras(r))
     return str(n)
+
+
+def apocopar(palabras: str) -> str:
+    """Delante de un sustantivo masculino: «uno» → «un», «veintiuno» → «veintiún» («veintiún mil», «un dólar»)."""
+    if palabras.endswith("veintiuno"):
+        return palabras[: -len("veintiuno")] + "veintiún"
+    if palabras.endswith("uno"):
+        return palabras[:-1]
+    return palabras
+
+
+def femenino(palabras: str) -> str:
+    """Cardinal delante de un sustantivo femenino: «una», «veintiuna», «doscientas» («la una», «mil doscientas
+    casas»). «mil» y «millones» no cambian."""
+    salida = []
+    for p in palabras.split(" "):
+        if p == "uno":
+            p = "una"
+        elif p == "veintiuno":
+            p = "veintiuna"
+        elif p.endswith("ientos"):
+            p = p[: -len("os")] + "as"
+        salida.append(p)
+    # «veintiún mil» / «un millón» se quedan como están (concuerdan con «mil»/«millón»)
+    return " ".join(salida)
+
+
+_ORD_UNIDADES = ["", "primero", "segundo", "tercero", "cuarto", "quinto", "sexto", "séptimo", "octavo", "noveno"]
+_ORD_DECENAS = [
+    "",
+    "décimo",
+    "vigésimo",
+    "trigésimo",
+    "cuadragésimo",
+    "quincuagésimo",
+    "sexagésimo",
+    "septuagésimo",
+    "octogésimo",
+    "nonagésimo",
+]
+
+
+def ordinal(n: int, genero: str = "m", apocope: bool = False) -> str:
+    """Ordinal en español (1..100): «primero», «segunda», «primer» (apócope), «vigésimo primero». Fuera de rango,
+    el cardinal."""
+    if n == 100:
+        base = "centésimo"
+    elif n == 11:
+        base = "undécimo"
+    elif n == 12:
+        base = "duodécimo"
+    elif 1 <= n < 100:
+        d, u = divmod(n, 10)
+        base = " ".join(p for p in (_ORD_DECENAS[d], _ORD_UNIDADES[u]) if p)
+    else:
+        return numero_a_palabras(n)
+    if genero == "f":
+        return " ".join(p[:-1] + "a" for p in base.split(" "))
+    if apocope and base.endswith(("primero", "tercero")):
+        return base[:-1]
+    return base
 
 
 def ordinal_o_cardinal(n: int) -> str:

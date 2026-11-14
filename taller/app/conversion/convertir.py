@@ -21,10 +21,12 @@ from .desde_pdf import convertir_pdf
 from .desde_pptx import convertir_pptx
 from .desde_txt import convertir_txt
 from .epub_salida import escribir_epub, href_capitulo, href_toc, toc_efectivo
+from .estructura import VERSION_ESTRUCTURA, Entrada, clasificar
 from .formatos import EXTENSIONES_TEXTO, HOJAS, tipo_ole, tipo_zip
 from .frases import contar_palabras, envolver_capitulo
 from .hojas import leer_hoja_de_calculo
 from .idioma import detectar_idioma, muestra
+from .metadatos import normalizar_idioma
 from .normalizador import normalizar_visual
 from .partir import partir_capitulos_largos
 from .portada import a_jpeg
@@ -114,10 +116,24 @@ def _toc_json(nodos: list[NodoToc]) -> list[dict]:
     return [{"titulo": n.titulo, "href": href_toc(n), "hijos": _toc_json(n.hijos)} for n in nodos]
 
 
+def capitulos_con_hijos(toc: list[NodoToc]) -> set[int]:
+    """Capítulos de los que cuelgan otros en el índice (candidatos a «parte»)."""
+    salida: set[int] = set()
+
+    def recorrer(nodos: list[NodoToc]) -> None:
+        for n in nodos:
+            if any(h.capitulo != n.capitulo for h in n.hijos):
+                salida.add(n.capitulo)
+            recorrer(n.hijos)
+
+    recorrer(toc)
+    return salida
+
+
 def _limpiar_textos(libro: Libro) -> None:
     """Metadatos, títulos de capítulo e índice sin caracteres de control (no caben en XML ni en la BD, QA DA-03)."""
     md = libro.metadatos
-    for k in ("titulo", "editorial", "sinopsis", "isbn", "idioma"):
+    for k in ("titulo", "subtitulo", "editorial", "sinopsis", "isbn", "idioma"):
         if isinstance(md.get(k), str):
             md[k] = normalizar_visual(md[k]).strip() or None
     md["autores"] = [a for a in (normalizar_visual(str(x)).strip() for x in md.get("autores") or []) if a]
@@ -151,9 +167,14 @@ def convertir(
     md = libro.metadatos
     # QA NU-02: el idioma de los metadatos manda si existe; si no, se detecta sobre una muestra del texto, y si
     # no hay certeza se deja vacío (biblioteca traduce entonces con origen "auto"). Antes se inventaba "es".
+    textos = (" ".join(str(t) for t in c.cuerpo.itertext()) for c in libro.capitulos)
+    detectado = detectar_idioma(muestra(textos))
     if not md.get("idioma"):
-        textos = (" ".join(str(t) for t in c.cuerpo.itertext()) for c in libro.capitulos)
-        md["idioma"] = detectar_idioma(muestra(textos))
+        md["idioma"] = detectado
+    elif detectado and detectado != normalizar_idioma(md["idioma"]):
+        # (0.4.0, CF-12) el OPF dice «en» (o «en» y «es») y el texto es claramente español: manda el texto
+        log.info("Idioma declarado %s, detectado %s con certeza: se usa el detectado", md["idioma"], detectado)
+        md["idioma"] = detectado
 
     temporal = destino.with_name(destino.name + ".tmp")
     if temporal.exists():
@@ -161,6 +182,8 @@ def convertir(
     (temporal / "frases").mkdir(parents=True)
 
     capitulos_json = []
+    entradas: list[Entrada] = []
+    padres = capitulos_con_hijos(libro.toc)
     total_frases = 0
     total_palabras = 0
     for i, cap in enumerate(libro.capitulos):
@@ -168,6 +191,18 @@ def convertir(
         palabras = sum(contar_palabras(f.texto) for f in frases)
         total_frases += len(frases)
         total_palabras += palabras
+        entradas.append(
+            Entrada(
+                titulo=cap.titulo,
+                palabras=palabras,
+                palabras_voz=sum(contar_palabras(f.voz) for f in frases),
+                tipo=cap.tipo,
+                origen=cap.origen_tipo,
+                lineal=cap.lineal,
+                region=cap.region,
+                con_hijos=i in padres,
+            )
+        )
         capitulos_json.append(
             {
                 "indice": i,
@@ -187,16 +222,24 @@ def convertir(
         shutil.rmtree(temporal, ignore_errors=True)
         raise ErrorDefinitivo(Msj.SIN_TEXTO)
 
+    # (0.4.0, contratos C1) qué es cada capítulo, su número visible y si entra en el audiolibro
+    clasificacion = clasificar(entradas)
+    for cap_json, c in zip(capitulos_json, clasificacion, strict=True):
+        cap_json.update(c.a_json())
+
     portada = a_jpeg(libro.portada)
     if portada:
         (temporal / "portada.jpg").write_bytes(portada)
-    escribir_epub(libro, temporal / "libro.epub", archivo_id, portada)
+    escribir_epub(libro, temporal / "libro.epub", archivo_id, portada, [c.tipo for c in clasificacion])
 
     minutos = math.ceil(total_palabras / PALABRAS_POR_MINUTO) if total_palabras else 0
     claves = ("titulo", "autores", "idioma", "isbn", "editorial", "anio", "sinopsis", "materias")
     metadatos = {k: md.get(k) for k in claves}
+    if md.get("subtitulo"):
+        metadatos["subtitulo"] = md["subtitulo"]  # (0.4.0, CF-12) opcional
     estructura = {
         "versionFormato": VERSION_FORMATO,
+        "version": VERSION_ESTRUCTURA,
         "versionTexto": VERSION_TEXTO,
         **metadatos,
         "tienePortada": portada is not None,

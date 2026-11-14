@@ -40,10 +40,17 @@ _TABLA_VISUAL = {**{ord(k): v for k, v in LIGADURAS.items()}, **_INVISIBLES, **_
 _GUIONES_CORTE = "-‐­"
 
 
+_ZWSP_ENTRE_LETRAS = re.compile(r"(?<=\w)\u200b+(?=\w)")
+
+
 def normalizar_visual(texto: str) -> str:
     """Corrige defectos de extracción sin cambiar el contenido."""
     if not texto:
         return texto
+    if "\u200b" in texto:
+        # (0.4.0, V-16) algunos EPUB separan palabras con espacios de ancho cero: entre letras pasan a espacio (si no,
+        # «Texto<ZWSP>con» quedaba «Textocon» en el lector y en la voz); en otro sitio se quitan como antes
+        texto = _ZWSP_ENTRE_LETRAS.sub(" ", texto)
     return unicodedata.normalize("NFC", texto.translate(_TABLA_VISUAL))
 
 
@@ -215,7 +222,7 @@ _EXPANSIONES = [
     (r"dcha\.", "derecha"),
     (r"admón\.", "administración"),
     (r"§", "sección"),
-    (r"&", " y "),  # "AT&T" → "AT y T" (DA-25)
+    (r"&(?!\w+=)", " y "),  # "AT&T" → "AT y T" (DA-25); no dentro de una URL ("?x=1&y=2", 0.4.0)
 ]
 
 _PALABRAS_TITULO = (

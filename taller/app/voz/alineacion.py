@@ -57,13 +57,26 @@ def _ajustar_a_palabras(visual: str, a: int, b: int) -> tuple[int, int] | None:
 
 
 def alinear_palabras(
-    visual: str, voz: str, habladas: list[tuple[str, float, float]], desplazamiento: float = 0.0, umbral: float = 0.7
+    visual: str,
+    voz: str,
+    habladas: list[tuple[str, float, float]],
+    desplazamiento: float = 0.0,
+    umbral: float = 0.7,
+    texto_motor: str | None = None,
+    mapa_motor: list[tuple[int, int]] | None = None,
 ) -> list[list]:
-    """Devuelve `[[inicioChar, finChar, t0, t1], …]` relativos al texto visual; tiempos absolutos (+desplazamiento)."""
+    """Devuelve `[[inicioChar, finChar, t0, t1], …]` relativos al texto visual; tiempos absolutos (+desplazamiento).
+
+    (0.4.0) Si al motor se le mandó otro texto (`texto_motor`, la capa de lectura: «1.250» → «mil doscientos
+    cincuenta»), `mapa_motor` dice de qué tramo de `voz` sale cada carácter suyo: las palabras se buscan en
+    `texto_motor` y se llevan a `voz` y de ahí al visual, así el resaltado sigue al texto original.
+    """
     if not habladas or not visual or not voz:
         return []
     mapa = _mapa_voz_a_visual(visual, voz)
-    voz_plano = _plano(voz)
+    if texto_motor is None or mapa_motor is None or len(mapa_motor) != len(texto_motor):
+        texto_motor, mapa_motor = voz, None
+    motor_plano = _plano(texto_motor)
     cursor = 0
     ubicadas = 0
     salida: list[list] = []
@@ -71,11 +84,16 @@ def alinear_palabras(
         objetivo = _plano(texto.strip())
         if not objetivo:
             continue
-        pos = voz_plano.find(objetivo, cursor)
+        pos = motor_plano.find(objetivo, cursor)
         if pos == -1 or pos - cursor > 80:
             continue
         cursor = pos + len(objetivo)
-        tramos = mapa[pos : pos + len(objetivo)]
+        if mapa_motor is None:
+            tramos = mapa[pos : pos + len(objetivo)]
+        else:
+            origen = mapa_motor[pos : pos + len(objetivo)]
+            va, vb = min(o[0] for o in origen), max(o[1] for o in origen)
+            tramos = mapa[va:vb] or [mapa[min(va, len(mapa) - 1)]]
         a = min(t[0] for t in tramos)
         b = max(t[1] for t in tramos)
         rango = _ajustar_a_palabras(visual, a, b)
@@ -91,6 +109,7 @@ def alinear_palabras(
             salida[-1][3] = entrada[3]
         else:
             salida.append(entrada)
-    if ubicadas < umbral * len([h for h in habladas if h[0].strip()]):
+    # los tokens sin letras ni cifras («#», «=», un emoji) no cuentan: no tienen palabra visual (V-10)
+    if ubicadas < umbral * len([h for h in habladas if _PALABRA.search(h[0])]):
         return []
     return salida
