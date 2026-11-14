@@ -31,6 +31,7 @@ from ..dominio.mensajes import Msj, texto
 from ..dominio.modelo import ErrorDefinitivo, ErrorDeTaller, TrabajoCancelado
 from ..dominio.voces import voz_conocida
 from ..voz.capitulo import borrar_audio_capitulo, generar_capitulo, limpiar_partes_viejas
+from ..voz.lectura import reglas_de_pronunciacion
 from ..voz.motor import motor_para
 from .repositorio import Repositorio
 
@@ -179,6 +180,7 @@ class ManejadorVoz(Manejador):
                 seguir=sigue_existiendo,
                 concurrencia=self._concurrencia_de(trabajo),
                 urgente=self._es_urgente(trabajo),
+                pronunciacion=reglas_de_pronunciacion(p.get("pronunciacion")),
             )
         )
         listo = sigue_existiendo() and repo.audio_estado(

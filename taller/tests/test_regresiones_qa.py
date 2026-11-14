@@ -603,7 +603,7 @@ class TestVoz:
 
             async def stream(self):
                 await asyncio.sleep(0.01)
-                yield {"type": "audio", "data": b"mp3"}
+                yield {"type": "audio", "data": b"m" * 6000}  # 1 s de MP3: no parece truncado
                 yield {"type": "WordBoundary", "offset": 0, "duration": 10_000_000, "text": self.texto}
 
         monkeypatch.setattr(edge_tts, "Communicate", Comunicar)

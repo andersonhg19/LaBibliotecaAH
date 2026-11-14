@@ -30,3 +30,8 @@ def listar_voces() -> list[dict[str, Any]]:
 
 def voz_conocida(voz_id: str) -> bool:
     return any(v["id"] == voz_id for v in VOCES)
+
+
+def genero_de(voz_id: str) -> str:
+    """Género "M" o "F" del catálogo ("M" si la voz no está): para la voz multilingüe de una frase (0.4.0)."""
+    return next((v["genero"] for v in VOCES if v["id"] == voz_id), "M")

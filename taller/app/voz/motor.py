@@ -24,6 +24,37 @@ class Sintesis:
     palabras: list[tuple[str, float, float]] = field(default_factory=list)
 
 
+class FraseSinAudio(ErrorReintentable):
+    """(0.4.0) El servicio responde pero no da audio (o lo da cortado) para ESTA frase tras sus reintentos: texto que
+    la voz no sabe leer (V-02) o un corte que se repite (V-01). Quien genera el capítulo la deja en silencio en vez
+    de tumbar el capítulo entero."""
+
+
+class _SinAudio(Exception):
+    """Respuesta sin audio para el texto pedido (edge-tts `NoAudioReceived`)."""
+
+
+class _AudioTruncado(Exception):
+    """El MP3 dura menos que lo que dicen los tiempos de palabra: el stream se cortó (V-01)."""
+
+
+# MP3 de edge: 48 kbps CBR = 6000 bytes por segundo (lo fija `version`)
+BYTES_POR_SEGUNDO_MP3 = 6000
+TOLERANCIA_TRUNCADO = 0.05
+
+
+def audio_truncado(bytes_mp3: int, palabras: list[tuple[str, float, float]] | list[list]) -> bool:
+    """True si un MP3 de edge de `bytes_mp3` bytes acaba antes que su última palabra (− 50 ms de margen)."""
+    if not palabras:
+        return False
+    fin_hablado = max(float(p[2]) for p in palabras)
+    return bytes_mp3 / BYTES_POR_SEGUNDO_MP3 < fin_hablado - TOLERANCIA_TRUNCADO
+
+
+def _es_sin_audio(e: BaseException) -> bool:
+    return isinstance(e, _SinAudio) or type(e).__name__ == "NoAudioReceived"
+
+
 class MotorDeVoz(Protocol):
     nombre: str
     version: str  # entra en la clave de caché: cambiarla invalida el audio guardado
@@ -37,7 +68,9 @@ class EdgeTts:
     nombre = "edge"
     version = "edge-tts-7/48k-mono-mp3/v1"
 
-    def __init__(self, concurrencia: int = 4, reintentos: int = 5, pausa_base: float = 1.5):
+    def __init__(
+        self, concurrencia: int = 4, reintentos: int = 5, pausa_base: float = 1.5, reintentos_sin_audio: int = 3
+    ):
         # un semáforo por bucle de eventos: cada trabajo corre su propio asyncio.run y puede haber varios hilos de
         # voz a la vez (QA DA-19); compartir uno entre bucles daría "bound to a different event loop"
         self._semaforos: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
@@ -47,6 +80,8 @@ class EdgeTts:
         self._concurrencia = concurrencia
         self.reintentos = reintentos
         self.pausa_base = pausa_base
+        # «sin audio» y «truncado» suelen ser del texto, no del servicio: menos intentos (V-17)
+        self.reintentos_sin_audio = max(1, min(reintentos_sin_audio, reintentos))
 
     def fijar_concurrencia(self, n: int) -> None:
         """Tope de síntesis simultáneas SOLO para el bucle de eventos actual (un trabajo): el capítulo que alguien
@@ -76,6 +111,7 @@ class EdgeTts:
         import edge_tts
 
         ultimo: Exception | None = None
+        sin_audio = 0
         for intento in range(1, self.reintentos + 1):
             try:
                 com = edge_tts.Communicate(texto, voz, boundary="WordBoundary")
@@ -89,13 +125,25 @@ class EdgeTts:
                         t0 = trozo["offset"] / 1e7
                         palabras.append((trozo["text"], t0, t0 + trozo["duration"] / 1e7))
                 if not audio:
-                    raise ConnectionError("edge-tts no devolvió audio")
+                    raise _SinAudio("edge-tts no devolvió audio")
+                if audio_truncado(len(audio), palabras):
+                    raise _AudioTruncado(
+                        f"audio truncado: {len(audio) / BYTES_POR_SEGUNDO_MP3:.2f}s < {palabras[-1][2]:.2f}s"
+                    )
                 return Sintesis(bytes(audio), "mp3", palabras)
             except Exception as e:  # 403, desconexiones, límites…
                 if isinstance(e, ValueError) and "voice" in str(e).lower():
                     # "Invalid voice": no es una caída del servicio, no se reintenta (QA DA-12)
                     raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz, detalle=str(e)) from e
                 ultimo = e
+                if _es_sin_audio(e) or isinstance(e, _AudioTruncado):
+                    sin_audio += 1
+                    if sin_audio >= self.reintentos_sin_audio:
+                        log.warning("edge-tts sin audio útil para una frase (voz %s, %d intentos): %s", voz, intento, e)
+                        raise FraseSinAudio(Msj.SERVICIO_VOZ_CAIDO, detalle=f"edge-tts: {e}") from e
+                if intento >= self.reintentos:
+                    log.warning("edge-tts falló (intento %d/%d, voz %s): %s", intento, self.reintentos, voz, e)
+                    break
                 espera = self.pausa_base * (2 ** (intento - 1)) + random.uniform(0, 0.5)
                 log.warning(
                     "edge-tts falló (intento %d/%d, voz %s): %s — reintento en %.1fs",
@@ -105,8 +153,7 @@ class EdgeTts:
                     e,
                     espera,
                 )
-                if intento < self.reintentos:
-                    await asyncio.sleep(espera)
+                await asyncio.sleep(espera)
         raise ErrorReintentable(Msj.SERVICIO_VOZ_CAIDO, detalle=f"edge-tts, {self.reintentos} intentos: {ultimo}")
 
 

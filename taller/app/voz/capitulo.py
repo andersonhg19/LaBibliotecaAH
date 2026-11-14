@@ -3,14 +3,18 @@
 1. Lee `frases/cap-NNN.json`.
 2. Sintetiza el texto `voz` de cada frase (concurrencia limitada por el motor, en orden: las primeras frases piden
    el servicio antes), con caché en `cache-voz/{sha1(voz + vozId + versionMotor)}.mp3` (+ `.json` con las palabras).
-3. MIENTRAS se sintetiza, ensambla en orden: decodifica cada frase a PCM y concatena con pausas (250 ms entre
-   frases, 500 ms al final de párrafo, 700 ms tras un título). Los tiempos t0/t1 salen de las muestras reales →
-   exactos.
+3. MIENTRAS se sintetiza, ensambla en orden: decodifica cada frase a PCM y concatena con pausas (0.4.0: 400 ms al
+   empezar, 350 ms entre frases, 700 ms al final de párrafo, 1 s antes y después de un título; los silencios dentro
+   de una frase, ≤ 400 ms). Los tiempos t0/t1 salen de las muestras reales → exactos.
 4. Síntesis progresiva (v1.5, contratos §6 bis): en cuanto están las primeras frases se escribe una PARTE
    reproducible (`cap-NNN.parte-000.m4a`, 3 frases) y el manifiesto `cap-NNN.partes.json`; luego partes más
    largas. Así la web empieza a sonar a los pocos segundos en vez de esperar al capítulo entero.
-5. Al final codifica `cap-NNN.m4a` (AAC-LC mono 48 kbps, faststart), escribe `cap-NNN.tiempos.json` y crea
-   `cap-NNN-2x.m4a` con atempo=2.0. Los tiempos de las partes coinciden con los del capítulo entero.
+5. Al final codifica desde el PCM, en una pasada, `cap-NNN.m4a` (AAC-LC mono 48 kbps, faststart) y `cap-NNN-2x.m4a`
+   (atempo=2.0), ambos a −18 LUFS / −1,5 dBTP (`volumen.py`), y escribe `cap-NNN.tiempos.json` con la envolvente
+   para la onda. Los tiempos de las partes coinciden con los del capítulo entero.
+(0.4.0) Antes de sintetizar, cada frase pasa por la capa de lectura (`lectura.py`: números, abreviaturas, URL,
+emojis, otros idiomas → voz multilingüe). Una frase que el servicio no sabe leer queda en silencio en vez de tumbar
+el capítulo; un MP3 truncado nunca entra en la caché (y uno truncado de antes se descarta al leerlo).
 Un capítulo sin nada que leer en voz (solo separadores, QA DA-11) da un audio de 1 s de silencio (sin partes).
 Si el libro se retira mientras se genera (`seguir()` devuelve False), se borra lo escrito (QA DA-28).
 """
@@ -20,6 +24,7 @@ from __future__ import annotations
 import array
 import asyncio
 import hashlib
+import itertools
 import json
 import logging
 import os
@@ -35,19 +40,34 @@ from typing import Any, BinaryIO
 
 from ..config.rutas import Rutas
 from ..dominio.mensajes import Msj
-from ..dominio.modelo import ErrorDefinitivo, TrabajoCancelado
-from . import audio
+from ..dominio.modelo import ErrorDefinitivo, ErrorReintentable, TrabajoCancelado
+from ..dominio.voces import genero_de
+from . import audio, volumen
 from .alineacion import alinear_palabras
-from .motor import MotorDeVoz, Sintesis
+from .lectura import Lectura, preparar_lectura, sin_letras_no_latinas, voz_multilingue
+from .motor import FraseSinAudio, MotorDeVoz, Sintesis, audio_truncado
 
 log = logging.getLogger(__name__)
 
 # Pausas tras cada frase. Son las ÚNICAS: el silencio que trae cada audio de edge-tts (~0,1 s delante y ~0,9 s
 # detrás) se recorta al ensamblar (`recortar_silencio`); sin ese recorte una pausa entre frases sumaba ~1,2 s y
 # entre párrafos ~1,7 s, y la lectura sonaba a trompicones (medido en producción el 2026-11-12).
-PAUSA_FRASE = 0.25
-PAUSA_PARRAFO = 0.50
-PAUSA_TITULO = 0.80
+# (0.4.0, V-04/M-4) Jerarquía de pausas: frase < párrafo < título, más un respiro al empezar el capítulo y antes de
+# un título que no lo abre. Dentro de una frase, ningún silencio pasa de 0,40 s (los «¿…? —dijo» de edge dejaban
+# 0,86 s, más que entre párrafos).
+PAUSA_FRASE = 0.35
+PAUSA_PARRAFO = 0.70
+PAUSA_TITULO = 1.00
+PAUSA_ANTES_TITULO = 1.00
+SILENCIO_INICIO = 0.40
+SILENCIO_INTERNO_MAX = 0.40
+UMBRAL_COMPACTAR = 0.45
+# Versión del audio que se escribe en tiempos.json: 2 = pausas, volumen (−18 LUFS), 2x desde el PCM, envolvente
+VERSION_AUDIO = 2
+ENVOLVENTE_HZ = 10
+# Si más de esta fracción de frases (y al menos MIN_MUDAS) se queda sin audio, no es el texto: es el servicio
+FRACCION_MUDAS = 0.2
+MIN_MUDAS = 3
 # Recorte: margen que se deja alrededor de la voz para no comerse ataques ni colas suaves (s, f, respiraciones).
 MARGEN_ANTES = 0.03
 MARGEN_DESPUES = 0.08
@@ -108,6 +128,8 @@ async def ceder_paso() -> None:
 class FraseSintetizada:
     ruta_mp3: Path
     palabras: list[tuple[str, float, float]]
+    # (0.4.0) texto que se mandó al motor y su mapa al texto de voz (para llevar el resaltado al visual)
+    lectura: Lectura | None = None
 
 
 def clave_cache(texto_voz: str, voz_id: str, version_motor: str) -> str:
@@ -156,6 +178,46 @@ def pausa_tras(frase: dict) -> float:
     if frase.get("finParrafo"):
         return PAUSA_PARRAFO
     return PAUSA_FRASE
+
+
+def compactar_internos(
+    datos: bytes, palabras: list[tuple[str, float, float]]
+) -> tuple[bytes, list[tuple[str, float, float]]]:
+    """Recorta a SILENCIO_INTERNO_MAX los silencios entre dos palabras de una misma frase que pasan de
+    UMBRAL_COMPACTAR (V-04: edge deja 0,86 s tras «?» o «!» en «—¿Vienes? —preguntó ella—»). Solo quita muestras que
+    de verdad son silencio y desplaza las palabras siguientes, así los tiempos siguen siendo exactos."""
+    if len(palabras) < 2:
+        return datos, palabras
+    f, bps = audio.FRECUENCIA, audio.BYTES_POR_MUESTRA
+    n = len(datos) // bps
+    muestras = array.array("h")
+    muestras.frombytes(datos[: n * bps])
+    if sys.byteorder != "little":
+        muestras.byteswap()
+    cortes: list[tuple[int, int]] = []
+    for prev, sig in itertools.pairwise(palabras):
+        if sig[1] - prev[2] <= UMBRAL_COMPACTAR:
+            continue
+        ini = round((prev[2] + SILENCIO_INTERNO_MAX / 2) * f)
+        fin = round((sig[1] - SILENCIO_INTERNO_MAX / 2) * f)
+        if fin <= ini or fin > n:
+            continue
+        if max((abs(x) for x in muestras[ini:fin]), default=0) > UMBRAL_SILENCIO:
+            continue  # hay algo (respiración, sonido): no se toca
+        cortes.append((ini, fin))
+    if not cortes:
+        return datos, palabras
+    salida = bytearray()
+    cursor = 0
+    for ini, fin in cortes:
+        salida += datos[cursor * bps : ini * bps]
+        cursor = fin
+    salida += datos[cursor * bps : n * bps]
+    nuevas: list[tuple[str, float, float]] = []
+    for texto, a, b in palabras:
+        quitado = sum(fin - ini for ini, fin in cortes if fin <= round(a * f)) / f
+        nuevas.append((texto, a - quitado, b - quitado))
+    return bytes(salida), nuevas
 
 
 def tamano_parte(n: int) -> int:
@@ -218,7 +280,10 @@ async def _sintetizar_con_cache(
     if mp3.exists() and meta.exists() and mp3.stat().st_size > 0:
         try:
             palabras = [tuple(p) for p in json.loads(meta.read_text(encoding="utf-8"))["palabras"]]
-            return FraseSintetizada(mp3, palabras)
+            if not audio_truncado(mp3.stat().st_size, palabras):
+                return FraseSintetizada(mp3, palabras)
+            # (V-01) un MP3 cortado que se guardó antes de 0.4.0: se descarta y se pide otra vez
+            log.warning("Caché de voz truncada, se regenera: %s", clave)
         except Exception:
             log.warning("Caché de voz corrupta, se regenera: %s", clave)
     if ceder:
@@ -240,6 +305,37 @@ async def _sintetizar_con_cache(
     return FraseSintetizada(mp3, s.palabras)
 
 
+async def _sintetizar_frase(
+    motor: MotorDeVoz,
+    voz_motor: str,
+    voz_id: str,
+    lectura: Lectura,
+    dir_cache: Path,
+    respaldo: bool = False,
+    ceder: bool = False,
+) -> FraseSintetizada | None:
+    """(0.4.0) Sintetiza una frase ya preparada. Una frase en otro idioma o alfabeto va primero con la voz multilingüe
+    de edge; si esa no da audio, con la voz elegida (sin las letras que no sabe leer). Si ninguna da audio útil, la
+    frase queda muda (None) y el capítulo sigue (V-02): una frase en silencio es mejor que un capítulo muerto."""
+    intentos: list[tuple[str, str, Lectura]] = []
+    motor_id = voz_id.partition(".")[0]
+    if lectura.idioma is not None and motor_id == "edge":
+        nombre = voz_multilingue(lectura.idioma, genero_de(voz_id))
+        intentos.append((nombre, f"edge.{nombre}", lectura))
+    propia = sin_letras_no_latinas(lectura) if lectura.idioma == "otro" else lectura
+    if propia.hablable:
+        intentos.append((voz_motor, voz_id, propia))
+    for nombre, vid, lec in intentos:
+        try:
+            r = await _sintetizar_con_cache(motor, nombre, vid, lec.texto, dir_cache, respaldo, ceder)
+        except FraseSinAudio as e:
+            log.warning("Frase sin audio con la voz %s (%s): %r", vid, e.detalle, lec.texto[:80])
+            continue
+        r.lectura = lec
+        return r
+    return None
+
+
 @dataclass
 class Parte:
     """Una parte reproducible: PCM de sus frases SIN la pausa final (el cambio de archivo hace de pausa)."""
@@ -255,7 +351,9 @@ class Ensamblador:
     """Concatena en orden el PCM de las frases con sus pausas, calcula los tiempos exactos y va cerrando partes.
 
     Se alimenta frase a frase (`agregar`). Cuando una parte llega a su tamaño (o es la última frase con audio),
-    la devuelve cerrada para que quien llama la codifique.
+    la devuelve cerrada para que quien llama la codifique. (0.4.0) La pausa entre dos frases se escribe al llegar la
+    siguiente con voz (así una última frase que se queda muda no deja una pausa colgando) y vale la mayor de las
+    frases que hay entre medias; el capítulo empieza con SILENCIO_INICIO.
     """
 
     def __init__(self, frases: list[dict[str, Any]], pcm: BinaryIO, con_audio: set[str], partes: bool = False):
@@ -267,6 +365,8 @@ class Ensamblador:
         self.con_partes = partes and self.ultima_con_audio >= 0
         self.parte: Parte | None = Parte(0, 0.0) if self.con_partes else None
         self.n_partes = 0
+        self.con_voz_escritas = 0
+        self.pausa_pendiente = 0.0
 
     def _escribir(self, datos: bytes, en_parte: bool) -> None:
         self.pcm.write(datos)
@@ -274,35 +374,63 @@ class Ensamblador:
         if en_parte and self.parte is not None:
             self.parte.pcm.extend(datos)
 
+    def _cerrar_parte(self) -> Parte | None:
+        cerrada = self.parte
+        if cerrada is None or cerrada.con_voz == 0:
+            return None
+        cerrada.t1 = self.muestras / audio.FRECUENCIA
+        self.n_partes += 1
+        self.parte = None
+        return cerrada
+
     def agregar(self, k: int, s: FraseSintetizada | None, datos: bytes | None) -> Parte | None:
         """Añade la frase k (con su audio ya decodificado, o None si no tiene). Devuelve una parte cerrada o None."""
         f = self.frases[k]
-        t0 = self.muestras / audio.FRECUENCIA
         if s is None or datos is None:  # frase sin contenido hablable (separadores, solo una nota al pie…)
-            self.salida.append({"id": f["id"], "t0": round(t0, 3), "t1": round(t0, 3), "palabras": []})
+            t = round(self.muestras / audio.FRECUENCIA, 3)
+            self.salida.append({"id": f["id"], "t0": t, "t1": t, "palabras": []})
+            if self.con_voz_escritas:
+                self.pausa_pendiente = max(self.pausa_pendiente, pausa_tras(f))
+            if k == self.ultima_con_audio:  # se esperaba voz y salió muda: la parte en curso se cierra ya
+                return self._cerrar_parte()
             return None
         if len(datos) % 2:
             datos = datos[:-1]
-        datos, quitado = recortar_silencio(datos, s.palabras)
+        if self.con_voz_escritas == 0:
+            self._escribir(audio.silencio(SILENCIO_INICIO), True)
+        else:
+            pausa = max(self.pausa_pendiente, PAUSA_ANTES_TITULO if f.get("esTitulo") else 0.0)
+            self._escribir(audio.silencio(pausa), self.parte is not None)
+            if self.parte is None and self.con_partes:
+                self.parte = Parte(self.n_partes, self.muestras / audio.FRECUENCIA)
+        datos, palabras_motor = compactar_internos(datos, s.palabras)
+        datos, quitado = recortar_silencio(datos, palabras_motor)
+        t0 = self.muestras / audio.FRECUENCIA
         self._escribir(datos, True)
+        self.con_voz_escritas += 1
+        self.pausa_pendiente = pausa_tras(f)
         t1 = self.muestras / audio.FRECUENCIA
-        palabras = alinear_palabras(f["texto"], f["voz"], s.palabras, desplazamiento=t0 - quitado)
+        lec = s.lectura
+        palabras = alinear_palabras(
+            f["texto"],
+            f["voz"],
+            palabras_motor,
+            desplazamiento=t0 - quitado,
+            texto_motor=lec.texto if lec else None,
+            mapa_motor=lec.mapa if lec else None,
+        )
         # las palabras nunca se salen de la frase
         palabras = [[a, b, min(max(x, t0), t1), min(max(y, t0), t1)] for a, b, x, y in palabras]
         self.salida.append({"id": f["id"], "t0": round(t0, 3), "t1": round(t1, 3), "palabras": palabras})
-        cerrada: Parte | None = None
         if self.parte is not None:
             self.parte.con_voz += 1
             if self.parte.con_voz >= tamano_parte(self.parte.n) or k == self.ultima_con_audio:
-                cerrada = self.parte
-                cerrada.t1 = t1
-                self.n_partes += 1
-                self.parte = None
-        if k < self.ultima_con_audio:
-            self._escribir(audio.silencio(pausa_tras(f)), True)
-            if cerrada is not None:
-                self.parte = Parte(self.n_partes, self.muestras / audio.FRECUENCIA)
-        return cerrada
+                return self._cerrar_parte()
+        return None
+
+    def cerrar_ultima(self) -> Parte | None:
+        """Al acabar: la parte que quedara abierta (la última frase con voz salió muda)."""
+        return self._cerrar_parte()
 
     def terminar(self, capitulo: int, voz_id: str) -> dict[str, Any]:
         if self.muestras == 0:  # nada que leer: silencio corto en vez de un audio vacío que ffmpeg rechaza
@@ -367,6 +495,16 @@ class Manifiesto:
         _escribir_atomico(self.ruta, json.dumps(datos, ensure_ascii=False))
 
 
+def _idioma_libro(rutas: Rutas, archivo_id: str) -> str | None:
+    """Idioma del libro (estructura.json): decide si se buscan frases en otro idioma. Nunca lanza."""
+    try:
+        datos = json.loads((rutas.normalizados(archivo_id) / "estructura.json").read_text(encoding="utf-8"))
+        idioma = datos.get("idioma")
+        return str(idioma).lower()[:2] if idioma else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 async def generar_capitulo(
     rutas: Rutas,
     archivo_id: str,
@@ -379,6 +517,7 @@ async def generar_capitulo(
     partes: bool = True,
     concurrencia: int | None = None,
     urgente: bool = False,
+    pronunciacion: list[tuple[str, str]] | None = None,
 ) -> float:
     ruta_frases = rutas.frases(archivo_id, capitulo)
     if not ruta_frases.exists():
@@ -394,13 +533,23 @@ async def generar_capitulo(
     fijar = getattr(motor, "fijar_concurrencia", None)
     if concurrencia and fijar is not None:
         fijar(concurrencia)
+    idioma = _idioma_libro(rutas, archivo_id)
+    reglas = pronunciacion or []
+
+    # (0.4.0) texto que de verdad se lee (C8): números, abreviaturas, URL, emojis, otros idiomas…
+    lecturas: dict[str, Lectura] = {}
+    for f in frases:
+        voz = (f.get("voz") or "").strip()
+        if voz and voz not in lecturas:
+            lecturas[voz] = preparar_lectura(voz, idioma, reglas)
 
     # frases con el mismo texto de voz se sintetizan una sola vez
     tareas_por_texto: dict[str, asyncio.Task] = {}
+    mudas: list[str] = []
 
-    async def una(f: dict) -> FraseSintetizada:
+    async def una(f: dict) -> FraseSintetizada | None:
         tarea = tareas_por_texto[f["voz"]]
-        r: FraseSintetizada = await tarea
+        r: FraseSintetizada | None = await tarea
         if seguir is not None and not seguir():
             raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
         if latido and time.monotonic() - ultimo_latido[0] > 60:
@@ -409,22 +558,29 @@ async def generar_capitulo(
                 await asyncio.to_thread(latido)
             except Exception as e:
                 log.warning("Latido fallido: %s", e)
+        if r is None:
+            mudas.append(f["id"])
+            if len(mudas) > max(MIN_MUDAS, FRACCION_MUDAS * len(con_voz)):
+                # tantas frases sin audio no son cosa del texto: el servicio no responde bien; se reintenta luego
+                raise ErrorReintentable(Msj.SERVICIO_VOZ_CAIDO, detalle=f"{len(mudas)} frases sin audio")
         return r
 
-    con_voz = [f for f in frases if (f.get("voz") or "").strip()]
+    con_voz = [f for f in frases if (f.get("voz") or "").strip() and lecturas[f["voz"].strip()].hablable]
     # Se crean en orden: el semáforo del motor es FIFO, así las primeras frases se piden antes.
     for k, f in enumerate(con_voz):
         if f["voz"] not in tareas_por_texto:
             respaldo = partes and k < TAMANOS_PARTE[0]  # solo el arranque: lo que se oye primero
             tareas_por_texto[f["voz"]] = asyncio.ensure_future(
-                _sintetizar_con_cache(motor, voz_motor, voz_id, f["voz"], dir_cache, respaldo, ceder=not urgente)
+                _sintetizar_frase(
+                    motor, voz_motor, voz_id, lecturas[f["voz"].strip()], dir_cache, respaldo, ceder=not urgente
+                )
             )
     inicio = time.monotonic()
     arranque = ArranqueUrgente()
     try:
         if urgente and partes and con_voz:
             arranque.__enter__()
-        return await _sintetizar_y_ensamblar(
+        duracion = await _sintetizar_y_ensamblar(
             rutas,
             archivo_id,
             voz_id,
@@ -437,6 +593,9 @@ async def generar_capitulo(
             partes,
             arranque.terminar,
         )
+        if mudas:
+            log.warning("Capítulo %d (%s): %d frase(s) quedaron en silencio: %s", capitulo, voz_id, len(mudas), mudas)
+        return duracion
     except TrabajoCancelado:
         borrar_audio_capitulo(rutas, archivo_id, voz_id, capitulo)
         raise
@@ -455,7 +614,7 @@ async def _sintetizar_y_ensamblar(
     capitulo: int,
     frases: list[dict[str, Any]],
     con_voz: set[str],
-    una: Callable[[dict], Awaitable[FraseSintetizada]],
+    una: Callable[[dict], Awaitable[FraseSintetizada | None]],
     inicio: float,
     seguir: Callable[[], bool] | None,
     con_partes: bool,
@@ -466,6 +625,7 @@ async def _sintetizar_y_ensamblar(
     base = f"cap-{capitulo:03d}"
     manifiesto = Manifiesto(dir_audio, capitulo, voz_id, frases)
     primera_parte: float | None = None
+    ganancia = volumen.ganancia(rutas.cache_voz(), voz_id)
     with tempfile.TemporaryDirectory(prefix="bah-voz-") as tmp:
         ruta_pcm = Path(tmp) / "capitulo.raw"
         with open(ruta_pcm, "wb") as pcm:
@@ -473,9 +633,13 @@ async def _sintetizar_y_ensamblar(
             for k, f in enumerate(frases):
                 s = await una(f) if f["id"] in con_voz else None
                 datos = await asyncio.to_thread(audio.decodificar_a_pcm, s.ruta_mp3) if s else None
-                cerrada = e.agregar(k, s, datos)
-                if cerrada is not None:
-                    await _escribir_parte(cerrada, Path(tmp), dir_audio, capitulo, manifiesto, e.salida)
+                cerradas = [e.agregar(k, s, datos)]
+                if k == len(frases) - 1:
+                    cerradas.append(e.cerrar_ultima())
+                for cerrada in cerradas:
+                    if cerrada is None:
+                        continue
+                    await _escribir_parte(cerrada, Path(tmp), dir_audio, capitulo, manifiesto, e.salida, ganancia)
                     if primera_parte is None:
                         al_sonar()  # ya suena: las precargas pueden seguir
                         primera_parte = time.monotonic() - inicio
@@ -489,15 +653,22 @@ async def _sintetizar_y_ensamblar(
             time.monotonic() - inicio,
             len(manifiesto.partes),
         )
+        duracion = float(tiempos["duracion"])
+        # (0.4.0) volumen −18 LUFS (V-05) y la 2x desde el PCM (V-14), en una pasada; envolvente para la onda (C7)
+        ganancia = await asyncio.to_thread(volumen.ajustar, ruta_pcm, duracion, rutas.cache_voz(), voz_id, ganancia)
+        tiempos["versionAudio"] = VERSION_AUDIO
+        tiempos["envolvente"] = {
+            "hz": ENVOLVENTE_HZ,
+            "v": await asyncio.to_thread(audio.envolvente, ruta_pcm, ENVOLVENTE_HZ),
+        }
         m4a = dir_audio / f"{base}.m4a"
-        await asyncio.to_thread(audio.codificar_m4a, ruta_pcm, m4a)
+        await asyncio.to_thread(audio.codificar_1x_y_2x, ruta_pcm, m4a, dir_audio / f"{base}-2x.m4a", ganancia)
     _escribir_atomico(dir_audio / f"{base}.tiempos.json", json.dumps(tiempos, ensure_ascii=False))
-    await asyncio.to_thread(audio.variante_2x, m4a, dir_audio / f"{base}-2x.m4a")
     if manifiesto.partes:
-        manifiesto.escribir(tiempos["frases"], completo=True, duracion=float(tiempos["duracion"]))
+        manifiesto.escribir(tiempos["frases"], completo=True, duracion=duracion)
     if seguir is not None and not seguir():
         raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
-    return float(tiempos["duracion"])
+    return duracion
 
 
 async def _escribir_parte(
@@ -507,6 +678,7 @@ async def _escribir_parte(
     capitulo: int,
     manifiesto: Manifiesto,
     frases_salida: list[dict[str, Any]],
+    ganancia: float | None = None,
 ) -> None:
     """Codifica una parte y la anuncia en el manifiesto. Un fallo aquí no tumba el capítulo (solo se pierde la
     escucha anticipada: el capítulo entero sigue generándose)."""
@@ -514,7 +686,7 @@ async def _escribir_parte(
     try:
         raw = tmp / f"parte-{parte.n:03d}.raw"
         raw.write_bytes(bytes(parte.pcm))
-        await asyncio.to_thread(audio.codificar_m4a, raw, dir_audio / nombre)
+        await asyncio.to_thread(audio.codificar_m4a, raw, dir_audio / nombre, ganancia)
         raw.unlink(missing_ok=True)
         manifiesto.partes.append({"n": parte.n, "archivo": nombre, "t0": round(parte.t0, 3), "t1": round(parte.t1, 3)})
         manifiesto.escribir(list(frases_salida))

@@ -8,6 +8,8 @@ from app.dominio.modelo import ErrorDefinitivo, ErrorReintentable
 from app.voz import motor as M
 from app.voz import muestras
 
+AUDIO_FALSO = b"\xff" * 3000  # 0,5 s de MP3 a 48 kbps: no parece truncado (V-01)
+
 
 def edge_falso(monkeypatch, fallos_antes=0, sin_audio=False):
     estado = {"llamadas": 0}
@@ -22,7 +24,7 @@ def edge_falso(monkeypatch, fallos_antes=0, sin_audio=False):
             if estado["llamadas"] <= fallos_antes:
                 raise ConnectionError("403 Forbidden")
             if not sin_audio:
-                yield {"type": "audio", "data": b"ID3mp3"}
+                yield {"type": "audio", "data": AUDIO_FALSO}
             yield {"type": "WordBoundary", "offset": 1_000_000, "duration": 2_000_000, "text": "Hola"}
 
     mod = types.ModuleType("edge_tts")
@@ -36,7 +38,7 @@ def test_edge_reintenta_con_espera_y_devuelve_palabras(monkeypatch):
     m = M.EdgeTts(concurrencia=2, reintentos=4, pausa_base=0.001)
     s = asyncio.run(m.sintetizar("Hola", "es-ES-AlvaroNeural"))
     assert estado["llamadas"] == 3
-    assert s.audio == b"ID3mp3" and s.palabras == [("Hola", 0.1, pytest.approx(0.3))]
+    assert s.audio == AUDIO_FALSO and s.palabras == [("Hola", 0.1, pytest.approx(0.3))]
 
 
 def test_edge_agota_reintentos_con_mensaje_claro(monkeypatch):
