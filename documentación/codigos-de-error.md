@@ -24,7 +24,10 @@
 Notas:
 - (v1.3.2) Lo que Tomcat responde por su cuenta (ruta inválida, ruta sin contexto, error del contenedor) también es
   ResultDTO JSON, con el código HTTP real (400 → 120 `rutaInvalida`, 404 → 102 `rutaNoEncontrada`, 5xx → 103
-  `errorInesperado`), sin HTML ni versión del servidor. En los binarios, un `Range` inválido o fuera del archivo da
+  `errorInesperado`), sin HTML ni versión del servidor. (arreglos 0.4.0) Igual lo que rechaza el cortafuegos de
+  Spring Security (`./`, `..`, `%2e`, `;` en la ruta): **HTTP 400** con 120 `rutaInvalida`. Y lo que Spring no encuentra:
+  ruta inexistente → **HTTP 404** con 102 `rutaNoEncontrada`; método que la ruta no admite → **HTTP 405** con 120
+  `metodoNoPermitido` (antes: HTTP 200 con 103 y un ERROR en el log). En los binarios, un `Range` inválido o fuera del archivo da
   **HTTP 416 sin cuerpo** con `Content-Range: bytes */<tamaño>`.
 - (v1.3.2) `mismoIdioma` en `/traducir/capitulo` solo sale si el texto del capítulo, detectado por el traductor, ya
   está en el idioma de destino (no basta con el idioma guardado del libro).
@@ -60,7 +63,7 @@ Notas:
 | 110 | Página no encontrada |
 | 111 | ADMIN conserva siempre el módulo de administración |
 | 112 | Alias no disponible: ya lo tiene otra cuenta, sin distinguir mayúsculas (`aliasNoDisponible`) — registro, guardado propio y de administración |
-| 400 | Datos inválidos (validación). Incluye `aliasObligatorio`, `aliasInvalido` (3–30 `[a-z0-9._-]`, sin @), `usuarioObligatorio` (login sin `usuario` ni `email`) , `claveDeOtraCuenta` (la edición de administración no cambia contraseñas) y (v1.2) `claveDebil` (menos de 10 caracteres, espacios al borde, muy repetitiva o común). (v1.3.2) `rutaInvalida`: ruta que Tomcat rechaza (p. ej. `%2f`), **HTTP 400** con ResultDTO JSON |
+| 400 | Datos inválidos (validación). (arreglos 0.4.0) También una ruta que rechaza el cortafuegos de Spring Security (`./`, `..`, `%2e`, `;`): **HTTP 400** con «La dirección pedida no es válida.». Incluye `aliasObligatorio`, `aliasInvalido` (3–30 `[a-z0-9._-]`, sin @), `usuarioObligatorio` (login sin `usuario` ni `email`) , `claveDeOtraCuenta` (la edición de administración no cambia contraseñas) y (v1.2) `claveDebil` (menos de 10 caracteres, espacios al borde, muy repetitiva o común). (v1.3.2) `rutaInvalida`: ruta que Tomcat rechaza (p. ej. `%2f`), **HTTP 400** con ResultDTO JSON |
 | 401 | Sin token, token inválido o caducado, o sesión revocada (v1.2): HTTP 401 con ResultDTO. `/v1/auth/renovar` con la cuenta inactiva también da 401 |
 | 403 | Sin permiso (v1.2: HTTP 403 con ResultDTO, antes cuerpo vacío). También `registroCerrado`: alta pública desactivada (`REGISTRO_PUBLICO=false`) |
 | 429 | Demasiados intentos de inicio de sesión: 5 en 5 min por cuenta y dispositivo o 20 en 10 min por dispositivo (v1.2). (v1.7) Ya no hay freno global que bloquee a todos: los fallos seguidos desde un dispositivo responden cada vez más despacio (250 ms → 4 s, y al menos 1 s si hay más de 60 fallos por minuto en toda la casa) |

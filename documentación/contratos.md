@@ -10,12 +10,21 @@ Todo es **aditivo** y retrocompatible: los libros ya convertidos (estructura v1)
 Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
 - **`estructura.json` v2** (§4, la escribe el taller): `"version": 2` y, por capítulo, `tipo`, `region`
   (`antes`|`cuerpo`|`despues`), `numero` (int|null), `enVoz` (bool), `palabrasVoz` (int) y `origenTipo` (diagnóstico).
-  biblioteca-service lee v1 y v2: en un libro v1 todos los capítulos van en voz y los campos nuevos llegan `null`.
-  Lo que no encaja (región desconocida, número que no es entero, tipo con caracteres raros) se ignora.
+  biblioteca-service lee v1 y v2: en un libro v1 todos los capítulos van en voz y los campos nuevos **no van en el
+  JSON** (ni como `null`; arreglos 0.4.0, C12). Lo que no encaja (región desconocida, número que no es entero, tipo con
+  caracteres raros) se ignora (el campo no va).
 - **`CapituloDTO`** (en `EjemplarDetalleDTO.capitulos`): `{indice, titulo, minutos, tipo?, region?, numero?, enVoz,
   enVozPorDefecto, minutosVoz?}`. `minutos` = ceil(palabras/150) como siempre; `minutosVoz` = ceil(palabrasVoz/150) si
   existe. `enVozPorDefecto` = `estructura.enVoz` (v2; sin el campo: `true` si la región es `cuerpo` o no hay región) o
   `true` (v1). `enVoz` = la preferencia del usuario si la dejó; si no, `enVozPorDefecto`.
+  **Presencia de los campos** (arreglos 0.4.0, C12): libro v1 → `tipo`, `region`, `numero` y `minutosVoz` **ausentes**
+  (la web, al no ver `numero`, numera por los títulos como siempre); libro v2 → `numero` **siempre presente** (`null` =
+  sin número), `tipo`/`region`/`minutosVoz` solo si se conocen. Para saber si un libro es v2 basta `numero !== undefined`
+  (o `region != null`).
+  **Nunca todo fuera de la voz** (arreglos 0.4.0, A-1): si en un libro ningún capítulo tiene `enVozPorDefecto=true`
+  (libros clasificados con la primera regla del taller: un solo cuento titulado «Epígrafe», unas «Notas» sueltas…),
+  todos pasan a `enVozPorDefecto=true` (como un v1); la región no cambia. Afecta a la ficha, a la precarga y a preparar
+  el libro; con `{"soloHistoria": true}` un libro sin ningún capítulo en `cuerpo` deja todos en voz.
 - **Preferencias de voz** por usuario y ejemplar (`bah_lib_capitulo_voz`, solo lo que el usuario cambió):
   `PUT /v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz` `{"enVoz": true|false|null}` (null o sin cuerpo = volver al
   defecto) → `CapituloDTO`; `PUT /v1/ejemplares/{ejemplarId}/capitulos/voz` `{"soloHistoria": true}` → en voz solo la
@@ -28,8 +37,21 @@ Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
   taller lee el ORIGINAL y reescribe `estructura.json` a v2 **conservando** `indice`, `titulo`, `href` y `palabras`
   (empareja por `href`/orden) y añadiendo los campos nuevos; nunca cambia el número de capítulos (progreso, notas y
   audio intactos). Lo encola `POST /v1/admin/libros/reclasificar-estructura` (rol **ADMIN**; sin él 403) →
-  `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}`: solo archivos `LISTO` cuya `estructura.json` no es
-  v2 y sin trabajo vivo de ese tipo (idempotente). Sin `/datos`: 503 `datosNoDisponibles`.
+  `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}`: archivos `LISTO` cuya `estructura.json` no es v2
+  **o es v2 con un clasificador anterior al mínimo** (ver abajo), sin trabajo vivo de ese tipo (idempotente). Sin
+  `/datos`: 503 `datosNoDisponibles`.
+- **Versión del clasificador** (arreglos 0.4.0, A-1; **contrato para el taller**): `estructura.json` v2 lleva en la
+  RAÍZ `"clasificador": <entero>`, la versión de la regla de clasificación que la escribió (sin el campo = 1, la primera
+  regla de 0.4.0). biblioteca-service reencola `RECLASIFICAR_ESTRUCTURA` para toda v2 con `clasificador` menor que
+  `BIBLIOTECA_CLASIFICADOR_MINIMO` (propiedad `biblioteca.reclasificar.clasificador-minimo`, **por defecto 2**; 0 o 1 =
+  solo las v1). El taller, por tanto: (a) escribe `"clasificador": N` (N = su regla actual, 2 la corregida) en toda
+  estructura que convierte o reclasifica; (b) al recibir `RECLASIFICAR_ESTRUCTURA` de una v2 con `clasificador` < N
+  **sí** la reclasifica (con `"clasificador": N` no hace nada: sigue siendo idempotente), con las mismas garantías de
+  C2 (nunca cambia índices, títulos, href ni palabras). Mientras el taller no escriba el campo, cada llamada al
+  endpoint vuelve a encolar las v2 (inofensivo: el taller termina HECHO sin cambiar nada).
+  Además (arreglos 0.4.0, V-NUEVO-7): al volver a subir un archivo ya convertido (mismo sha256, se reutiliza su
+  conversión) cuya estructura es v1 o v2 con `clasificador` viejo, `/libros/subir` encola también su
+  `RECLASIFICAR_ESTRUCTURA` (idempotente; si falla, la subida sigue y queda en el log).
 - **Preparar el libro entero**: `POST /v1/voz/preparar-libro` `{ejemplarId, vozId}` encola `VOZ_CAPITULO` con
   **prioridad 40** (detrás de lo que se escucha, 10, y de las precargas, 20) para cada capítulo con `enVoz=true` sin
   audio `LISTO`, sin trabajo vivo y sin `ERROR` (un ERROR solo se reintenta desde `/audio/estado` con `reintentar`).
@@ -38,8 +60,11 @@ Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
   `n_capitulos`). Ajeno → 102; libro sin convertir → 120 `capitulosNoDisponibles`; voz fuera del catálogo → 120.
 - **Sesiones de lectura** (`bah_lib_sesion`): `POST /v1/sesiones/latido` `{ejemplarId, modo: 'LECTURA'|'VOZ',
   sesionId?: uuid, capitulo?, posicion?, segundos: 0..120, dispositivo? (≤ 40)}` → `{sesionId, segundosTotales}`.
-  Sin `sesionId` el servidor crea uno y lo devuelve (el cliente lo repite en los siguientes). Upsert: al alargar, lo
-  que suma un latido no pasa del tiempo real desde el anterior + 10 s (repetir latidos no infla). Ejemplar ajeno → 102
+  Sin `sesionId` el servidor crea uno y lo devuelve (el cliente lo repite en los siguientes). Upsert: lo que suma un
+  latido (cree o alargue) no pasa del tiempo real desde el último latido de **cualquier** sesión del mismo usuario
+  + 10 s, y ese margen no se acumula (arreglos 0.4.0, V-NUEVO-4): ni repetir latidos, ni abrir muchas sesiones nuevas en
+  paralelo, ni dos pestañas o dispositivos a la vez suman más que el tiempo real. Los latidos de un usuario se atienden
+  de uno en uno (candado de PostgreSQL por usuario). `fin` puede quedar hasta 10 s por delante del reloj. Ejemplar ajeno → 102
   `libroNoEncontrado`; `sesionId` de otra persona o de otro libro → 102 `sesionAjena` (no se toca); `segundos` fuera de
   0..120, `posicion` no finita o fuera de 0..10 000 000, `modo` desconocido → 120.
   `GET /v1/sesiones/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (opcionales: por defecto los últimos 30 días hasta hoy;
@@ -61,6 +86,12 @@ Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
   responde sus propios errores (ruta inexistente, servicio caído, tiempo agotado) con `ResultDTO`
   `{correct:false, message, errorCode: <HTTP>}` y las cabeceras de seguridad; tope de espera de la respuesta 2 min
   salvo `/v1/libros/subir` (30 min).
+- **Arreglos 0.4.0 (bordes)**: la 404 de las rutas internas (`actuator`, `v3/api-docs`, `swagger-ui`, `/error`) también
+  lleva las cabeceras de seguridad. Una ruta con `./`, `..`, `%2e` o `;` (que rechaza el cortafuegos de Spring
+  Security) responde **HTTP 400** con el ResultDTO (biblioteca: 120 `rutaInvalida`; auth: 400), no el JSON de Spring
+  con `timestamp`/`path`. En biblioteca-service una ruta inexistente responde **HTTP 404** con ResultDTO 102
+  `rutaNoEncontrada` y un método que la ruta no admite **HTTP 405** con ResultDTO 120 `metodoNoPermitido` (antes:
+  HTTP 200 con 103 y un `ERROR ... Error no previsto` en el log).
 
 ### 0.4.0 (taller) — 2026-11-14 (estructura v2, reclasificación y voz más natural; todo aditivo)
 Detalle en §12. Resumen: `estructura.json` gana `"version": 2` y, por capítulo, `tipo`, `region`, `numero`, `enVoz`,
@@ -492,7 +523,7 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 | POST `/v1/libros/save` | `{id, titulo?, autores?, anio?, editorial?, sinopsis?, generos?, etiquetas?, estado?, calificacion?, favorito?, tipo?}` (v1.2: ausente = no tocar; `null` = vaciar) | `EjemplarDTO` |
 | POST `/v1/libros/delete/{ejemplarId}` | — | `true` (v1.2: RETIRA el libro o documento conservando lo escrito, que reaparece al volver a subir el mismo fichero; borra los deseos. El archivo, solo si nadie más lo usa) |
 | POST `/v1/admin/libros/rellenar-generos` (v1.4, rol ADMIN) | — | `{archivosEncolados, obrasSinGenero}` (encola RELEER_METADATOS; idempotente) |
-| POST `/v1/admin/libros/reclasificar-estructura` (v1.7, rol ADMIN) | — | `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}` (encola RECLASIFICAR_ESTRUCTURA; idempotente; 503 sin `/datos`) |
+| POST `/v1/admin/libros/reclasificar-estructura` (v1.7, rol ADMIN) | — | `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}` (encola RECLASIFICAR_ESTRUCTURA para las v1 y las v2 con `clasificador` < `BIBLIOTECA_CLASIFICADOR_MINIMO`; idempotente; 503 sin `/datos`) |
 | PUT `/v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz` (v1.7) | `{enVoz: true\|false\|null}` | `CapituloDTO` (null = volver al defecto) |
 | PUT `/v1/ejemplares/{ejemplarId}/capitulos/voz` (v1.7) | `{soloHistoria: boolean}` | `[CapituloDTO]` |
 | POST `/v1/voz/preparar-libro` (v1.7) | `{ejemplarId, vozId}` | `{total, listos, enCola, error, encolados}` (prioridad 40; idempotente) |
@@ -543,7 +574,7 @@ EjemplarDTO {
   nota|null (v1.2, la del deseo), yaLoTenias?: boolean (v1.2, solo en la respuesta de /subir)
 }
 EjemplarDetalleDTO extends EjemplarDTO { capitulos: CapituloDTO[], progreso: ProgresoDTO|null }
-CapituloDTO { indice, titulo, minutos, tipo|null, region|null, numero|null, enVoz, enVozPorDefecto, minutosVoz|null }  // v1.7
+CapituloDTO { indice, titulo, minutos, tipo?, region?, numero?, enVoz, enVozPorDefecto, minutosVoz? }  // v1.7: en v1 sin tipo/region/numero/minutosVoz; en v2 numero siempre (int|null)
 FiltroLibrosDTO {
   pestana?: 'TODO'|'LEYENDO'|'POR_LEER'|'LEIDOS'|'FAVORITOS'|'DESEOS'|'DOCUMENTOS',
   texto?, autores?: string[], generos?: string[], formatos?: string[], etiquetas?: string[],
@@ -656,6 +687,9 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
 ### 12.1 `estructura.json` v2 (C1)
 - Raíz: `"version": 2` (lo mira biblioteca-service para no volver a encolar la reclasificación). `versionFormato` sigue
   en 1 (el formato v1 no cambia). Metadatos: `subtitulo` opcional (EPUB3 `title-type=subtitle`).
+- (arreglos 0.4.0) Raíz: `"clasificador": <entero>` = versión de la regla de clasificación (sin el campo = 1). Las v2
+  con `clasificador` menor que `BIBLIOTECA_CLASIFICADOR_MINIMO` (por defecto 2) se vuelven a encolar para reclasificar
+  (ver «Versión del clasificador» en v1.7).
 - Cada capítulo, además de lo de §4: `tipo` (capitulo|parte|prologo|epilogo|introduccion|preliminar|dedicatoria|epigrafe|
   creditos|indice|notas|apendice|agradecimientos|autor|publicidad|colofon|otro), `region` (antes|cuerpo|despues),
   `numero` (int o null; solo capítulos del cuerpo), `enVoz` (por defecto: cuerpo con texto), `palabrasVoz` (palabras de

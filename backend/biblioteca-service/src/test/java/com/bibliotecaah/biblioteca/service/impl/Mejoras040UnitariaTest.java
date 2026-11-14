@@ -138,6 +138,66 @@ class Mejoras040UnitariaTest {
                     new AlmacenDeArchivos(datos.resolve("no-existe").toString()), JSON);
             assertThat(sinDisco.capitulos(archivo)).isEmpty();
             assertThat(sinDisco.version(archivo)).isEqualTo(LectorDeEstructura.SIN_ESTRUCTURA);
+            assertThat(sinDisco.versiones(archivo).version()).isEqualTo(LectorDeEstructura.SIN_ESTRUCTURA);
+        }
+
+        @Test
+        @DisplayName("A-1: clasificador = el entero de la raiz; sin el campo (o no entero), 1")
+        void clasificador() throws Exception {
+            escribir("{\"version\":2,\"capitulos\":[]}");
+            assertThat(lector.versiones(archivo)).isEqualTo(new LectorDeEstructura.Versiones(2, 1));
+            escribir("{\"version\":2,\"clasificador\":2,\"capitulos\":[]}");
+            assertThat(lector.versiones(archivo)).isEqualTo(new LectorDeEstructura.Versiones(2, 2));
+            escribir("{\"version\":2,\"clasificador\":\"3\",\"capitulos\":[]}");
+            assertThat(lector.versiones(archivo).clasificador()).isEqualTo(1);
+            escribir("{\"versionFormato\":1,\"capitulos\":[]}");
+            assertThat(lector.versiones(archivo)).isEqualTo(new LectorDeEstructura.Versiones(1, 1));
+        }
+
+        @Test
+        @DisplayName("A-1: si ningun capitulo va en voz por defecto, van todos; si alguno va, no se toca nada")
+        void nuncaTodoFuera() throws Exception {
+            escribir("{\"version\":2,\"capitulos\":[{\"indice\":0,\"titulo\":\"Epígrafe\",\"palabras\":307,"
+                    + "\"tipo\":\"epigrafe\",\"region\":\"antes\",\"numero\":null,\"enVoz\":false}]}");
+            assertThat(lector.capitulos(archivo)).singleElement().satisfies(c -> {
+                assertThat(c.isEnVozPorDefecto()).isTrue();
+                assertThat(c.isEnVoz()).isTrue();
+                assertThat(c.getRegion()).isEqualTo("antes");
+            });
+            escribir("{\"version\":2,\"capitulos\":[{\"indice\":0,\"region\":\"antes\",\"enVoz\":false},"
+                    + "{\"indice\":1,\"region\":\"cuerpo\",\"enVoz\":true}]}");
+            assertThat(lector.capitulos(archivo)).extracting(CapituloDTO::isEnVozPorDefecto).containsExactly(false, true);
+        }
+
+        @Test
+        @DisplayName("C12: un capitulo v1 no lleva tipo/region/numero/minutosVoz; uno v2 sin numero lleva numero:null")
+        void json() throws Exception {
+            escribir("{\"versionFormato\":1,\"capitulos\":[{\"indice\":0,\"titulo\":\"Uno\",\"palabras\":10}]}");
+            JsonNode v1 = JSON.valueToTree(lector.capitulos(archivo).get(0));
+            assertThat(v1.has("tipo")).isFalse();
+            assertThat(v1.has("region")).isFalse();
+            assertThat(v1.has("numero")).isFalse();
+            assertThat(v1.has("minutosVoz")).isFalse();
+            assertThat(v1.has("clasificado")).isFalse();
+            assertThat(v1.get("enVoz").asBoolean()).isTrue();
+            assertThat(v1.get("enVozPorDefecto").asBoolean()).isTrue();
+            assertThat(JSON.valueToTree(new CapituloDTO(1, "x", 2)).has("numero")).isFalse();
+
+            escribir("{\"version\":2,\"capitulos\":[{\"indice\":0,\"region\":\"antes\",\"numero\":null,"
+                    + "\"enVoz\":false},{\"indice\":1,\"tipo\":\"capitulo\",\"region\":\"cuerpo\",\"numero\":1,"
+                    + "\"palabrasVoz\":150}]}");
+            List<CapituloDTO> v2 = lector.capitulos(archivo);
+            JsonNode sinNumero = JSON.valueToTree(v2.get(0));
+            assertThat(sinNumero.has("numero")).isTrue();
+            assertThat(sinNumero.get("numero").isNull()).isTrue();
+            assertThat(sinNumero.get("region").asText()).isEqualTo("antes");
+            assertThat(sinNumero.has("tipo")).isFalse();
+            assertThat(sinNumero.has("minutosVoz")).isFalse();
+            JsonNode conNumero = JSON.valueToTree(v2.get(1));
+            assertThat(conNumero.get("numero").asInt()).isEqualTo(1);
+            assertThat(conNumero.get("tipo").asText()).isEqualTo("capitulo");
+            assertThat(conNumero.get("minutosVoz").asInt()).isEqualTo(1);
+            assertThat(JSON.writeValueAsString(v2.get(1))).containsOnlyOnce("\"numero\"");
         }
     }
 

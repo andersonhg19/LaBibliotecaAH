@@ -38,6 +38,7 @@ public final class Message {
         noEsUnDeseo,
         rutaInvalida,
         rutaNoEncontrada,
+        metodoNoPermitido,
         capituloFueraDeRango,
         vozInvalida,
         datosInvalidos,

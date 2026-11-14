@@ -11,10 +11,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,6 +49,35 @@ class TomcatRespondeJsonTest {
         assertThat(cuerpo.get("correct").asBoolean()).isFalse();
         assertThat(cuerpo.get("errorCode").asInt()).isEqualTo(400);
         assertThat(cuerpo.get("message").asText()).isEqualTo("La dirección pedida no es válida.");
+    }
+
+    @ParameterizedTest(name = "GET {0}")
+    @ValueSource(strings = {"/biblioteca/./v3/api-docs", "/biblioteca/v1/x/../users/all", "/biblioteca/%2e/v1/users/all",
+            "/biblioteca/actuator/health/..;/env", "/biblioteca/v3;x=1/api-docs"})
+    @DisplayName("V-NUEVO-3: lo que rechaza el cortafuegos de Spring (./, .., %2e, ;) da 400 con ResultDTO "
+            + "{errorCode:400}, sin timestamp, status ni path")
+    void cortafuegos(String ruta) throws Exception {
+        try (Socket s = new Socket("127.0.0.1", puerto)) {
+            s.setSoTimeout(30_000);
+            s.getOutputStream().write(("GET " + ruta + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            s.getOutputStream().flush();
+            String respuesta = new String(s.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String[] partes = respuesta.split("\r\n\r\n", 2);
+
+            assertThat(partes[0]).as(respuesta).startsWith("HTTP/1.1 400");
+            assertThat(partes[0].toLowerCase(java.util.Locale.ROOT)).contains("content-type: application/json");
+            String cuerpoTexto = partes[1];
+            if (partes[0].toLowerCase(java.util.Locale.ROOT).contains("transfer-encoding: chunked")) {
+                cuerpoTexto = cuerpoTexto.substring(cuerpoTexto.indexOf("\r\n") + 2, cuerpoTexto.lastIndexOf("}") + 1);
+            }
+            JsonNode cuerpo = json.readTree(cuerpoTexto);
+            assertThat(cuerpo.has("timestamp")).as(cuerpoTexto).isFalse();
+            assertThat(cuerpo.has("path")).as(cuerpoTexto).isFalse();
+            assertThat(cuerpo.get("correct").asBoolean()).isFalse();
+            assertThat(cuerpo.get("errorCode").asInt()).isEqualTo(400);
+            assertThat(cuerpo.get("message").asText()).isEqualTo("La dirección pedida no es válida.");
+        }
     }
 
     @Test

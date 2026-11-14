@@ -141,6 +141,31 @@ class TomcatDeVerdadTest extends PostgresDeVerdad {
             assertThat(cuerpo.get("message").asText()).isEqualTo("La dirección pedida no es válida.");
         }
 
+        @ParameterizedTest(name = "GET {0}")
+        @ValueSource(strings = {"/biblioteca/./v3/api-docs", "/biblioteca/v1/x/../estantes/all",
+                "/biblioteca/%2e/v1/estantes/all", "/biblioteca/actuator/health/..;/env", "/biblioteca/v3;x=1/api-docs",
+                "/biblioteca/v1/libros;jsessionid=1/all"})
+        @DisplayName("V-NUEVO-3: lo que rechaza el cortafuegos de Spring (./, .., %2e, ;) da 400 con ResultDTO "
+                + "{errorCode:120}, sin timestamp, status ni path")
+        void cortafuegos(String ruta) throws Exception {
+            try (Socket s = new Socket("127.0.0.1", puerto)) {
+                s.setSoTimeout(30_000);
+                s.getOutputStream().write(("GET " + ruta + " HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: "
+                        + bearer(ANDERSON) + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                s.getOutputStream().flush();
+                Respuesta r = leer(s.getInputStream());
+
+                assertThat(r.estado()).as(r.cuerpo()).isEqualTo(400);
+                assertThat(r.cabeceras().getOrDefault("content-type", "")).startsWith("application/json");
+                JsonNode cuerpo = json.readTree(r.cuerpo());
+                assertThat(cuerpo.has("timestamp")).as(r.cuerpo()).isFalse();
+                assertThat(cuerpo.has("path")).as(r.cuerpo()).isFalse();
+                assertThat(cuerpo.get("correct").asBoolean()).isFalse();
+                assertThat(cuerpo.get("errorCode").asInt()).isEqualTo(120);
+                assertThat(cuerpo.get("message").asText()).isEqualTo("La dirección pedida no es válida.");
+            }
+        }
+
         @Test
         @DisplayName("la valvula traduce cada estado; la que Tomcat crearia por nombre tambien es JSON")
         void cuerpos() throws Exception {
