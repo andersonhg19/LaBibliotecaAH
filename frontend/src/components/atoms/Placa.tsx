@@ -52,7 +52,7 @@ const Placa: React.FC<Props> = ({ titulo, detalle, accessibilityLabel, testID })
     ]}
   >
     <Tornillo />
-    <Text style={[styles.titulo, web({ textShadow: '0 1px 0 rgba(255,245,210,0.65)' })]} numberOfLines={1}>
+    <Text style={[styles.titulo, web({ textShadow: '0 1px 0 rgba(255,245,210,0.65)' })]} numberOfLines={2}>
       {titulo}
     </Text>
     {detalle ? (

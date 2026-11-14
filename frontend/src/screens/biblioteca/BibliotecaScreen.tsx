@@ -105,6 +105,11 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const escritorio = width >= 1100
   const compacta = usaCabeceraCompacta(width, height)
   const horizontal = compacta && esApaisado(height)
+  /*
+   * E6 (validación 0.4.0): en un teléfono pequeño (SE, 320) el «+» flotante caía encima de la primera balda y
+   * tapaba un libro. Ahí va en la cabecera, junto a las otras dos acciones, y no flota.
+   */
+  const masEnCabecera = compacta && !horizontal && (width < 360 || height < 700)
   /* UX5-06: al bajar por la lista el «+» se encoge (tapa menos); al subir vuelve. */
   const encogido = useFlotanteEncogido(compacta)
 
@@ -208,7 +213,8 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
       <View style={horizontal ? undefined : styles.flex}>
         {!horizontal ? (
           <Text style={[styles.saludoCompacto, { color: colors.textSecondary }]} numberOfLines={1}>
-            {saludo()}, {nombre}
+            {/* E8: en 320 px, con el «+» en la cabecera, el nombre no cabe: solo el saludo. */}
+            {width < 360 ? saludo() : `${saludo()}, ${nombre}`}
           </Text>
         ) : null}
         <AppText
@@ -220,6 +226,9 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
         </AppText>
       </View>
       {horizontal && vista === 'estanteria' ? <View style={styles.flex} /> : null}
+      {masEnCabecera ? (
+        <BotonIcono icono="plus" etiqueta="Traer libros" onPress={() => setSubir(true)} testID="traer-libros" />
+      ) : null}
       <BotonIcono
         icono={vista === 'estanteria' ? 'lista' : 'lomos'}
         etiqueta={vista === 'estanteria' ? 'Ver el catálogo' : 'Ver la estantería'}
@@ -355,7 +364,7 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         ) : null}
       </View>
-      {compacta ? (
+      {compacta && !masEnCabecera ? (
         <View
           style={[
             styles.flotanteHueco,
