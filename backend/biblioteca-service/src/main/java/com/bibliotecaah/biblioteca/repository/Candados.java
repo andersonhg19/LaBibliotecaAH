@@ -28,4 +28,14 @@ public class Candados {
         long clave = (que + ":" + usuarioId + ":" + ejemplarId).hashCode() * 31L + ejemplarId.getLeastSignificantBits();
         jdbc.query("SELECT pg_advisory_xact_lock(?)", rs -> null, clave);
     }
+
+    /**
+     * Candado por (que, usuario), para todo lo del usuario a la vez (validacion 0.4.0, V-NUEVO-4:
+     * los latidos de sesiones distintas del mismo usuario se ponen en fila). Debe llamarse dentro
+     * de una transaccion.
+     */
+    public void tomarDelUsuario(String que, Long usuarioId) {
+        long clave = ((long) que.hashCode() << 32) ^ usuarioId;
+        jdbc.query("SELECT pg_advisory_xact_lock(?)", rs -> null, clave);
+    }
 }

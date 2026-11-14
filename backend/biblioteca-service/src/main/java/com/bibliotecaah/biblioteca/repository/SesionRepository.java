@@ -14,11 +14,13 @@ public interface SesionRepository {
                   BigDecimal posicion, String dispositivo, Instant ahora) { }
 
     /**
-     * Crea la sesion o la alarga. Al alargar, los segundos que suma un latido no
-     * pasan del tiempo real transcurrido desde el anterior (+ un margen): un
-     * cliente que repita latidos no infla las estadisticas. Devuelve los
-     * segundos totales, o null si ese sesionId ya es de otro usuario o de otro
-     * ejemplar (no se toca).
+     * Crea la sesion o la alarga. Los segundos que suma un latido (cree o alargue)
+     * no pasan del tiempo real transcurrido desde el ultimo latido de CUALQUIER
+     * sesion del usuario (+ un margen que no se acumula): ni repetir latidos ni
+     * abrir sesiones nuevas en paralelo infla las estadisticas. Debe llamarse
+     * dentro de una transaccion (los latidos del usuario se ponen en fila).
+     * Devuelve los segundos totales, o null si ese sesionId ya es de otro usuario
+     * o de otro ejemplar (no se toca).
      */
     Integer latido(Latido latido);
 
