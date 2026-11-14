@@ -1,9 +1,66 @@
 # Contratos entre componentes — La Biblioteca AH
 
 > Fuente de verdad técnica compartida por `backend/`, `taller/` y `frontend/`.
-> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.6 — 2026-11-12.**
+> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.7 — 2026-11-14.**
 
 ## Cambios
+
+### v1.7 — 2026-11-14 (0.4.0: capítulos clasificados, voz por capítulo, sesiones de lectura, preparar el libro, estado de la casa)
+Todo es **aditivo** y retrocompatible: los libros ya convertidos (estructura v1) y los clientes viejos siguen igual.
+Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
+- **`estructura.json` v2** (§4, la escribe el taller): `"version": 2` y, por capítulo, `tipo`, `region`
+  (`antes`|`cuerpo`|`despues`), `numero` (int|null), `enVoz` (bool), `palabrasVoz` (int) y `origenTipo` (diagnóstico).
+  biblioteca-service lee v1 y v2: en un libro v1 todos los capítulos van en voz y los campos nuevos llegan `null`.
+  Lo que no encaja (región desconocida, número que no es entero, tipo con caracteres raros) se ignora.
+- **`CapituloDTO`** (en `EjemplarDetalleDTO.capitulos`): `{indice, titulo, minutos, tipo?, region?, numero?, enVoz,
+  enVozPorDefecto, minutosVoz?}`. `minutos` = ceil(palabras/150) como siempre; `minutosVoz` = ceil(palabrasVoz/150) si
+  existe. `enVozPorDefecto` = `estructura.enVoz` (v2; sin el campo: `true` si la región es `cuerpo` o no hay región) o
+  `true` (v1). `enVoz` = la preferencia del usuario si la dejó; si no, `enVozPorDefecto`.
+- **Preferencias de voz** por usuario y ejemplar (`bah_lib_capitulo_voz`, solo lo que el usuario cambió):
+  `PUT /v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz` `{"enVoz": true|false|null}` (null o sin cuerpo = volver al
+  defecto) → `CapituloDTO`; `PUT /v1/ejemplares/{ejemplarId}/capitulos/voz` `{"soloHistoria": true}` → en voz solo la
+  región `cuerpo` (un capítulo sin región cuenta como cuerpo); `{"soloHistoria": false}` → borra las preferencias;
+  → `[CapituloDTO]`. Ejemplar ajeno, retirado o inexistente → 102 `libroNoEncontrado`; índice que no existe → 120
+  `capituloFueraDeRango`; deseo → 120 `libroSinArchivo`; sin capítulos legibles → 120 `capitulosNoDisponibles`.
+- `POST /v1/audio/estado`: la precarga de los 2 siguientes **salta** los capítulos con `enVoz=false` de ese usuario
+  (busca los 2 siguientes que sí van, hasta 50 por delante). El capítulo pedido se genera siempre (elegido a mano suena).
+- **Cola** (§7): tipo nuevo **`RECLASIFICAR_ESTRUCTURA`** (payload `{}`, prioridad 200, como `RELEER_METADATOS`): el
+  taller lee el ORIGINAL y reescribe `estructura.json` a v2 **conservando** `indice`, `titulo`, `href` y `palabras`
+  (empareja por `href`/orden) y añadiendo los campos nuevos; nunca cambia el número de capítulos (progreso, notas y
+  audio intactos). Lo encola `POST /v1/admin/libros/reclasificar-estructura` (rol **ADMIN**; sin él 403) →
+  `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}`: solo archivos `LISTO` cuya `estructura.json` no es
+  v2 y sin trabajo vivo de ese tipo (idempotente). Sin `/datos`: 503 `datosNoDisponibles`.
+- **Preparar el libro entero**: `POST /v1/voz/preparar-libro` `{ejemplarId, vozId}` encola `VOZ_CAPITULO` con
+  **prioridad 40** (detrás de lo que se escucha, 10, y de las precargas, 20) para cada capítulo con `enVoz=true` sin
+  audio `LISTO`, sin trabajo vivo y sin `ERROR` (un ERROR solo se reintenta desde `/audio/estado` con `reintentar`).
+  Idempotente. → `{total, listos, enCola, error, encolados}`. `GET /v1/voz/preparar-libro?ejemplarId=&vozId=` →
+  `{total, listos, enCola, error}` (`encolados: null`). `total` = capítulos con `enVoz=true` (sin estructura legible:
+  `n_capitulos`). Ajeno → 102; libro sin convertir → 120 `capitulosNoDisponibles`; voz fuera del catálogo → 120.
+- **Sesiones de lectura** (`bah_lib_sesion`): `POST /v1/sesiones/latido` `{ejemplarId, modo: 'LECTURA'|'VOZ',
+  sesionId?: uuid, capitulo?, posicion?, segundos: 0..120, dispositivo? (≤ 40)}` → `{sesionId, segundosTotales}`.
+  Sin `sesionId` el servidor crea uno y lo devuelve (el cliente lo repite en los siguientes). Upsert: al alargar, lo
+  que suma un latido no pasa del tiempo real desde el anterior + 10 s (repetir latidos no infla). Ejemplar ajeno → 102
+  `libroNoEncontrado`; `sesionId` de otra persona o de otro libro → 102 `sesionAjena` (no se toca); `segundos` fuera de
+  0..120, `posicion` no finita o fuera de 0..10 000 000, `modo` desconocido → 120.
+  `GET /v1/sesiones/resumen?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (opcionales: por defecto los últimos 30 días hasta hoy;
+  máx. 366 días, si no 120 `rangoDeFechasInvalido`) → `{desde, hasta, minutosLectura, minutosVoz, dias: [{fecha,
+  minutos}] (todos los días del periodo, también los de 0), rachaActual, rachaMaxima, libros: [{ejemplarId, titulo,
+  minutos}] (de más a menos)}`. Días en zona **America/Bogota** (la sesión cuenta para el día en que empezó); un día
+  cuenta para la racha con ≥ 1 minuto; la racha actual sigue viva hasta medianoche (cuenta hasta ayer si hoy aún no se
+  ha leído); la máxima es de toda la historia.
+- **Estado de la casa**: `GET /v1/estado-casa` (con sesión) → `{taller: OK|LENTO|CAIDO, traductor: OK|CAIDO,
+  disco: OK|DESCONECTADO, colaVoz, mensaje|null}`, caché 15 s. taller = `GET /salud` del taller (2 s / 3 s): CAIDO si
+  no responde; LENTO si tarda > 1,5 s, si un hilo de trabajo está muerto o si un capítulo pedido (prioridad ≤ 10)
+  lleva > 2 min sin empezar. traductor = `GET /health`. `colaVoz` = trabajos de voz vivos en toda la casa. `mensaje`
+  (el de más peso: disco, taller caído, taller lento, traductor) sale de `messages_es.properties`.
+- **Excepción documentada a "todo es POST"**: los `PUT` de C3 y los `GET` de resumen, preparar-libro y estado-casa
+  (fijados con la web); devuelven el `ResultDTO` de siempre con HTTP 200.
+- **Robustez (auditoría 3-backend)**: `FiltroLibrosDTO.texto` ≤ 200 (120); `calificacionMin` no finita o fuera de
+  0..5 → 120 `valorFueraDeRango` (antes `"NaN"` pasaba). El token lleva `iat`. Login: ya no hay freno global que deje
+  a todos fuera; los fallos repetidos desde un dispositivo responden cada vez más despacio (250 ms → 4 s). El gateway
+  responde sus propios errores (ruta inexistente, servicio caído, tiempo agotado) con `ResultDTO`
+  `{correct:false, message, errorCode: <HTTP>}` y las cabeceras de seguridad; tope de espera de la respuesta 2 min
+  salvo `/v1/libros/subir` (30 min).
 
 ### v1.6 — 2026-11-12 (más formatos de documentos, visor de hojas de cálculo y carpetas del archivador)
 Todo es **aditivo**: lo que ya existía responde igual (salvo el texto de `formatoNoSoportado`, que lista los formatos nuevos).
@@ -314,6 +371,9 @@ Raíz montada en `/datos` en **biblioteca-service y taller** (en casa: `E:\LaBib
 ```
 `minutosEstimados` = palabras / 150 a 1x.
 
+(v1.7) **Versión 2**: además `"version": 2` en la raíz y, en cada capítulo, `"tipo"`, `"region"`, `"numero"`,
+`"enVoz"`, `"palabrasVoz"` y `"origenTipo"` (ver Cambios v1.7). biblioteca-service sigue leyendo la v1.
+
 ## 5. `frases/cap-NNN.json`
 ```json
 {"capitulo": 3, "frases": [{"id": "c003-s00000", "texto": "Texto tal como se ve.", "voz": "Texto preparado para leer en voz.",
@@ -354,7 +414,7 @@ Mientras el taller genera un capítulo deja en `audio/{archivoId}/{vozId}/`:
 ```sql
 CREATE TABLE bah_lib_trabajo (
   id            UUID PRIMARY KEY,
-  tipo          VARCHAR(30)  NOT NULL,   -- CONVERTIR | VOZ_CAPITULO | RELEER_METADATOS (v1.4)
+  tipo          VARCHAR(30)  NOT NULL,   -- CONVERTIR | VOZ_CAPITULO | RELEER_METADATOS (v1.4) | RECLASIFICAR_ESTRUCTURA (v1.7)
   archivo_id    UUID         NOT NULL,
   payload       JSONB        NOT NULL DEFAULT '{}'::jsonb,
   estado        VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE', -- PENDIENTE | EN_CURSO | HECHO | ERROR
@@ -366,7 +426,8 @@ CREATE TABLE bah_lib_trabajo (
 );
 CREATE INDEX ix_bah_lib_trabajo_cola ON bah_lib_trabajo (estado, prioridad, creado);
 ```
-- payload CONVERTIR y RELEER_METADATOS: `{}`. payload VOZ_CAPITULO: `{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 3}`.
+- payload CONVERTIR, RELEER_METADATOS y RECLASIFICAR_ESTRUCTURA (v1.7, prioridad 200): `{}`. (v1.7) VOZ_CAPITULO de
+  «preparar el libro» va con prioridad 40. payload VOZ_CAPITULO: `{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 3}`.
 - El **taller** toma trabajos con
   `UPDATE bah_lib_trabajo SET estado='EN_CURSO', intentos=intentos+1, actualizado=now() WHERE id = (SELECT id FROM bah_lib_trabajo WHERE estado='PENDIENTE' ORDER BY prioridad, creado FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING *`.
   (v1.1) La subconsulta filtra además `AND tipo = ANY(:tipos)`: hay un hilo de conversión y otro de voz, y ninguno toma trabajos del otro.
@@ -424,6 +485,14 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 | POST `/v1/libros/save` | `{id, titulo?, autores?, anio?, editorial?, sinopsis?, generos?, etiquetas?, estado?, calificacion?, favorito?, tipo?}` (v1.2: ausente = no tocar; `null` = vaciar) | `EjemplarDTO` |
 | POST `/v1/libros/delete/{ejemplarId}` | — | `true` (v1.2: RETIRA el libro o documento conservando lo escrito, que reaparece al volver a subir el mismo fichero; borra los deseos. El archivo, solo si nadie más lo usa) |
 | POST `/v1/admin/libros/rellenar-generos` (v1.4, rol ADMIN) | — | `{archivosEncolados, obrasSinGenero}` (encola RELEER_METADATOS; idempotente) |
+| POST `/v1/admin/libros/reclasificar-estructura` (v1.7, rol ADMIN) | — | `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}` (encola RECLASIFICAR_ESTRUCTURA; idempotente; 503 sin `/datos`) |
+| PUT `/v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz` (v1.7) | `{enVoz: true\|false\|null}` | `CapituloDTO` (null = volver al defecto) |
+| PUT `/v1/ejemplares/{ejemplarId}/capitulos/voz` (v1.7) | `{soloHistoria: boolean}` | `[CapituloDTO]` |
+| POST `/v1/voz/preparar-libro` (v1.7) | `{ejemplarId, vozId}` | `{total, listos, enCola, error, encolados}` (prioridad 40; idempotente) |
+| GET `/v1/voz/preparar-libro?ejemplarId=&vozId=` (v1.7) | — | `{total, listos, enCola, error}` |
+| POST `/v1/sesiones/latido` (v1.7) | `{ejemplarId, modo, sesionId?, capitulo?, posicion?, segundos (0..120), dispositivo?}` | `{sesionId, segundosTotales}` |
+| GET `/v1/sesiones/resumen?desde=&hasta=` (v1.7) | — | `{desde, hasta, minutosLectura, minutosVoz, dias, rachaActual, rachaMaxima, libros}` |
+| GET `/v1/estado-casa` (v1.7) | — | `{taller, traductor, disco, colaVoz, mensaje}` (caché 15 s) |
 | POST `/v1/libros/facetas` | `{pestana?}` (v1.2; por defecto TODO = solo libros) | `{autores:[{nombre,n}], generos:[…], anios:[…], formatos:[…], etiquetas:[…]}` |
 | POST `/v1/progreso/get/{ejemplarId}` | — | `ProgresoDTO` |
 | POST `/v1/progreso/save` | `ProgresoDTO` | `ProgresoDTO` (gana el `actualizadoEn` más reciente; v1.2: uno más de 2 min en el futuro se toma como la hora del servidor) |
@@ -466,7 +535,8 @@ EjemplarDTO {
   nNotas: number, fuenteMetadatos: 'NOMBRE_ARCHIVO'|'ARCHIVO'|'MANUAL'|'OPEN_LIBRARY'|'IA',
   nota|null (v1.2, la del deseo), yaLoTenias?: boolean (v1.2, solo en la respuesta de /subir)
 }
-EjemplarDetalleDTO extends EjemplarDTO { capitulos: [{indice, titulo, minutos}], progreso: ProgresoDTO|null }
+EjemplarDetalleDTO extends EjemplarDTO { capitulos: CapituloDTO[], progreso: ProgresoDTO|null }
+CapituloDTO { indice, titulo, minutos, tipo|null, region|null, numero|null, enVoz, enVozPorDefecto, minutosVoz|null }  // v1.7
 FiltroLibrosDTO {
   pestana?: 'TODO'|'LEYENDO'|'POR_LEER'|'LEIDOS'|'FAVORITOS'|'DESEOS'|'DOCUMENTOS',
   texto?, autores?: string[], generos?: string[], formatos?: string[], etiquetas?: string[],
@@ -524,6 +594,8 @@ CapituloTraducidoDTO {                                                          
 | `TraducirDTO.texto` · `origen`/`destino` (v1.3) | 1–5 000 · 10 (y de la lista `TRADUCTOR_IDIOMAS`) |
 | `TraducirCapituloDTO.capitulo` (v1.3) | 0–999 |
 | Subida: archivos por petición · por archivo · por petición · libre en `/datos` | `BIBLIOTECA_MAX_ARCHIVOS_POR_SUBIDA` (20) · `BIBLIOTECA_MAX_ARCHIVO` (300MB) · `BIBLIOTECA_MAX_SUBIDA` (1GB) · `BIBLIOTECA_ESPACIO_MINIMO_MB` (1024) → 413 / 507 |
+| (v1.7) `FiltroLibrosDTO.texto` · `calificacionMin` | 200 · 0–5 (finito) |
+| (v1.7) Latido: `segundos` · `posicion` · `dispositivo` · `capitulo` · periodo del resumen | 0–120 · 0–10 000 000 (finito) · 40 · 0–99 999 · 366 días |
 | (v1.6) Carpetas: nombre · por usuario · niveles · documentos por `mover-documentos` · texto de búsqueda | 100 · `BIBLIOTECA_MAX_CARPETAS` (500) · 10 · 200 · 200 |
 | (v1.6) Hojas de cálculo (taller; se recorta con aviso, no falla) | 50 hojas · 5 000 filas y 200 columnas por hoja · 250 000 celdas con valor · 5 000 caracteres por celda; XLS ≤ 64 MB; los ZIP con los topes de siempre |
 
