@@ -155,6 +155,17 @@ def test_sin_ningun_capitulo_reconocible():
     assert [x.tipo for x in clasificar([_e("Sección 1", 50)])] == ["capitulo"]
 
 
+def test_portada_con_texto_es_un_capitulo_mal_titulado():
+    # PDF convertido con 0.3.3: el capítulo 1 se llamaba «Portada» (CF-10); al reclasificar no se saca de la voz
+    c = clasificar([_e("Portada", 600), _e("Capítulo 2"), _e("Capítulo 3")])
+    assert [(x.tipo, x.numero, x.en_voz) for x in c] == [
+        ("capitulo", 1, True),
+        ("capitulo", 2, True),
+        ("capitulo", 3, True),
+    ]
+    assert clasificar([_e("Portada", 5), _e("Capítulo 1")])[0].tipo == "preliminar"
+
+
 def test_palabras_voz_y_en_voz():
     c = clasificar([_e("Capítulo 1", 100, palabras_voz=0), _e("Capítulo 2", 100, palabras_voz=90)])
     assert [x.en_voz for x in c] == [False, True]

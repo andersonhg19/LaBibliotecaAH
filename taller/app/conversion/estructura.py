@@ -53,6 +53,8 @@ FINALES = frozenset({"notas", "apendice", "agradecimientos", "autor", "publicida
 # mitad de la novela no corta el libro)
 MAX_FRACCION_FINAL = 0.35
 PALABRAS_PRELIMINAR = 400  # una sección sin tipo antes del primer capítulo con menos de esto es preliminar
+PALABRAS_PORTADA = 150  # una «Portada» con más texto que esto no es una portada
+_PORTADA = re.compile(r"^(?:portada|portadilla|cubierta|cover|title page|anteportada)[.:]?$")
 PALABRAS_PARTE = 500  # una entrada con hijos en el índice y menos de esto es una parte (cabecera)
 
 # vocabulario EPUB SSV / DPUB-ARIA → tipo
@@ -414,6 +416,10 @@ def clasificar(entradas: Sequence[Entrada]) -> list[Clasificacion]:
             tipos[i], origenes[i] = tipo_por_titulo(e.titulo) or "otro", "linear"
         else:
             por_titulo = tipo_por_titulo(e.titulo)
+            if por_titulo == "preliminar" and _PORTADA.match(_plano(e.titulo)) and e.palabras >= PALABRAS_PORTADA:
+                # una «Portada» con páginas de texto es un capítulo mal titulado (PDF con varios marcadores en la
+                # primera página, convertido antes de CF-10): decide la posición
+                por_titulo = None
             if por_titulo:
                 tipos[i], origenes[i] = por_titulo, "titulo"
             elif e.con_hijos and e.palabras < PALABRAS_PARTE:
