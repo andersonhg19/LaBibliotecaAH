@@ -52,6 +52,7 @@ import { PAPELES } from '@tema/papel'
 import { reducirMovimiento, web } from '@tema/web'
 import type { AnotacionDTO, EjemplarDetalleDTO, ProgresoDTO } from '@tipos'
 import { estadoElegible } from '@utils/aria'
+import { celebrarFin } from '@utils/confeti'
 import { escucharLibro } from '@utils/escuchar'
 import { useInerte } from '@utils/inerte'
 import { MENSAJES } from '@utils/mensajes'
@@ -301,11 +302,19 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
     return { capitulo: u.capitulo, posicion: u.fraccion }
   })
 
+  /* F5: llegar al final del libro leyendo se celebra (una vez por libro y dispositivo). */
+  const celebrado = useRef(false)
   const lugar = useRef<Lugar | null>(null)
   const alReubicar = useCallback(
     (u: Ubicacion) => {
       ubicRef.current = u
       if (u.porUsuario) actividad()
+      if (u.porUsuario && u.fraccion >= 0.995 && !celebrado.current) {
+        celebrado.current = true
+        celebrarFin(id)
+          .then((r) => r.primera && showToast('success', '¡Libro terminado!', 'Llegaste a la última página.'))
+          .catch(() => {})
+      }
       setUbic(u)
       setSeleccion(null)
       const ahora = { cfi: u.cfi, fraccion: u.fraccion }
@@ -343,7 +352,7 @@ const LectorScreen: React.FC<Props> = ({ route, navigation }) => {
         }, espera)
       }
     },
-    [id, subir, actividad],
+    [id, subir, actividad, showToast],
   )
 
   useEffect(() => {

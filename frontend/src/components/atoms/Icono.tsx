@@ -109,6 +109,8 @@ const DIBUJOS: Record<string, Dibujo> = {
   user: varios(circulo(12, 8, 4), P('M4 21c1-4 4-6 8-6s7 2 8 6')),
   users: varios(circulo(9, 8, 3.5), P('M2.5 20c.8-3.5 3.5-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8')),
   shield: P('M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z'),
+  /** F12: estadísticas (tres barras). */
+  barras: P('M5 20v-8M12 20V5M19 20v-5M3 20h18'),
   history: varios(P('M3 12a9 9 0 1 0 3-6.7L3 8'), P('M3 3v5h5M12 7v5l3 2')),
   key: varios(circulo(8, 15, 4), P('M11 12l9-9M17 6l3 3')),
   sonido: P('M4 9h4l5-4v14l-5-4H4zM16 9c1.3 1.3 1.3 4.7 0 6M18.5 6.5c2.8 2.8 2.8 8.2 0 11'),

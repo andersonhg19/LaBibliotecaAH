@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native'
 
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
+import Esqueleto from '@componentes/atoms/Esqueleto'
 import Spinner from '@componentes/atoms/Spinner'
 import Atril from '@componentes/estanteria/Atril'
 import BarraBaldas from '@componentes/estanteria/BarraBaldas'
@@ -259,7 +260,8 @@ const Estanteria: React.FC<Props> = ({
     return (
       <View testID="estanteria">
         {barra}
-        <Spinner />
+        {/* F3: la silueta de las baldas mientras llegan los libros. */}
+        <Esqueleto variante="baldas" ancho={ancho} />
       </View>
     )
   if (error && !datos)
