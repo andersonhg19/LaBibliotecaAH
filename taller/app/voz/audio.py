@@ -83,6 +83,16 @@ SOBREMUESTREO = 4
 MARGEN_REINTENTO_DB = 0.5  # cuánto más se baja el techo, además de lo que sobró, al recodificar
 MAX_RECODIFICACIONES = 4
 TOLERANCIA_LUFS_RECODIFICAR = 1.0  # sonoridad que puede perder una variante al bajarle el techo
+# (R2-2) Además del pico, la SONORIDAD del m4a final: si se aparta más de TOLERANCIA_LUFS_FINAL de −18 (la 2x de los
+# diálogos quedaba a −19,2; un capítulo corto con la voz multilingüe, a −20; y bajar el techo por el pico costaba hasta
+# 1,7 LU), esa variante se recodifica corrigiendo a la vez la ganancia (lo que falte) y el techo del limitador (lo que
+# sobre de pico): el limitador sobremuestreado frena los picos y la ganancia devuelve la sonoridad. Solo en capítulos
+# de al menos MIN_SEGUNDOS_SONORIDAD (en menos, la sonoridad integrada no es fiable) y sin pasar de EXTRA_GANANCIA_MAX
+# ni bajar el techo de TECHO_MINIMO_DB (más sería aplastar la voz).
+TOLERANCIA_LUFS_FINAL = 0.5
+MIN_SEGUNDOS_SONORIDAD = 3.0
+EXTRA_GANANCIA_MAX_DB = 6.0
+TECHO_MINIMO_DB = -10.0
 
 
 def filtro_volumen(ganancia_db: float | None, techo_db: float = TECHO_MUESTRA_DB) -> str | None:
@@ -95,6 +105,12 @@ def filtro_volumen(ganancia_db: float | None, techo_db: float = TECHO_MUESTRA_DB
         f"volume={ganancia_db:.2f}dB,aresample={alto},"
         f"alimiter=limit={techo:.4f}:level=0:latency=1:attack=5:release=50,aresample={FRECUENCIA}"
     )
+
+
+# (R2-2) Lo que entra al AAC va en s16: alimentado en coma flotante tras el limitador y atempo, la 2x de Alonso
+# «Enorme» salía a +3,9 dBTP con el PCM a −2,8; la misma señal en s16 queda a −1,4 (medido 2026-11-14). Sin esto la
+# corrección de picos bajaba el techo hasta −9 dB y la sonoridad caía a −20 LUFS.
+A_S16 = "aformat=sample_fmts=s16"
 
 
 def _entrada_pcm(ruta_pcm: Path) -> list[str]:
@@ -116,7 +132,7 @@ def codificar_m4a(
     filtro = filtro_volumen(ganancia_db, techo_db)
     _ejecutar(
         ["ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm)]
-        + (["-af", filtro] if filtro else [])
+        + (["-af", f"{filtro},{A_S16}"] if filtro else [])
         + _salida_aac(tmp)
     )
     os.replace(tmp, salida)
@@ -128,27 +144,102 @@ def _codificar_2x(ruta_pcm: Path, salida: Path, ganancia_db: float | None, techo
     filtro = filtro_volumen(ganancia_db, techo_db)
     cadena = (filtro + "," if filtro else "") + "atempo=2.0"
     if filtro:
-        cadena += "," + str(filtro_volumen(COMPENSACION_2X_DB, techo_db))
+        cadena += "," + str(filtro_volumen(COMPENSACION_2X_DB, techo_db)) + "," + A_S16
     _ejecutar(["ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm), "-af", cadena, *_salida_aac(tmp)])
     os.replace(tmp, salida)
 
 
-def codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia_db: float | None = None) -> None:
+def codificar_1x_y_2x(
+    ruta_pcm: Path,
+    salida_1x: Path,
+    salida_2x: Path,
+    ganancia_db: float | None = None,
+    duracion: float | None = None,
+) -> None:
     """(0.4.0) El capítulo a 1x y a 2x en una sola pasada y AMBOS desde el PCM (V-14): la 2x ya no se recodifica
     desde el AAC de la 1x (una pérdida menos) y los dos llevan el mismo volumen. Escritura atómica.
     (B10) Después se mide cada m4a: el AAC de 48 kbps sube los picos hasta 4 dB en algunas voces (Alonso), así que
-    la variante que pase de PICO_OBJETIVO_DBTP se recodifica con el techo del limitador más bajo y, si eso le quita
-    más de 1 LU de sonoridad, con algo más de ganancia (el limitador sigue frenando los picos); se queda la que cumple
-    el pico y suena más fuerte. Como mucho MAX_RECODIFICACIONES pruebas. Nunca falla por esto."""
+    la variante que pase de PICO_OBJETIVO_DBTP se recodifica con el techo del limitador más bajo.
+    (R2-2) Con `duracion` (≥ MIN_SEGUNDOS_SONORIDAD) también se corrige la sonoridad del m4a final: la variante que
+    se aparte más de TOLERANCIA_LUFS_FINAL de LUFS_OBJETIVO se recodifica con la ganancia corregida (y el techo más
+    bajo si hace falta), así cumple −18 ± 1 LUFS y ≤ −1,5 dBTP a la vez. Como mucho MAX_RECODIFICACIONES pruebas por
+    variante. Nunca falla por esto."""
     _codificar_1x_y_2x(ruta_pcm, salida_1x, salida_2x, ganancia_db)
     if ganancia_db is None:
         return
+    sonoridad = duracion is not None and duracion >= MIN_SEGUNDOS_SONORIDAD
     variantes: list[tuple[Path, Callable[[Path, float, float], None]]] = [
         (salida_1x, lambda destino, g, techo: codificar_m4a(ruta_pcm, destino, g, techo)),
         (salida_2x, lambda destino, g, techo: _codificar_2x(ruta_pcm, destino, g, techo)),
     ]
     for salida, recodificar in variantes:
-        _ajustar_picos(salida, recodificar, ganancia_db)
+        if sonoridad:
+            _ajustar_sonoridad_y_picos(salida, recodificar, ganancia_db)
+        else:
+            _ajustar_picos(salida, recodificar, ganancia_db)
+
+
+def _fuera_de_objetivo(lufs: float | None, pico: float | None) -> bool:
+    return (pico is not None and pico > PICO_OBJETIVO_DBTP) or (
+        lufs is not None and abs(lufs - LUFS_OBJETIVO) > TOLERANCIA_LUFS_FINAL
+    )
+
+
+def _ajustar_sonoridad_y_picos(
+    salida: Path, recodificar: Callable[[Path, float, float], None], ganancia_db: float
+) -> None:
+    """(R2-2) Recodifica la variante hasta que el m4a final quede a LUFS_OBJETIVO ± TOLERANCIA_LUFS_FINAL con el pico
+    verdadero ≤ PICO_OBJETIVO_DBTP. En cada prueba: ganancia += lo que falte de sonoridad; techo −= lo que sobre de
+    pico (+ un margen). Se queda la prueba que cumple el pico y queda más cerca de −18 (o el original si ninguna
+    cumple el pico y el original sí). Los candidatos se borran siempre."""
+    lufs, pico = medir_m4a(salida)
+    if lufs is None or not _fuera_de_objetivo(lufs, pico):
+        return
+    techo, g = TECHO_MUESTRA_DB, ganancia_db
+
+    def distancia(sonoridad: float | None) -> float:
+        return abs(sonoridad - LUFS_OBJETIVO) if sonoridad is not None else 99.0
+
+    cumple_original = pico is not None and pico <= PICO_OBJETIVO_DBTP
+    mejor: tuple[float, Path | None] | None = (distancia(lufs), None) if cumple_original else None
+    candidatos: list[Path] = []
+    try:
+        for intento in range(MAX_RECODIFICACIONES):
+            if pico is not None and pico > PICO_OBJETIVO_DBTP:
+                techo = max(TECHO_MINIMO_DB, techo - (pico - PICO_OBJETIVO_DBTP + MARGEN_REINTENTO_DB))
+            if lufs is not None:
+                g = min(ganancia_db + EXTRA_GANANCIA_MAX_DB, g + (LUFS_OBJETIVO - lufs))
+            candidato = salida.with_name(f"{salida.stem}.s{intento}.{uuid.uuid4().hex[:6]}.tmp.m4a")
+            candidatos.append(candidato)
+            log.info(
+                "%s: %.1f LUFS y %.1f dBTP: se prueba con %.1f dB de ganancia y el techo a %.1f dB",
+                salida.name,
+                lufs if lufs is not None else float("nan"),
+                pico if pico is not None else float("nan"),
+                g,
+                techo,
+            )
+            recodificar(candidato, g, techo)
+            lufs, pico = medir_m4a(candidato)
+            if pico is not None and pico <= PICO_OBJETIVO_DBTP and (mejor is None or distancia(lufs) < mejor[0]):
+                mejor = (distancia(lufs), candidato)
+            if not _fuera_de_objetivo(lufs, pico):
+                break
+        if mejor is None:
+            log.warning("%s sigue con el pico verdadero por encima de %.1f dBTP", salida.name, PICO_OBJETIVO_DBTP)
+            return
+        if mejor[1] is not None:
+            os.replace(mejor[1], salida)
+        log.info(
+            "%s queda a %.1f LU de %.0f LUFS con el pico verdadero ≤ %.1f dBTP",
+            salida.name,
+            mejor[0],
+            LUFS_OBJETIVO,
+            PICO_OBJETIVO_DBTP,
+        )
+    finally:
+        for c in candidatos:
+            c.unlink(missing_ok=True)
 
 
 def _ajustar_picos(salida: Path, recodificar: Callable[[Path, float, float], None], ganancia_db: float) -> None:
@@ -201,8 +292,8 @@ def _codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, gananci
     filtro = filtro_volumen(ganancia_db)
     # atempo deja la 2x ~0,6 LU más baja y crea picos nuevos: se compensa y se vuelve a limitar (medido 2026-11-14)
     filtro_2x = filtro_volumen(COMPENSACION_2X_DB) if filtro else None
-    cadena = (filtro + "," if filtro else "") + "asplit=2[a][b];[b]atempo=2.0" + ("," + filtro_2x if filtro_2x else "")
-    cadena += "[c]"
+    cadena = (filtro + "," if filtro else "") + "asplit=2[a0][b];[b]atempo=2.0" + ("," + filtro_2x if filtro_2x else "")
+    cadena += "[c0];[a0]" + (A_S16 if filtro else "anull") + "[a];[c0]" + (A_S16 if filtro else "anull") + "[c]"
     _ejecutar(
         [
             *("ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm)),

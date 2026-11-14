@@ -5,6 +5,7 @@ import array
 import asyncio
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -401,6 +402,71 @@ def test_b10_si_ningun_candidato_cumple_queda_el_original(tmp_path, monkeypatch)
     audio._ajustar_picos(salida, lambda d, g, t: d.write_bytes(b"x"), 3.0)
     assert salida.read_bytes() == b"original" and list(tmp_path.iterdir()) == [salida]
     assert real(tmp_path / "no-existe.m4a") == (None, None)
+
+
+def test_r2_2_corrige_sonoridad_y_pico_a_la_vez(tmp_path, monkeypatch):
+    # validación r2 (R2-2): la 2x de los diálogos quedaba a −19,2 LUFS y la multilingüe a −20 (sin tocar el pico):
+    # ahora se corrige también la sonoridad; si a la vez sobra pico, se baja el techo en la misma prueba
+    salida = tmp_path / "cap-000-2x.m4a"
+    salida.write_bytes(b"original")
+    medidas = iter([(-19.6, -0.8), (-18.6, -1.9), (-18.1, -2.0)])
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: next(medidas))
+    pedidos: list[tuple[float, float]] = []
+
+    def recodificar(destino, g, techo):
+        pedidos.append((round(g, 2), round(techo, 2)))
+        destino.write_bytes(f"{g:.2f}/{techo:.2f}".encode())
+
+    audio._ajustar_sonoridad_y_picos(salida, recodificar, 3.0)
+    assert pedidos == [(4.6, -4.2), (5.2, -4.2)]
+    assert salida.read_bytes() == b"5.20/-4.20"
+    assert list(tmp_path.iterdir()) == [salida]
+
+
+def test_r2_2_dentro_del_objetivo_no_se_toca_y_sin_pico_valido_queda_el_original(tmp_path, monkeypatch):
+    salida = tmp_path / "cap-000.m4a"
+    salida.write_bytes(b"original")
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: (-18.3, -2.0))
+    audio._ajustar_sonoridad_y_picos(salida, lambda d, g, t: pytest.fail("no se recodifica"), 3.0)
+    # fuera de sonoridad pero cumple el pico; ninguna prueba cumple el pico: se queda el original
+    medidas = iter([(-19.5, -2.0)] + [(-18.0, 0.5)] * 4)
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: next(medidas))
+    audio._ajustar_sonoridad_y_picos(salida, lambda d, g, t: d.write_bytes(b"x"), 3.0)
+    assert salida.read_bytes() == b"original" and list(tmp_path.iterdir()) == [salida]
+    # nunca más de EXTRA_GANANCIA_MAX_DB ni el techo por debajo de TECHO_MINIMO_DB
+    pedidos: list[tuple[float, float]] = []
+    medidas = iter([(-30.0, 5.0)] + [(-30.0, 5.0)] * 4)
+    monkeypatch.setattr(audio, "medir_m4a", lambda _r: next(medidas))
+    audio._ajustar_sonoridad_y_picos(salida, lambda d, g, t: pedidos.append((g, t)) or d.write_bytes(b"x"), 3.0)
+    assert max(g for g, _ in pedidos) <= 3.0 + audio.EXTRA_GANANCIA_MAX_DB
+    assert min(t for _, t in pedidos) >= audio.TECHO_MINIMO_DB
+
+
+@hay_ffmpeg
+def test_r2_2_capitulo_corto_y_bajito_queda_a_menos_18(tmp_path):
+    # 12 s (por debajo de los 20 s en que se calibra la voz) a ≈ −22 LUFS con su ganancia: el m4a final queda a −18
+    raw = tmp_path / "x.raw"
+    senal = r"aevalsrc=0.06*sin(2*PI*300*t)*(1+0.5*sin(2*PI*3*t))+0.3*lt(mod(t\,1)\,0.003):s=24000:d=12"
+    subprocess.run(
+        [*("ffmpeg", "-v", "error", "-f", "lavfi", "-i", senal), *("-f", "s16le", "-ar", str(F), "-ac", "1", str(raw))],
+        check=True,
+    )
+    uno, dos = tmp_path / "a.m4a", tmp_path / "b.m4a"
+    g = 3.0 + (-18.0 - audio.medir_lufs(raw, 3.0)) - 4.0  # 4 dB por debajo del objetivo
+    audio.codificar_1x_y_2x(raw, uno, dos, g, duracion=12.0)
+    for m4a in (uno, dos):
+        lufs, pico = audio.medir_m4a(m4a)
+        assert lufs == pytest.approx(-18.0, abs=0.6) and pico <= audio.PICO_OBJETIVO_DBTP
+    assert audio.duracion(dos) / audio.duracion(uno) == pytest.approx(0.5, abs=0.01)
+
+
+def test_r2_2_la_voz_multilingue_se_calibra_aparte():
+    from app.voz.capitulo import clave_volumen
+
+    assert clave_volumen("edge.es-MX-JorgeNeural", None) == "edge.es-MX-JorgeNeural"
+    assert clave_volumen("edge.es-MX-JorgeNeural", "en") == "edge.en-US-AndrewMultilingualNeural"
+    assert clave_volumen("edge.es-ES-ElviraNeural", "en") == "edge.en-US-AvaMultilingualNeural"
+    assert volumen.ganancia(Path("/no-existe"), "edge.en-US-AndrewMultilingualNeural") == 3.6
 
 
 def test_ganancia_inicial_por_voz(tmp_path):

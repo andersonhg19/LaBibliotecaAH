@@ -642,6 +642,7 @@ async def generar_capitulo(
             seguir,
             partes,
             arranque.terminar,
+            clave_volumen(voz_id, idioma),
         )
         if mudas:
             log.warning("Capítulo %d (%s): %d frase(s) quedaron en silencio: %s", capitulo, voz_id, len(mudas), mudas)
@@ -657,6 +658,14 @@ async def generar_capitulo(
         await asyncio.gather(*tareas_por_texto.values(), return_exceptions=True)
 
 
+def clave_volumen(voz_id: str, idioma: str | None) -> str:
+    """(R2-2) Con qué voz se calibra el volumen: un libro en otro idioma lo lee ENTERO la voz multilingüe de edge, que
+    suena distinto (−20 LUFS con la ganancia de Jorge): se calibra aparte y no ensucia la de la voz elegida."""
+    if not idioma:
+        return voz_id
+    return f"edge.{voz_multilingue(idioma, genero_de(voz_id))}"
+
+
 async def _sintetizar_y_ensamblar(
     rutas: Rutas,
     archivo_id: str,
@@ -669,13 +678,15 @@ async def _sintetizar_y_ensamblar(
     seguir: Callable[[], bool] | None,
     con_partes: bool,
     al_sonar: Callable[[], None] = lambda: None,
+    voz_volumen: str | None = None,
 ) -> float:
     dir_audio = rutas.audio(archivo_id, voz_id)
     dir_audio.mkdir(parents=True, exist_ok=True)
     base = f"cap-{capitulo:03d}"
     manifiesto = Manifiesto(dir_audio, capitulo, voz_id, frases)
     primera_parte: float | None = None
-    ganancia = volumen.ganancia(rutas.cache_voz(), voz_id)
+    voz_volumen = voz_volumen or voz_id
+    ganancia = volumen.ganancia(rutas.cache_voz(), voz_volumen)
     with tempfile.TemporaryDirectory(prefix="bah-voz-") as tmp:
         ruta_pcm = Path(tmp) / "capitulo.raw"
         with open(ruta_pcm, "wb") as pcm:
@@ -705,14 +716,18 @@ async def _sintetizar_y_ensamblar(
         )
         duracion = float(tiempos["duracion"])
         # (0.4.0) volumen −18 LUFS (V-05) y la 2x desde el PCM (V-14), en una pasada; envolvente para la onda (C7)
-        ganancia = await asyncio.to_thread(volumen.ajustar, ruta_pcm, duracion, rutas.cache_voz(), voz_id, ganancia)
+        ganancia = await asyncio.to_thread(
+            volumen.ajustar, ruta_pcm, duracion, rutas.cache_voz(), voz_volumen, ganancia
+        )
         tiempos["versionAudio"] = VERSION_AUDIO
         tiempos["envolvente"] = {
             "hz": ENVOLVENTE_HZ,
             "v": await asyncio.to_thread(audio.envolvente, ruta_pcm, ENVOLVENTE_HZ),
         }
         m4a = dir_audio / f"{base}.m4a"
-        await asyncio.to_thread(audio.codificar_1x_y_2x, ruta_pcm, m4a, dir_audio / f"{base}-2x.m4a", ganancia)
+        await asyncio.to_thread(
+            audio.codificar_1x_y_2x, ruta_pcm, m4a, dir_audio / f"{base}-2x.m4a", ganancia, duracion
+        )
     _escribir_atomico(dir_audio / f"{base}.tiempos.json", json.dumps(tiempos, ensure_ascii=False))
     if manifiesto.partes:
         manifiesto.escribir(tiempos["frases"], completo=True, duracion=duracion)

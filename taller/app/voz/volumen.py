@@ -35,6 +35,10 @@ GANANCIA_INICIAL = {
     "edge.es-MX-JorgeNeural": 1.7,
     "edge.es-US-AlonsoNeural": 1.6,
     "edge.es-AR-TomasNeural": 2.8,
+    # (R2-2) voces multilingües con que se lee entero un libro en otro idioma (medido 2026-11-14: Andrew a −19,9 LUFS
+    # con 1,7 dB); Ava sin medir: como Andrew
+    "edge.en-US-AndrewMultilingualNeural": 3.6,
+    "edge.en-US-AvaMultilingualNeural": 3.6,
 }
 GANANCIA_POR_DEFECTO = 3.0
 TOPE_GANANCIA = 12.0
