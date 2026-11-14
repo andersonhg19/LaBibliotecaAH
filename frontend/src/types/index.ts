@@ -185,6 +185,14 @@ export interface CapituloResumen {
   indice: number
   titulo: string
   minutos: number
+  /** 0.4.0 (contrato C3, opcionales: un servidor viejo no los manda). */
+  tipo?: string
+  region?: 'antes' | 'cuerpo' | 'despues'
+  numero?: number | null
+  /** false = escuchando de corrido se salta (no se pide ni se precarga); elegido a mano sí suena. */
+  enVoz?: boolean
+  enVozPorDefecto?: boolean
+  minutosVoz?: number
 }
 
 export interface EjemplarDetalleDTO extends EjemplarDTO {
@@ -386,6 +394,8 @@ export interface TiemposCapitulo {
   vozId: string
   duracion: number
   frases: FraseTiempo[]
+  /** 0.4.0 (contrato C7, opcional): energía de la voz del audio 1x, `hz` muestras por segundo, 0–100. */
+  envolvente?: { hz: number; v: number[] }
 }
 
 /** Traducción de un trozo de texto (POST /v1/traducir). */

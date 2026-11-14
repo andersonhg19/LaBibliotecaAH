@@ -1,5 +1,7 @@
 import { MP4BoxBuffer, createFile } from 'mp4box'
 
+import { errorCancelada, errorDeRed } from '@utils/fallosCinta'
+
 /*
  * LA CINTA: UN SOLO FLUJO DE AUDIO PARA TODO EL LIBRO (iPhone, 2026-11-12).
  *
@@ -18,6 +20,15 @@ import { MP4BoxBuffer, createFile } from 'mp4box'
  * mantiene poco por delante (~90 s) y se suelta lo ya oído: iOS deja poco sitio.
  *
  *   tiempo de la cinta = tramo.inicio + tiempo del archivo
+ *
+ * 0.4.0 (auditoría 2-reproductor):
+ *   · se trocea MIENTRAS baja (RP-07): con el moov al principio (faststart) suena
+ *     en cuanto llega el primer trozo, no al bajar el capítulo entero;
+ *   · cada carga tiene su «época»: soltar la cinta o cargar otra cosa cancela lo
+ *     que estaba en vuelo, que ya no vuelve a enganchar el <audio> (RP-05);
+ *   · olvidar los tramos siguientes también los quita del SourceBuffer (RP-06);
+ *   · si el navegador cierra el MediaSource (iOS bajo presión) se avisa al motor
+ *     para que la rehaga en la misma posición (RP-08).
  */
 
 /** Un trozo de MP4 fragmentado (moof+mdat), con sus tiempos en el archivo (ya sin el retardo del codificador). */
@@ -30,6 +41,7 @@ export interface Trozo {
 export interface ArchivoTroceado {
   /** Segmento de inicialización (ftyp+moov con mvex). */
   init: ArrayBuffer
+  /** Crece mientras baja el archivo (RP-07). */
   trozos: Trozo[]
   /** Segundos del archivo (lo que dura al oírlo, sin el retardo del principio). */
   duracion: number
@@ -37,6 +49,8 @@ export interface ArchivoTroceado {
   retardo: number
   /** Para addSourceBuffer: 'audio/mp4; codecs="mp4a.40.2"'. */
   tipo: string
+  /** Ya llegó entero (todos sus trozos están en `trozos`). */
+  completo: boolean
 }
 
 /** Un archivo puesto en la cinta. */
@@ -48,6 +62,15 @@ export interface Tramo {
   archivo: ArchivoTroceado
 }
 
+/**
+ * Lo que devuelve la descarga: el archivo entero o, mejor, un flujo que se trocea
+ * mientras llega (con su tamaño, si se sabe, para contar el progreso).
+ */
+export type Descarga = ArrayBuffer | { flujo: { getReader(): LectorFlujo }; total: number | null }
+interface LectorFlujo {
+  read(): Promise<{ done: boolean; value?: Uint8Array }>
+}
+
 /** Muestras AAC por trozo (1024 por muestra; a 24 kHz, 256 ≈ 11 s ≈ 64 KB a 48 kbps). */
 const MUESTRAS_POR_TROZO = 256
 /** Cuánto se tiene añadido por delante de lo que suena. */
@@ -57,57 +80,99 @@ const HUECO = 0.15
 /** Cuánto se guarda de lo ya oído (para un «−15 s» sin volver a añadir). */
 const POR_DETRAS = 40
 
-/** Trocea un .m4a (faststart) en MP4 fragmentado para MSE. */
-export function trocear(datos: ArrayBuffer): Promise<ArchivoTroceado> {
-  return new Promise((resolver, rechazar) => {
-    const f = createFile()
-    const crudos: { ultima: number; datos: ArrayBuffer }[] = []
-    // En un objeto: TypeScript no ve lo que asignan los callbacks de mp4box.
-    const leido: {
-      info: { timescale: number; porMuestra: number; retardo: number; duracion: number; codec: string } | null
-      init: ArrayBuffer | null
-    } = { info: null, init: null }
-    f.onError = (_m: string, msj: string) => rechazar(new Error(`mp4: ${msj}`))
+/**
+ * Trocea un .m4a mientras llega: mp4box lee el moov en cuanto aparece (faststart:
+ * al principio) y va soltando trozos según llegan las muestras.
+ */
+export class Troceador {
+  private f = createFile()
+  private offset = 0
+  private previa = 0
+  private info: { id: number; timescale: number; porMuestra: number; retardo: number } | null = null
+  private fallo: Error | null = null
+  /** El archivo, en cuanto se sabe lo que es (duración, init); sus trozos van llegando. */
+  archivo: ArchivoTroceado | null = null
+  /** Se llama cada vez que hay trozos nuevos (y al terminar). */
+  alCrecer: (() => void) | null = null
+
+  constructor() {
+    const f = this.f
+    f.onError = (_m: string, msj: string) => {
+      this.fallo = new Error(`mp4: ${msj}`)
+    }
     f.onReady = (movie) => {
       const t = movie.tracks.find((x) => x.type === 'audio' || x.audio) ?? movie.tracks[0]
-      if (!t) return rechazar(new Error('mp4: sin pista de audio'))
+      if (!t) {
+        this.fallo = new Error('mp4: sin pista de audio')
+        return
+      }
       const porMuestra = t.nb_samples ? t.samples_duration / t.nb_samples : 1024
       // La lista de edición dice desde qué muestra se oye (el cebado del AAC) y cuánto dura de verdad.
       const ed = t.edits?.find((e) => e.media_time >= 0)
       const retardo = ed ? ed.media_time / t.timescale : 0
       const duracionEd = ed && t.movie_timescale ? ed.segment_duration / t.movie_timescale : 0
       const duracion = duracionEd > 0 ? duracionEd : t.samples_duration / t.timescale - retardo
-      leido.info = { timescale: t.timescale, porMuestra, retardo, duracion, codec: t.codec }
+      this.info = { id: t.id, timescale: t.timescale, porMuestra, retardo }
       f.setSegmentOptions(t.id, null, { nbSamples: MUESTRAS_POR_TROZO })
-      leido.init = f.initializeSegmentation().buffer
+      const init = f.initializeSegmentation().buffer
+      this.archivo = {
+        init,
+        trozos: [],
+        duracion,
+        retardo,
+        tipo: `audio/mp4; codecs="${t.codec || 'mp4a.40.2'}"`,
+        completo: false,
+      }
       f.start()
     }
     f.onSegment = (_id: number, _u: unknown, buffer: ArrayBuffer, siguiente: number) => {
-      crudos.push({ ultima: siguiente, datos: buffer })
+      const i = this.info
+      const a = this.archivo
+      if (!i || !a) return
+      const t0 = (this.previa * i.porMuestra) / i.timescale - i.retardo
+      const t1 = (siguiente * i.porMuestra) / i.timescale - i.retardo
+      this.previa = siguiente
+      a.trozos.push({ t0, t1, datos: buffer })
+      // mp4box guarda las muestras leídas: ya van en el trozo, se sueltan (no tener el capítulo dos veces en memoria).
+      ;(f as { releaseUsedSamples?: (id: number, n: number) => void }).releaseUsedSamples?.(i.id, siguiente)
     }
-    try {
-      f.appendBuffer(MP4BoxBuffer.fromArrayBuffer(datos, 0), true)
-      f.flush()
-    } catch (e) {
-      return rechazar(e instanceof Error ? e : new Error(String(e)))
-    }
-    const { info: i, init } = leido
-    if (!i || !init) return rechazar(new Error('mp4: no se pudo leer'))
-    let previa = 0
-    const trozos = crudos.map((c) => {
-      const t0 = (previa * i.porMuestra) / i.timescale - i.retardo
-      const t1 = (c.ultima * i.porMuestra) / i.timescale - i.retardo
-      previa = c.ultima
-      return { t0, t1, datos: c.datos }
-    })
-    resolver({
-      init,
-      trozos,
-      duracion: i.duracion,
-      retardo: i.retardo,
-      tipo: `audio/mp4; codecs="${i.codec || 'mp4a.40.2'}"`,
-    })
-  })
+  }
+
+  private revisar() {
+    if (this.fallo) throw this.fallo
+  }
+
+  /** Añade lo que acaba de llegar (en orden). */
+  anadir(datos: ArrayBuffer, ultimo = false) {
+    const antes = this.archivo?.trozos.length ?? -1
+    const b = MP4BoxBuffer.fromArrayBuffer(datos, this.offset)
+    this.offset += datos.byteLength
+    this.f.appendBuffer(b, ultimo)
+    this.revisar()
+    if ((this.archivo?.trozos.length ?? -1) !== antes) this.alCrecer?.()
+  }
+
+  /** Ya llegó todo: suelta lo que quede. */
+  terminar(): ArchivoTroceado {
+    this.f.flush()
+    this.revisar()
+    const a = this.archivo
+    if (!a) throw new Error('mp4: no se pudo leer')
+    a.completo = true
+    this.alCrecer?.()
+    return a
+  }
+}
+
+/** Trocea un .m4a (faststart) entero en MP4 fragmentado para MSE. */
+export function trocear(datos: ArrayBuffer): Promise<ArchivoTroceado> {
+  try {
+    const t = new Troceador()
+    t.anadir(datos, true)
+    return Promise.resolve(t.terminar())
+  } catch (e) {
+    return Promise.reject(e instanceof Error ? e : new Error(String(e)))
+  }
 }
 
 type ConstructorMS = { new (): MediaSource; isTypeSupported(t: string): boolean }
@@ -153,14 +218,26 @@ export class Cinta {
   private tramos: Tramo[] = []
   /** El tramo cuyo init se añadió por última vez (al cambiar de tramo se vuelve a añadir el suyo). */
   private initDe: Tramo | null = null
-  /** Archivos ya troceados (el actual y el siguiente), para no volver a bajarlos. */
+  /** Archivos ya troceados (o troceándose), para no volver a bajarlos. */
   private cache = new Map<string, Promise<ArchivoTroceado>>()
+  /** Sube con cada carga y al soltar: lo que estaba en vuelo de antes ya no toca el <audio> (RP-05). */
+  private epoca = 0
+  /** Sube al cargar, al olvidar los siguientes y al soltar: un encolar en vuelo de antes no se añade (RP-06). */
+  private epocaCola = 0
+  /** Mientras se espera el sourceopen: soltar la cinta lo desbloquea (si no, la cola se quedaría parada). */
+  private abriendo: (() => void) | null = null
   /** El tramo que suena (el «capítulo» para el motor). */
   actual: Tramo | null = null
+  /** El navegador cerró el MediaSource por su cuenta (iOS bajo presión de memoria, RP-08). */
+  alCerrarse: (() => void) | null = null
+  /** Una descarga que ya sonaba se cortó a medias (el motor decide si reintenta). */
+  alFallarDescarga: ((url: string, e: unknown) => void) | null = null
+  /** Cuánto ha bajado de un archivo (0–1), para el anillo del ▶ (F6). */
+  alProgresar: ((url: string, fraccion: number) => void) | null = null
 
   constructor(
     private el: HTMLAudioElement,
-    private descargar: (url: string) => Promise<ArrayBuffer>,
+    private descargar: (url: string) => Promise<Descarga>,
     private forzado = false,
   ) {
     // Un salto a una zona aún sin datos, o quedarse sin ellos: se rellena ya (sin esperar al próximo timeupdate).
@@ -204,13 +281,67 @@ export class Cinta {
   private archivo(url: string): Promise<ArchivoTroceado> {
     let p = this.cache.get(url)
     if (!p) {
-      p = this.descargar(url).then(trocear)
+      p = this.bajar(url)
       p.catch(() => this.cache.delete(url))
       this.cache.set(url, p)
       // Solo se guardan los dos o tres últimos (el actual, el siguiente y el que se deja).
       while (this.cache.size > 3) this.cache.delete(this.cache.keys().next().value as string)
     }
     return p
+  }
+
+  /**
+   * Baja y trocea un archivo. La promesa se cumple en cuanto hay algo que sonar
+   * (el moov y el primer trozo); el resto sigue llegando y se va añadiendo.
+   */
+  private bajar(url: string): Promise<ArchivoTroceado> {
+    return new Promise<ArchivoTroceado>((resolver, rechazar) => {
+      const tr = new Troceador()
+      let listo = false
+      const avisar = () => {
+        const a = tr.archivo
+        if (!a) return
+        if (!listo && (a.trozos.length > 0 || a.completo)) {
+          listo = true
+          resolver(a)
+        } else if (listo) this.bomba() // trozos nuevos: se siguen añadiendo
+      }
+      tr.alCrecer = avisar
+      const leer = async () => {
+        const d = await this.descargar(url)
+        if (!('flujo' in d)) {
+          this.alProgresar?.(url, 1)
+          tr.anadir(d, true)
+          tr.terminar()
+          return
+        }
+        const lector = d.flujo.getReader()
+        let recibido = 0
+        for (;;) {
+          let r: { done: boolean; value?: Uint8Array }
+          try {
+            r = await lector.read()
+          } catch (e) {
+            throw errorDeRed(e)
+          }
+          if (r.done) break
+          const v = r.value
+          if (!v?.byteLength) continue
+          recibido += v.byteLength
+          if (d.total) this.alProgresar?.(url, Math.min(1, recibido / d.total))
+          // Una copia propia: mp4box guarda el búfer y el del lector puede reutilizarse.
+          tr.anadir(v.slice().buffer as ArrayBuffer)
+        }
+        this.alProgresar?.(url, 1)
+        tr.terminar()
+      }
+      leer().catch((e: unknown) => {
+        if (!listo) return rechazar(e)
+        // Ya sonaba y la descarga se cortó a medias: lo que falta no llegará; se olvida para volver a bajarlo.
+        this.cache.delete(url)
+        this.alFallarDescarga?.(url, e)
+      })
+    })
   }
 
   /** Engancha el <audio> a un MediaSource nuevo (una sola vez por sesión, salvo que se suelte). */
@@ -225,17 +356,37 @@ export class Cinta {
     this.url = URL.createObjectURL(ms)
     // ManagedMediaSource exige no ofrecer AirPlay (o darle otra fuente); la voz se oye en el teléfono.
     ;(this.el as HTMLAudioElement & { disableRemotePlayback?: boolean }).disableRemotePlayback = true
-    const abierto = new Promise<void>((r) => ms.addEventListener('sourceopen', () => r(), { once: true }))
+    const abierto = new Promise<void>((r) => {
+      this.abriendo = r
+      ms.addEventListener('sourceopen', () => r(), { once: true })
+    })
     this.el.src = this.url
     await abierto
+    this.abriendo = null
+    if (this.ms !== ms) throw errorCancelada()
+    // iOS puede cerrar la cinta por su cuenta (memoria, suspensión larga): el motor la rehace (RP-08).
+    ms.addEventListener('sourceclose', () => {
+      if (this.ms === ms) this.cerrada()
+    })
+    // ManagedMediaSource pide datos cuando le conviene (startstreaming) y deja de pedirlos (endstreaming).
+    ms.addEventListener('startstreaming', () => this.bomba())
     const sb = ms.addSourceBuffer(tipo)
     sb.mode = 'segments'
     this.sb = sb
     return sb
   }
 
+  /** El MediaSource se cerró sin pedirlo: se suelta y se avisa. */
+  private cerrada() {
+    console.warn('[cinta] el navegador cerró la cinta; se rehace')
+    this.soltar()
+    this.alCerrarse?.()
+  }
+
   /** Suelta la cinta (para volver al <audio> normal: las partes de un capítulo que aún se genera). */
   soltar() {
+    this.epoca++
+    this.epocaCola++
     if (this.url) URL.revokeObjectURL(this.url)
     this.url = null
     this.ms = null
@@ -243,6 +394,9 @@ export class Cinta {
     this.tramos = []
     this.actual = null
     this.initDe = null
+    const r = this.abriendo
+    this.abriendo = null
+    r?.()
   }
 
   /** Serializa las operaciones sobre el SourceBuffer (MSE no admite dos a la vez). */
@@ -255,23 +409,40 @@ export class Cinta {
   /**
    * Empieza la cinta de cero con este archivo, en `tArchivo` segundos. Lo que
    * hubiera se borra (otro capítulo elegido a mano, otra voz, otra velocidad).
+   * Si mientras tanto se suelta la cinta o se carga otra cosa, se rechaza con
+   * CANCELADA sin tocar el <audio>.
    */
   cargar(url: string, tArchivo: number): Promise<Tramo> {
+    const epoca = ++this.epoca
+    this.epocaCola++
     const archivo = this.archivo(url)
     return this.turno(async () => {
-      const a = await archivo
+      const vigente = () => {
+        if (epoca !== this.epoca) throw errorCancelada()
+      }
+      let a: ArchivoTroceado
+      try {
+        a = await archivo
+      } catch (e) {
+        vigente()
+        throw e
+      }
+      vigente()
       const sb = await this.poner(a.tipo)
+      vigente()
       await libre(sb)
       if (sb.buffered.length) {
         sb.remove(0, Infinity)
         await libre(sb)
       }
+      vigente()
       const t: Tramo = { clave: url, inicio: 0, fin: a.duracion, archivo: a }
       this.tramos = [t]
       this.actual = t
       this.initDe = null
       await this.alargar()
       await this.anadirDesde(t, tArchivo)
+      vigente()
       try {
         this.el.currentTime = t.inicio + Math.min(Math.max(0, tArchivo), Math.max(0, a.duracion - 0.05))
       } catch {
@@ -286,9 +457,18 @@ export class Cinta {
     const ultimo = this.tramos[this.tramos.length - 1]
     if (!ultimo) return Promise.resolve(null)
     if (this.siguienteDe(ultimo) === null && ultimo.clave === url) return Promise.resolve(null)
+    const cola = this.epocaCola
     const archivo = this.archivo(url)
     return this.turno(async () => {
-      const a = await archivo
+      let a: ArchivoTroceado
+      try {
+        a = await archivo
+      } catch (e) {
+        if (cola !== this.epocaCola) return null
+        throw e
+      }
+      // Entre tanto se olvidó lo de detrás o se cargó otra cosa: esto ya no va (otra voz, otra velocidad).
+      if (cola !== this.epocaCola) return null
       const ult = this.tramos[this.tramos.length - 1]
       if (!ult || !this.puesta) return null
       const t: Tramo = { clave: url, inicio: ult.fin, fin: ult.fin + a.duracion, archivo: a }
@@ -300,20 +480,38 @@ export class Cinta {
     })
   }
 
-  /** Quita los tramos que van después del actual (otra velocidad u otra voz: se volverán a poner). */
+  /**
+   * Quita los tramos que van después del actual (otra velocidad u otra voz: se
+   * volverán a poner), también lo ya añadido al SourceBuffer (RP-06): si no, el
+   * capítulo siguiente sonaría con la voz o la velocidad de antes.
+   */
   olvidarSiguientes() {
-    if (!this.actual) return
-    const i = this.tramos.indexOf(this.actual)
+    this.epocaCola++
+    const t = this.actual
+    if (!t) return
+    const i = this.tramos.indexOf(t)
     this.tramos = this.tramos.slice(0, i + 1)
+    this.turno(async () => {
+      const sb = this.sb
+      if (!sb || !this.puesta || this.actual !== t) return
+      await libre(sb)
+      const b = sb.buffered
+      if (b.length && b.end(b.length - 1) > t.fin + 0.01) {
+        sb.remove(t.fin, Infinity)
+        await libre(sb)
+      }
+    }).catch((e) => console.warn('[cinta] olvidar', e))
   }
 
   /** El motor pasa al tramo siguiente (ya sonando): solo contabilidad. */
   avanzar(): Tramo | null {
-    const s = this.siguienteDe(this.actual)
+    const viejo = this.actual
+    const s = this.siguienteDe(viejo)
     if (s) {
       this.actual = s
-      // Lo de antes ya no hace falta en la lista (los datos ya oídos los suelta la bomba).
+      // Lo de antes ya no hace falta en la lista (los datos ya oídos los suelta la bomba) ni en la caché.
       this.tramos = this.tramos.slice(this.tramos.indexOf(s))
+      if (viejo && viejo.clave !== s.clave) this.cache.delete(viejo.clave)
     }
     return s
   }
@@ -325,19 +523,28 @@ export class Cinta {
     const destino = t.inicio + Math.min(Math.max(0, tArchivo), Math.max(0, t.fin - t.inicio - 0.05))
     this.turno(async () => {
       if (!this.estaEnBuffer(destino)) await this.anadirDesde(t, destino - t.inicio)
-    }).finally(() => {
-      try {
-        this.el.currentTime = destino
-      } catch {
-        /* nada */
-      }
     })
+      .catch((e) => this.alFallarBomba(e))
+      .finally(() => {
+        try {
+          this.el.currentTime = destino
+        } catch {
+          /* nada */
+        }
+      })
   }
 
   /** Llamar a menudo (timeupdate): mantiene ~90 s por delante y suelta lo ya oído. */
   bomba() {
     if (!this.puesta || !this.sb) return
-    this.turno(() => this.bombear())
+    this.turno(() => this.bombear()).catch((e) => this.alFallarBomba(e))
+  }
+
+  /** Un fallo al añadir (RP-08): si el MediaSource ya no está abierto, la cinta se rehace. */
+  private alFallarBomba(e: unknown) {
+    const ms = this.ms
+    if (ms && ms.readyState !== 'open') return this.cerrada()
+    console.warn('[cinta] no se pudo añadir', e)
   }
 
   private estaEnBuffer(t: number): boolean {
@@ -379,7 +586,9 @@ export class Cinta {
       sb.timestampOffset = t.inicio - t.archivo.retardo
       sb.appendWindowStart = t.inicio
       // Un poco más allá del fin: el relleno final tapa la media trama que el siguiente pierde al recortar su cebado.
-      sb.appendWindowEnd = t.fin + 0.1
+      // Pero si el siguiente ya está añadido, no se pisa su principio (RP-11).
+      const yaSigue = !!this.siguienteDe(t) && this.estaEnBuffer(t.fin + 0.02)
+      sb.appendWindowEnd = yaSigue ? t.fin : t.fin + 0.1
       sb.appendBuffer(t.archivo.init)
       await libre(sb)
       this.initDe = t
@@ -392,14 +601,16 @@ export class Cinta {
     const sb = this.sb
     if (!sb || !this.actual || !this.puesta) return
     const ahora = this.el.currentTime || 0
+    // ManagedMediaSource: con «streaming» en false el navegador no quiere más datos ahora (los pedirá).
+    const pide = (this.ms as (MediaSource & { streaming?: boolean }) | null)?.streaming !== false
     // 1) Por delante: lo que falte hasta ~90 s, cruzando al tramo siguiente cuando toca.
-    for (let n = 0; n < 40; n++) {
+    for (let n = 0; pide && n < 40; n++) {
       const fin = this.finContinuo(ahora)
       if (fin >= ahora + POR_DELANTE) break
       const tramo = this.tramos.find((x) => fin >= x.inicio - HUECO && fin < x.fin - 0.05)
       if (!tramo) break // no hay más cinta (falta el capítulo siguiente o es el final)
       const z = tramo.archivo.trozos.find((x) => tramo.inicio + x.t1 > fin + 0.05)
-      if (!z) break
+      if (!z) break // aún no ha bajado (se sigue al llegar)
       try {
         await this.anadirTrozo(tramo, z)
       } catch (e) {
@@ -427,9 +638,18 @@ export function crearCinta(el: HTMLAudioElement): Cinta | null {
   } catch {
     /* nada */
   }
-  const descargar = async (url: string) => {
-    const r = await fetch(url)
+  const descargar = async (url: string): Promise<Descarga> => {
+    let r: Response
+    try {
+      r = await fetch(url)
+    } catch (e) {
+      // Sin red (o la red se cortó): no es culpa de la cinta, se reintentará.
+      throw errorDeRed(e)
+    }
     if (!r.ok) throw new Error(`audio ${r.status}`)
+    const largo = Number(r.headers.get('content-length'))
+    if (r.body && typeof r.body.getReader === 'function')
+      return { flujo: r.body, total: Number.isFinite(largo) && largo > 0 ? largo : null }
     return r.arrayBuffer()
   }
   return new Cinta(el, descargar, forzado)
