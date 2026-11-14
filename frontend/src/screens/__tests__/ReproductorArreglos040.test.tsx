@@ -140,6 +140,15 @@ describe('V-NUEVO-6 · antes de empezar se ve el capítulo que va a sonar', () =
     )
   })
 
+  it('con el progreso al principio de la dedicatoria (fuera de la voz): también «Primero»', async () => {
+    mockEstadoVoz = { libro: null, fase: 'inactivo', capitulo: 0, fraseId: null }
+    const progreso = { capitulo: 0, modo: 'VOZ', posicionAudioSeg: 0, vozId: null, fraseId: null }
+    ;(librosService.detalle as jest.Mock).mockResolvedValue(ok({ ...LIBRO, capitulos: CAPS, progreso }))
+    const r = render(pantalla(), { wrapper: Envoltura })
+    await waitFor(() => expect(r.getByTestId('barra-controles')).toBeTruthy())
+    expect(r.getByRole('header', { name: 'Primero' })).toBeTruthy()
+  })
+
   it('con progreso: el del progreso', async () => {
     mockEstadoVoz = { libro: null, fase: 'inactivo', capitulo: 0, fraseId: null }
     const progreso = { capitulo: 2, modo: 'VOZ', posicionAudioSeg: 30, vozId: null, fraseId: null }

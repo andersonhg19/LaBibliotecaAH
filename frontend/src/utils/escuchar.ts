@@ -23,8 +23,9 @@ export interface InicioDeEscucha {
 
 /**
  * Desde dónde sonará el libro: la posición de audio si lo último fue la voz, la
- * frase en la que ibas leyendo o, sin progreso, el PRIMER capítulo con voz (no la
- * dedicatoria apartada: V-NUEVO-6). El reproductor lo enseña antes de empezar.
+ * frase en la que ibas leyendo o, sin progreso (o con él en un capítulo que no se
+ * oye), el PRIMER capítulo con voz, no la dedicatoria apartada (V-NUEVO-6). El
+ * reproductor lo enseña antes de empezar.
  */
 export function inicioDeEscucha(
   libro: EjemplarDetalleDTO,
@@ -43,6 +44,13 @@ export function inicioDeEscucha(
   else if (p?.fraseId) {
     fraseId = p.fraseId
     capitulo = Math.max(0, capituloDeFrase(p.fraseId))
+  }
+  // Lo guardado cae en un capítulo que no se oye (apartado de la voz o sin palabras): se empieza en el siguiente
+  // con voz. Elegido a mano (desdeFrase), sí suena.
+  const c = caps.find((x) => x.indice === capitulo)
+  if (!o.desdeFrase && c && (c.enVoz === false || (c.minutosVoz ?? c.minutos) === 0)) {
+    const sig = vecinoConVoz(caps, capitulo, 1)
+    if (sig >= 0) return { capitulo: sig, posicion: 0, fraseId: null, vozId }
   }
   return { capitulo, posicion, fraseId, vozId }
 }
