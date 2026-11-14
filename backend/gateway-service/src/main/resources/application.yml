@@ -20,10 +20,13 @@ spring:
         ttl: 5s
     gateway:
       httpclient:
-        # Subidas grandes y audios largos: sin tope de respuesta y con margen
-        # de tiempo. connect-timeout en ms.
+        # connect-timeout en ms. response-timeout = cuanto se espera a las
+        # CABECERAS de la respuesta (el cuerpo va en streaming y no cuenta: un
+        # audio largo no se corta). Corto por defecto (auditoria BK-05); las
+        # subidas (responden al terminar de leer hasta 1 GB) esperan 30 min por
+        # TiempoDeRespuestaPorRutaFilter (biblioteca.gateway.*, abajo).
         connect-timeout: 10000
-        response-timeout: 30m
+        response-timeout: 2m
       # SIN filtro Retry, a proposito: Spring Cloud Gateway guarda en memoria
       # directa el cuerpo de TODA peticion que pase por Retry (aunque solo
       # reintente GET/HEAD), y una subida de 250-300 MB agotaba la memoria del
@@ -55,6 +58,11 @@ spring:
               - OPTIONS
             allowCredentials: true
             maxAge: 3600
+
+biblioteca:
+  gateway:
+    rutas-lentas: /v1/libros/subir
+    tiempo-rutas-lentas: 30m
 
 eureka:
   instance:
