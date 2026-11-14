@@ -1,7 +1,7 @@
 # La Biblioteca AH - Registro de Mejoras y Actividades
 ## Estado: Ola 0 desplegada en casa (rama main, github.com/andersonhg19/LaBibliotecaAH)
 ## Microservicios propuestos: discovery (8860), gateway (8920), auth (8921, segun D1), biblioteca-service (8925), taller-service Python (8926)
-## Ultima actualizacion: 2026-11-12
+## Ultima actualizacion: 2026-11-14
 
 ---
 
@@ -371,3 +371,69 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
 ## 2026-11-12 — Desplegada la 0.3.3 (precarga y cinta continua)
 - Respaldo de bases 2026-11-12_2216, `.env.antes-0.3.3`, build en sesión, `up -d --no-build`: 8 contenedores 0.3.3 healthy, web 200, el bundle lleva la cinta y el gateway da CORS a :7050 para el audio.
 - Pendiente: prueba de Anderson en el iPhone (bloqueado ~30 min cruzando capítulos; PWA y Safari).
+
+## 2026-11-13 — Auditoría completa de la 0.3.3 (7 agentes, solo QA)
+- 7 auditores aislados (voz, reproductor/cinta, backend/seguridad, conversión/capítulos, UX, ops, producto) contra QA
+  (backend 0.3.3 + web 0.3.3 exportada); producción, Oh Churus y libros reales sin tocar. 0 bloqueantes y 16 altas:
+  CI rojo en los 12 últimos runs de main (OP-01), vuelta atrás con migraciones que rompía la base (OP-02), respaldo
+  sin copia fuera del disco USB y sin avisos (OP-03/04), Spring Boot 3.2 sin soporte (OP-05); frases truncadas
+  cacheadas y capítulos en ERROR por un carácter griego o «ª» (V-01/02), «1.250» y «$30» mal leídos (V-03); cinta que
+  arranca en el capítulo siguiente y temporizador que deja la UI atrás (RP-16/01); back matter numerado y leído,
+  «Capítulo primero» sin ancla, XHTML con varios capítulos como uno (CF-01/02/03); reproductor móvil con ▶ fuera de
+  pantalla (UX5-01); sin sesiones de lectura (P-01); hogar compartido inexistente (P-02).
+- Bien verificado: seguridad (IDOR, JWT, CORS, revocación), restauración real de respaldo, 2x exacta, tiempos.json y
+  resaltado al 100 %, cruce de cinta sin huecos, sin scroll horizontal, reduced-motion.
+- Advertencia cruzada: nada de AnalyserNode sobre el <audio> (iOS lo silencia en segundo plano); la onda usa una
+  envolvente precalculada en el taller.
+- Plan de la 0.4.0: 109 casos (A–H, Z) en `documentación/pruebas/casos-0.4.0.md` y contratos C1–C8 (v1.7).
+
+## 2026-11-14 — 0.4.0: olas de implementación (rama `integracion/0.4.0`)
+- **taller**: capa de lectura al sintetizar (`voz/lectura.py`, vale también para libros ya convertidos): números,
+  monedas, horas, ordinales, romanos, abreviaturas, URL breves, emojis fuera, alfabetos no latinos y frases en otro
+  idioma con voz multilingüe; frases que edge no lee → silencio (capítulo LISTO); mp3 truncados fuera de la caché.
+  Pausas 0,4/0,35/0,7/1,0 s, −18 LUFS / −1,5 dBTP, 1x y 2x en una pasada, `tiempos.json` con `versionAudio: 2` y
+  `envolvente`. `estructura.json` v2 (tipo, región, número, enVoz) y trabajo `RECLASIFICAR_ESTRUCTURA` sin cambiar
+  índices. La caché no se invalida: solo se piden de nuevo las frases cuyo texto cambia.
+- **backend**: freno de login por origen (250 ms → 4 s) en vez de global (BK-01); preferencias de voz por capítulo,
+  sesiones de lectura con upsert por `sesionId` y día en America/Bogota, preparar el libro (prioridad 40), estado de la
+  casa, reclasificar (ADMIN); Flyway V6 solo aditiva; timeout del gateway 2 min (30 min en subidas).
+- **web-voz**: fallos de la cinta clasificados (solo 2 de plataforma la apagan), épocas contra cargas tardías, descarga
+  troceada que suena con el primer trozo, ▶ al final de capítulo/libro nunca mudo, latido con keepalive, barra fija
+  con zona segura y reproductor apaisado.
+- **web-ui**: ficha con índice agrupado, 🎧 por capítulo, «Solo la historia», «Preparar el libro entero», lámpara de
+  la casa, «Tus lecturas» (racha y minutos); contraste de día, foco, hojas como diálogo, 320 px y horizontal;
+  experiencia viva (palabra que se desliza, portada que vuela, esqueletos, confeti, modo cine, Atkinson/OpenDyslexic),
+  todo con reducir movimiento.
+- **ops**: CI en verde por primera vez (extra `[dev]` inexistente); respaldo con espejo en `C:\respaldos-espejo`
+  (sha256 en los dos sitios, `-FALLIDO`), vigía cada 10 min con notificación de Windows, vuelta atrás expand/contract
+  + restauración en base nueva (probadas), compose con `cpus`, `no-new-privileges`, `cap_drop: ALL` y Eureka sin puerto.
+  Protección de `main` preparada (se aplica tras integrar).
+- **dependencias**: Spring Boot 3.5.16 + Spring Cloud 2025.0.3 (Flyway 11 con `flyway-database-postgresql`), Node
+  22.23.5 por digest en CI, imagen y `.nvmrc`, npm audit de ejecución 1 crítica + 19 altas → 0 + 2 altas justificadas
+  (zod 3), pip 26.2.2. Expo SDK 57/58 y zod 4, aparte.
+
+## 2026-11-14 — 0.4.0: validación en tres rondas y arreglos
+- Validadores independientes por área (api, voz, web) contra QA reconstruido con cada integración.
+  - **Ronda 1** (`53b5543`): api 25/28 ✅; voz 32/40 ✅ (3 ❌ B8, B10, C12); web 35/47 ✅ (2 ❌ D1, D10). 24 fallos
+    nuevos (V-NUEVO-* por área, A-1, A-2), entre ellos dos altos: cuentos cortos fuera del audiolibro (VOZ-1) y el
+    reproductor haciendo ~100 peticiones por segundo, también en 0.3.3 (WEB-1).
+  - Arreglos 1: `fix/taller` (clasificador 2, idiomas, pico verdadero, silencios de diálogo), `fix/backend` (cabeceras
+    y ResultDTO en 404/400/405, tope de latidos, C12, A-1, resubida que reclasifica), `fix/web` (tormenta de peticiones,
+    atasco de la cinta, dos pestañas, modo cine, accesibilidad), `fix/ops` (respaldo con D: desconectado, vigía sin
+    errores de PowerShell, Pester 9/9) y `fix/sesion` (401 sueltos: vigencia cacheada por huella del token, `iat`
+    tolerante, WARN por cada 401 sin el token).
+  - **Ronda 2** (`6eaf3d6`): api 33/33 ✅; voz 37/40 ✅ (R2-1 regresión del ZWSP, Media; R2-2 sonoridad, Baja);
+    web 41/48 ✅ (E8 título cortado; V-NUEVO-WEB-10 reintento de red sin espera creciente).
+  - Arreglos 2 (`fix/taller-r3`): ZWSP decidido por tramo, teléfonos por grupos, sonoridad del m4a final (la causa era
+    el AAC en coma flotante), E8/Z5, espera creciente de la cinta y **diccionario de pronunciación por libro** (B17:
+    Flyway V7, GET/PUT `/v1/ejemplares/{id}/pronunciacion`, regeneración que no quita el audio viejo, «Cómo se
+    pronuncia» en la ficha; contratos v1.8).
+  - **Ronda 3** (`6786c2b`): voz 40/40 ✅; web 54 ✅ + 3 ⚠️ solo unitarias (D6, D7, D9) + 1 📱 (D16); 0 ❌. Nuevo R3-1
+    (Baja: el diccionario aceptaba marcas que la voz leía en voz alta), arreglado en `cebbc10` (rechaza `< > { } \`,
+    `mvn verify` biblioteca 337/337).
+- Puertas finales: jest 750/750, taller 533 (92,43 %), traductor 137 (99,38 %), backend verify con JaCoCo; CI 5/5.
+- Estado definitivo de los 109 casos y los 28 IDs nuevos: `documentación/pruebas/casos-0.4.0.md` (104 ✅, 3 ⚠️,
+  1 📱, H2 pendiente hasta integrar). `despliegue.md` con el orden de la 0.4.0 (V6 + V7, reclasificar, proteger
+  `main`) y la construcción por SSH (`ops/construir-ssh.ps1`) cuando la tarea de sesión no corre.
+- Pendiente: D16 en el iPhone físico, AirPlay (RP-13), escucha continua en Ajustes (RP-15), Expo SDK 57/58, zod 4,
+  entonación de exclamaciones, hogar compartido e IA (decisión de Anderson).
