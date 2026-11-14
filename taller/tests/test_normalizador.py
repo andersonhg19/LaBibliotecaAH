@@ -9,6 +9,9 @@ def test_ligaduras_y_espacios_duros():
     # (0.4.0, V-16) espacio de ancho cero entre letras = separador de palabras; en otro sitio se quita
     assert normalizar_visual("Texto​con​espacios") == "Texto con espacios"
     assert normalizar_visual("fin.​") == "fin."
+    # (V-NUEVO-8) uno suelto en una frase con espacios es un punto de corte DENTRO de la palabra: no la parte
+    assert normalizar_visual("Pala​bras con espacio de ancho cero.") == "Palabras con espacio de ancho cero."
+    assert normalizar_visual("東京​は​大きい") == "東京は大きい"  # en japonés solo marca dónde se puede cortar
     assert normalizar_visual("árbol") == "árbol"  # NFC
 
 
