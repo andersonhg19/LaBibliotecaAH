@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { urlFrasesCapitulo } from '@servicios/archivos'
 
@@ -31,6 +31,14 @@ export const TEXTOS_PANEL = {
 
 const cache = new Map<string, FraseDeTexto[]>()
 
+/**
+ * D10: un fallo no deja el panel en «No se pudo cargar…» para siempre. Mientras
+ * esté abierto se vuelve a intentar solo (3, 6, 12… s, como mucho cada 30 s) y
+ * en cuanto vuelve la red (evento `online`). El botón «Reintentar» sigue ahí.
+ */
+export const REINTENTO_TEXTO_MS = 3_000
+const REINTENTO_TEXTO_MAX_MS = 30_000
+
 /** Para las pruebas. */
 export const olvidarFrasesEnCache = () => cache.clear()
 
@@ -54,6 +62,8 @@ export function useFrasesCapitulo(archivoId: string | null, capitulo: number, ac
     error: null,
   })
   const [intento, setIntento] = useState(0)
+  /** Fallos seguidos del capítulo abierto (para espaciar los reintentos solos). */
+  const fallos = useRef(0)
   const clave = archivoId ? `${archivoId}:${capitulo}` : ''
 
   useEffect(() => {
@@ -67,10 +77,12 @@ export function useFrasesCapitulo(archivoId: string | null, capitulo: number, ac
     setEstado({ clave, frases: null, error: null })
     cargarFrasesCapitulo(archivoId, capitulo)
       .then((frases) => {
+        fallos.current = 0
         if (vivo) setEstado({ clave, frases, error: null })
       })
       .catch((e: unknown) => {
         console.error('[voz] no se pudo cargar el texto del capítulo', e)
+        fallos.current++
         if (vivo) setEstado({ clave, frases: null, error: TEXTOS_PANEL.error })
       })
     return () => {
@@ -80,6 +92,26 @@ export function useFrasesCapitulo(archivoId: string | null, capitulo: number, ac
 
   const reintentar = useCallback(() => setIntento((n) => n + 1), [])
   const actual = estado.clave === clave
+  const enError = activo && actual && !!estado.error
+
+  /* D10: en error y con el panel abierto, se reintenta solo (con espera creciente) y al volver la red. */
+  useEffect(() => {
+    if (!enError) return
+    const espera = Math.min(REINTENTO_TEXTO_MAX_MS, REINTENTO_TEXTO_MS * 2 ** Math.max(0, fallos.current - 1))
+    const t = setTimeout(reintentar, espera)
+    const w = typeof window !== 'undefined' ? window : null
+    const alVolver = () => reintentar()
+    if (typeof w?.addEventListener === 'function') w.addEventListener('online', alVolver)
+    return () => {
+      clearTimeout(t)
+      if (typeof w?.removeEventListener === 'function') w.removeEventListener('online', alVolver)
+    }
+  }, [enError, reintentar])
+
+  useEffect(() => {
+    fallos.current = 0
+  }, [clave])
+
   return {
     frases: actual ? estado.frases : null,
     cargando: activo && !!archivoId && (!actual || (!estado.frases && !estado.error)),

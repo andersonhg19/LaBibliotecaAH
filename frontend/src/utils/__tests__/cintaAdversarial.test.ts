@@ -276,6 +276,7 @@ function montar(
     falla?: (u: string) => boolean
     lenta?: (u: string) => Promise<void> | null
     cargarPartes?: DependenciasMotor['cargarPartes']
+    sinDatosMs?: number
   } = {},
 ) {
   const el = new AudioCinta()
@@ -308,7 +309,7 @@ function montar(
     resolverUrl: (r) => r,
     dispositivo: () => 'iPhone',
     ahora: () => Date.now(),
-    cinta: (e) => (cinta = new Cinta(e as unknown as HTMLAudioElement, descargar, true)),
+    cinta: (e) => (cinta = new Cinta(e as unknown as HTMLAudioElement, descargar, true, o.sinDatosMs)),
   })
   /** Reproduce `seg` segundos reales en pasos de 0,25 s (un timeupdate cada paso), como el navegador. */
   const correr = async (seg: number) => {
@@ -690,5 +691,101 @@ describe('Cinta 0.4.0: descarga progresiva, ventanas y cancelación', () => {
     const e = m.motor.obtener()
     expect([e.vozId, e.capitulo]).toEqual(['w', 1])
     expect(claveEn(m.el.currentTime) ?? '').toContain('/w/cap-1')
+  })
+})
+
+describe('Validación web 0.4.0: atascos y avisos de la cinta', () => {
+  const nunca = () => new Promise<void>(() => {})
+
+  it('V-NUEVO-4 elegir otro capítulo mientras el anterior baja atascado: suena el nuevo (la cola no se queda esperando)', async () => {
+    const m = montar({ lenta: (u) => (u.includes('cap-1') ? nunca() : null) })
+    m.motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await vaciar()
+    m.motor.irACapitulo(1) // su audio no termina de llegar nunca
+    await vaciar()
+    m.motor.irACapitulo(2) // y enseguida otro
+    await vaciar()
+    await m.correr(3)
+    const e = m.motor.obtener()
+    expect([e.fase, e.capitulo]).toEqual(['reproduciendo', 2])
+    expect(claveEn(m.el.currentTime) ?? '').toContain('cap-2.')
+    m.motor.detener()
+  })
+
+  it('V-NUEVO-4 la descarga del capítulo pedido se atasca: lo dice (sin red, reintentando) y, al volver, suena', async () => {
+    let atascado = true
+    const m = montar({ sinDatosMs: 200, lenta: (u) => (u.includes('cap-1') && atascado ? nunca() : null) })
+    m.motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await vaciar()
+    m.motor.irACapitulo(1)
+    await new Promise((r) => setTimeout(r, 400))
+    await vaciar()
+    const e = m.motor.obtener()
+    expect([e.fase, e.tipoError, e.capitulo]).toEqual(['error', 'red', 1])
+    expect(e.mensaje).toBeTruthy()
+    atascado = false
+    m.motor.reproducir() // ▶ en un fallo = reintentar ya
+    await vaciar()
+    await m.correr(2)
+    const tras = m.motor.obtener()
+    expect([tras.fase, tras.capitulo]).toEqual(['reproduciendo', 1])
+    expect(claveEn(m.el.currentTime) ?? '').toContain('cap-1.')
+    m.motor.detener()
+  })
+
+  it('V-NUEVO-4 la pantalla de bloqueo dice el capítulo pedido en cuanto se pide (no el que se deja)', async () => {
+    const titulos: string[] = []
+    const nav = globalThis.navigator as unknown as Record<string, unknown>
+    const antes = nav.mediaSession
+    const MMantes = (globalThis as Record<string, unknown>).MediaMetadata
+    nav.mediaSession = {
+      set metadata(x: { title: string } | null) {
+        if (x) titulos.push(x.title)
+      },
+      setActionHandler() {},
+      setPositionState() {},
+      playbackState: 'none',
+    }
+    ;(globalThis as Record<string, unknown>).MediaMetadata = class {
+      title: string
+      constructor(o: { title: string }) {
+        this.title = o.title
+      }
+    }
+    try {
+      const m = montar({ lenta: (u) => (u.includes('cap-1') ? nunca() : null) })
+      m.motor.abrir(LIBRO, { capitulo: 0, vozId: 'v', velocidad: 1 })
+      await vaciar()
+      m.motor.irACapitulo(1)
+      await vaciar()
+      expect(titulos[titulos.length - 1]).toBe('Dos')
+      m.motor.detener()
+    } finally {
+      if (antes === undefined) delete nav.mediaSession
+      else nav.mediaSession = antes
+      ;(globalThis as Record<string, unknown>).MediaMetadata = MMantes
+    }
+  })
+
+  it('V-NUEVO-5 con la cinta, un capítulo cuyo audio da 404 PARA y lo dice (como sin cinta), no salta en silencio', async () => {
+    // El servidor tarda un poco en contestar el estado de «Dos»: mientras, la cinta sigue parada al final de «Uno».
+    const m = montar({
+      falla: (u) => u.includes('cap-1'),
+      pedir: async (d) => {
+        if (d.capitulo === 1) await new Promise((r) => setTimeout(r, 40))
+        return listo(d.vozId, d.capitulo)
+      },
+    })
+    m.motor.abrir(LIBRO, { capitulo: 0, posicion: 90, vozId: 'v', velocidad: 1 })
+    await vaciar()
+    await m.correr(30) // se acaba «Uno» y toca «Dos», cuyo audio no está
+    const e = m.motor.obtener()
+    expect([e.fase, e.tipoError, e.capitulo]).toEqual(['error', 'audio', 1])
+    expect(m.el.paused).toBe(true)
+    await m.correr(20)
+    const tras = m.motor.obtener()
+    // Sigue parado en «Dos» con el aviso: no aparece sonando «Tres» sin decir nada.
+    expect([tras.fase, tras.capitulo]).toEqual(['error', 1])
+    expect(m.descargas.some((u) => u.includes('cap-2'))).toBe(false)
   })
 })
