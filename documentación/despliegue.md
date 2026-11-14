@@ -50,7 +50,7 @@ En producción no hace falta añadir nada; si se quieren explícitos: `CPUS_JAVA
 `no-new-privileges` y `cap_drop: [ALL]` (postgres recupera solo CHOWN, DAC_OVERRIDE, FOWNER, SETGID y SETUID para su
 arranque). Probado el 2026-11-14 levantando la 0.3.3 entera así: 8/8 healthy, login, catálogo, taller y traductor.
 
-## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11 , la 0.3.0, la 0.3.1, la 0.3.2 y la 0.3.3 el 2026-11-12; la 0.4.0 lleva además su orden propio, abajo)
+## Versión nueva (todo en casa; así se desplegaron la 0.2.0 el 2026-11-11, la 0.3.0, la 0.3.1, la 0.3.2 y la 0.3.3 el 2026-11-12; la 0.4.0 lleva además su orden propio, abajo)
 
 Con `TAG` ya cambiado en `C:\srv\biblioteca-ah\.env`, desde la consola (Git Bash):
 
@@ -71,37 +71,106 @@ ssh casa "$C up -d --no-build"
 ssh casa "$C ps --format '{{.Service}} {{.Status}}'; curl.exe -s http://127.0.0.1:8920/actuator/health; curl.exe -s http://127.0.0.1:8926/salud; curl.exe -s -o NUL -w ' web %{http_code}' http://127.0.0.1:3100/"
 ```
 
-Cuando `main` esté protegida (se aplica después de integrar la 0.4.0; hasta entonces **no** lo está) solo entrará lo
+Cuando `main` esté protegida (último paso del despliegue de la 0.4.0; hasta entonces **no** lo está) solo entrará lo
 que tenga los 5 checks del CI en verde y el paso 0a debería dar siempre `success`. Mientras tanto el 0a es la única
 barrera: si da otra cosa (o nada, porque el commit no está subido), se para.
 
-### Despliegue de la 0.4.0 (orden recomendado)
+Si la tarea de sesión no corre (paso 2), ver «Construir por SSH» más abajo.
+
+### Despliegue de la 0.4.0 (orden)
 
 Cambia mucho por debajo (Spring Boot 3.5 con Flyway 11, Node 22, compose con límites de CPU y sin puerto de Eureka)
-y trae la migración **V6** de `biblioteca_db`, solo aditiva: crea `bah_lib_capitulo_voz` y `bah_lib_sesion` y un
-índice (`auth_db` no cambia). En orden:
+y trae dos migraciones de `biblioteca_db`, las dos solo aditivas (`auth_db` no cambia):
 
-1. **Antes**, en casa, copiar los scripts nuevos de operación (el `respaldo.ps1` de `C:\srv\biblioteca-ah` es el
-   viejo): `Copy-Item <repo>\ops\respaldo.ps1, <repo>\ops\vigia.ps1, <repo>\ops\instalar-vigia.ps1 C:\srv\biblioteca-ah\`.
-2. Pasos 0a, 0b y **1** de arriba. La última línea de `C:\srv\biblioteca-ah\respaldo.log` tiene que ser
+- **V6** `voz por capitulo y sesiones`: tablas `bah_lib_capitulo_voz` y `bah_lib_sesion` y un índice.
+- **V7** `diccionario de pronunciacion`: tabla `bah_lib_pronunciacion` (diccionario por libro, B17; contratos v1.8).
+
+En orden (todo en casa; los pasos 0a–4 son los de «Versión nueva»):
+
+1. **Copiar los scripts de operación** (el `respaldo.ps1` de `C:\srv\biblioteca-ah` es el viejo, sin espejo):
+   `Copy-Item <repo>\ops\respaldo.ps1, <repo>\ops\vigia.ps1, <repo>\ops\instalar-vigia.ps1 C:\srv\biblioteca-ah\`.
+2. **Instalar el vigía** (sección «Vigía», desde la sesión de Windows o por `ops/casa-sesion.sh`) y ver
+   `OK: biblioteca-ah sano, ...` en `vigia.log`. Desde aquí, un respaldo fallido o un contenedor caído avisan.
+3. **CI y respaldo**: pasos 0a, 0b y **1**. La última línea de `C:\srv\biblioteca-ah\respaldo.log` tiene que ser
    `RESUMEN: ... espejo OK ...`; anotar la carpeta `D:\respaldos\biblioteca\AAAA-MM-DD_HHMM`: es la vuelta atrás
    del camino B.
-3. `.env`: `Copy-Item C:\srv\biblioteca-ah\.env C:\srv\biblioteca-ah\.env.antes-0.4.0` y cambiar solo `TAG=0.4.0`
+4. **TAG**: `Copy-Item C:\srv\biblioteca-ah\.env C:\srv\biblioteca-ah\.env.antes-0.4.0` y cambiar solo `TAG=0.4.0`
    (los `CPUS_*` tienen valor por defecto; `PUERTO_DISCOVERY` ya no se usa y se puede quitar).
-4. Pasos 2, 3 y 4 (construir, levantar, humo). Con el compose nuevo se **recrean todos** los contenedores (cambian
-   cpus y capacidades). En el log de biblioteca-service debe salir `Migrating schema "public" to version "6 - voz por
-   capitulo y sesiones"` y después `Started`.
-5. **Reclasificar la estructura** de los libros ya convertidos (sección «Reclasificar la estructura», una vez).
-6. Instalar el vigía (sección «Vigía») y comprobar `OK: biblioteca-ah sano, ...` en `vigia.log`.
-7. Ya integrada y desplegada: aplicar la protección de `main` (comando en el informe de la rama `ops`).
+5. **Construir**: paso 2 (sesión de Windows). Si la tarea de sesión no corre, «Construir por SSH» (el traductor
+   se construye por la sesión o se reetiqueta, ver allí).
+6. **Levantar**: paso 3. Con el compose nuevo se **recrean todos** los contenedores (cambian cpus y capacidades). En
+   el log de biblioteca-service deben salir `Migrating schema "public" to version "6 - voz por capitulo y sesiones"`,
+   `... to version "7 - diccionario de pronunciacion"` y después `Started`.
+7. **Reclasificar la estructura** de los libros ya convertidos, con una cuenta **ADMIN** (sección «Reclasificar la
+   estructura»; una vez, se puede repetir).
+8. **Humo**: paso 4 (todo healthy, gateway UP, taller ok, web 200) y, desde el iPhone o el PC por Tailscale: entrar,
+   abrir un libro reclasificado (índice agrupado y capítulos numerados), Escuchar, y en la ficha abrir «Cómo se
+   pronuncia» (lista vacía, sin error). `ssh casa "docker logs --since 15m biblioteca-ah-biblioteca-service-1 2>&1" |
+   grep -c ERROR` → 0.
+9. **Proteger `main`** (H2), solo cuando `main` ya apunte al commit desplegado y su CI esté en verde (con
+   `enforce_admins: true`, a partir de aquí a `main` solo se sube un SHA que ya tenga los 5 checks en verde: subir antes
+   la rama, esperar el verde y `git push origin <sha>:main`). Desde Git Bash en el PC de desarrollo:
+
+   ```bash
+   MSYS_NO_PATHCONV=1 GH_TOKEN=$(gh auth token --user andersonhg19) gh api -X PUT \
+     repos/andersonhg19/LaBibliotecaAH/branches/main/protection --input - <<'JSON'
+   {
+     "required_status_checks": {
+       "strict": false,
+       "checks": [
+         {"context": "secretos", "app_id": 15368},
+         {"context": "backend", "app_id": 15368},
+         {"context": "taller", "app_id": 15368},
+         {"context": "traductor", "app_id": 15368},
+         {"context": "frontend", "app_id": 15368}
+       ]
+     },
+     "enforce_admins": true,
+     "required_pull_request_reviews": null,
+     "restrictions": null,
+     "allow_force_pushes": false,
+     "allow_deletions": false
+   }
+   JSON
+   # comprobar: los 5 checks y true
+   MSYS_NO_PATHCONV=1 GH_TOKEN=$(gh auth token --user andersonhg19) gh api repos/andersonhg19/LaBibliotecaAH/branches/main/protection -q '.required_status_checks.checks[].context, .enforce_admins.enabled'
+   ```
+
+   El `GH_TOKEN` de la cuenta del repo es imprescindible: la cuenta activa de `gh` en el PC de desarrollo es otra.
+   Para poder saltarla en una urgencia: `enforce_admins: false` (pero entonces no obliga a nadie con permisos de admin).
 
 **Vuelta atrás 0.4.0 → 0.3.3 (camino A, sin tocar la base):** `Copy-Item .env.antes-0.4.0 .env` (o `TAG=0.3.3`) y
-repetir el paso 3. **Verificado** el 2026-11-14: la imagen `bah/biblioteca-service:0.3.3` (Flyway 9) arranca sobre
-la base con la V6 real que dejó la 0.4.0 (Flyway 11), en un postgres desechable con el respaldo de QA 0.4.0 →
-`Successfully validated 6 migrations`, `Current version of schema "public": 6`, `Started`. Las tablas de la V6 se
-quedan sin usar (preferencias de voz y sesiones se conservan para cuando se vuelva a la 0.4.0). La `estructura.json`
-v2 que deja la reclasificación la lee también la 0.3.3 (solo usa `capitulos[]`, cuyos campos se conservan). Con el
-compose viejo Eureka vuelve a publicarse en 8860. Solo si la 0.4.0 estropeó datos: camino B con el respaldo del paso 2.
+repetir el paso 3 de «Versión nueva» (`up -d --no-build`). **Verificado** el 2026-11-14 con la V6: la imagen `bah/biblioteca-service:0.3.3` (Flyway 9)
+arranca sobre la base con la V6 real que dejó la 0.4.0 (Flyway 11), en un postgres desechable con el respaldo de QA
+0.4.0 → `Successfully validated 6 migrations`, `Current version of schema "public": 6`, `Started`. Con la **V7 no se
+ha repetido** esa prueba; es del mismo tipo (solo una tabla nueva, que la 0.3.3 no conoce) y Flyway la trata igual
+como migración «futura». Las tablas nuevas se quedan sin usar (preferencias de voz, sesiones y diccionario se
+conservan para cuando se vuelva a la 0.4.0). La `estructura.json` v2 que deja la reclasificación la lee también la
+0.3.3 (solo usa `capitulos[]`, cuyos campos se conservan). Con el compose viejo Eureka vuelve a publicarse en 8860.
+Solo si la 0.4.0 estropeó datos: camino B con el respaldo anotado en el paso 3 de esta lista.
+
+### Construir por SSH (cuando la tarea de sesión no corre)
+
+Por SSH `docker build` falla por las credenciales de Docker Desktop (`credsStore`) y porque BuildKit no arranca. Se
+puede construir con el constructor clásico y un `DOCKER_CONFIG` propio sin `credsStore` (así se construyó QA en las
+rondas de validación de la 0.4.0). `ops/construir-ssh.ps1` lo hace: crea la primera vez ese `DOCKER_CONFIG` en
+`%LOCALAPPDATA%\biblioteca-ah\dockercfg-ssh` (`{"credsStore": ""}` y el contexto de Docker de la sesión), pone
+`DOCKER_BUILDKIT=0` y construye `bah/<servicio>:<TAG>` de postgres, discovery, gateway, auth, biblioteca, taller y web
+(la web con `EXPO_PUBLIC_API_URL` = `API_URL` del `.env`, como el compose). Lee del `.env` solo `TAG` y `API_URL`.
+
+```bash
+scp -q ops/construir-ssh.ps1 casa:C:/srv/biblioteca-ah/construir-ssh.ps1
+ssh casa 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\srv\biblioteca-ah\construir-ssh.ps1'   # una linea BUILD por imagen + RESUMEN o FALLA
+```
+
+Limitaciones:
+- **El traductor no se construye así**: su Dockerfile usa `RUN --mount=type=cache` (solo BuildKit). O se construye
+  por la sesión (sección «Traductor») o, si su código no cambió, se reetiqueta la imagen anterior:
+  `docker tag bah/traductor:<TAG anterior> bah/traductor:<TAG nuevo>`. En la 0.4.0 el traductor solo cambia la versión
+  de `pip` del Dockerfile, así que reetiquetar `0.3.3` como `0.4.0` es aceptable (se queda con el pip anterior).
+- Las imágenes base (`maven`, `eclipse-temurin`, `node`, `python`, `postgres`) tienen que estar ya en casa: el `pull`
+  tampoco va por SSH. Si falta una, el `BUILD` de esa imagen sale con `rc` distinto de 0.
+- Sin BuildKit no hay caché de montaje: la construcción es más lenta que por la sesión.
 
 ## Volver atrás
 
@@ -168,9 +237,12 @@ ssh casa 'Remove-Item C:\srv\biblioteca-ah\login-admin.json'
 ```
 
 Qué hace: encola un trabajo `RECLASIFICAR_ESTRUCTURA` (prioridad 200, detrás de cualquier conversión o voz) por cada
-archivo `LISTO` cuya `estructura.json` no es v2. El taller lee el original y reescribe `estructura.json` a v2
+archivo `LISTO` cuya `estructura.json` no es v2 **o es v2 de un clasificador anterior** al mínimo
+(`"clasificador"` en la raíz; mínimo `BIBLIOTECA_CLASIFICADOR_MINIMO`, por defecto 2: así se rehacen también los libros
+clasificados con la primera regla de la 0.4.0). El taller lee el original y reescribe `estructura.json` a v2
 **conservando** índice, título, href y palabras de cada capítulo: nunca cambia el número de capítulos (progreso,
-notas y audio intactos; comprobado en QA sobre 309 libros sin un solo cambio en esos datos). Idempotente: con los
+notas y audio intactos; comprobado en QA sobre 309 libros v1 y otra vez sobre 363 libros con el clasificador 2,
+sin un solo cambio en esos datos). Idempotente: con los
 trabajos pendientes responde `archivosEncolados: 0` y `yaEnCola: N`; cuando terminan, `yaReclasificados: N`. Sin rol
 ADMIN → 403; sin `/datos` (E: desconectado) → 503 `datosNoDisponibles`. Volver a llamar al final permite comprobar
 que `archivosEncolados` es 0.
