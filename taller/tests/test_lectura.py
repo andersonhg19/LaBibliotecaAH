@@ -252,6 +252,11 @@ def test_aleman_y_portugues(texto, idioma):  # V-NUEVO-4 (B13)
 def test_espacio_de_ancho_cero_dentro_de_una_palabra_no_la_parte():  # V-NUEVO-8
     assert lee("Pala\u200bbras con espacio de ancho cero.") == "Palabras con espacio de ancho cero."
     assert lee("Texto\u200bcon\u200bespacios\u200binvisibles") == "Texto con espacios invisibles"
+    # (R2-1) por tramo: el resto de la frase con espacios normales o duros no impide separar la racha
+    assert lee("Texto\u200bcon\u200bespacios\u200binvisibles y espacios duros aquí.") == (
+        "Texto con espacios invisibles y espacios duros aquí."
+    )
+    assert lee("Uno\u200bdos\u200btres cuatro\u00a0cinco y pala\u200bbra.") == "Uno dos tres cuatro cinco y palabra."
 
 
 def test_voz_multilingue_por_genero_e_idioma():

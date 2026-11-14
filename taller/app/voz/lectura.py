@@ -345,9 +345,10 @@ def _unidad_al_cuadrado(m: re.Match[str]) -> str:
 
 
 def _zwsp(m: re.Match[str]) -> str:
-    """Espacio de ancho cero: separa palabras solo si el texto lo usa como separador (V-16); dentro de una palabra
-    («Pala<ZWSP>bras», un punto de corte permitido) se quita sin partirla (V-NUEVO-8). Mismo criterio que el lector."""
-    return " " if zwsp_separa(m.string) else ""
+    """Espacio de ancho cero: separa palabras solo en un tramo que lo usa como separador (V-16, R2-1); dentro de una
+    palabra («Pala<ZWSP>bras», un punto de corte permitido) se quita sin partirla (V-NUEVO-8). Mismo criterio que el
+    lector."""
+    return " " if zwsp_separa(m.string, m.start()) else ""
 
 
 def _construir_neutras() -> list[_Regla]:

@@ -45,22 +45,52 @@ _LETRA_CON_ESPACIOS = r"[^\W\d_\u2e80-\u9fff\uac00-\ud7af\u3040-\u30ff]"
 _ZWSP_ENTRE_LETRAS = re.compile(rf"(?<={_LETRA_CON_ESPACIOS})\u200b+(?={_LETRA_CON_ESPACIOS})")
 
 
-def zwsp_separa(texto: str) -> bool:
-    """¿Este texto usa el espacio de ancho cero COMO SEPARADOR de palabras? Sí cuando hay al menos dos entre letras y
-    no menos que espacios normales («Texto<ZWSP>con<ZWSP>espacios», V-16). Uno suelto en una frase con espacios es un
-    punto de corte permitido DENTRO de una palabra («Pala<ZWSP>bras»): no se parte la palabra (V-NUEVO-8)."""
-    entre = len(_ZWSP_ENTRE_LETRAS.findall(texto))
-    return entre >= 2 and entre >= len(re.findall(r"\s+", texto.strip()))
+# racha de palabras unidas SOLO por espacios de ancho cero (dos o más): «Texto<ZWSP>con<ZWSP>espacios»
+_RACHA_ZWSP = re.compile(rf"{_LETRA_CON_ESPACIOS}+(?:\u200b+{_LETRA_CON_ESPACIOS}+){{2,}}")
+
+
+def tramos_zwsp(texto: str) -> list[tuple[int, int]]:
+    """Tramos (inicio, fin) del texto donde el espacio de ancho cero se usa COMO SEPARADOR de palabras: rachas de tres o
+    más palabras unidas solo por ZWSP («Texto<ZWSP>con<ZWSP>espacios», V-16). Se decide por tramo y no por párrafo
+    (R2-1): el resto de la frase puede tener espacios normales o duros. Un ZWSP suelto dentro de una palabra es un
+    punto de corte permitido («Pala<ZWSP>bras», V-NUEVO-8) y no está en ningún tramo: se quita sin partirla."""
+    if "\u200b" not in texto:
+        return []
+    return [m.span() for m in _RACHA_ZWSP.finditer(texto)]
+
+
+def zwsp_separa(texto: str, posicion: int | None = None) -> bool:
+    """¿El espacio de ancho cero en `posicion` (o alguno del texto, si no se da) separa palabras? Ver `tramos_zwsp`."""
+    tramos = tramos_zwsp(texto)
+    if posicion is None:
+        return bool(tramos)
+    return any(a <= posicion < b for a, b in tramos)
+
+
+def separar_zwsp(texto: str) -> str:
+    """Pone un espacio en cada ZWSP entre letras de los tramos donde separa palabras; el resto se deja (lo quita la
+    tabla visual)."""
+    tramos = tramos_zwsp(texto)
+    if not tramos:
+        return texto
+    partes: list[str] = []
+    previo = 0
+    for a, b in tramos:
+        partes.append(texto[previo:a])
+        partes.append(_ZWSP_ENTRE_LETRAS.sub(" ", texto[a:b]))
+        previo = b
+    partes.append(texto[previo:])
+    return "".join(partes)
 
 
 def normalizar_visual(texto: str) -> str:
     """Corrige defectos de extracción sin cambiar el contenido."""
     if not texto:
         return texto
-    if "\u200b" in texto and zwsp_separa(texto):
-        # (0.4.0, V-16) algunos EPUB separan palabras con espacios de ancho cero: entre letras pasan a espacio (si no,
-        # «Texto<ZWSP>con» quedaba «Textocon» en el lector y en la voz); en otro caso se quitan como antes
-        texto = _ZWSP_ENTRE_LETRAS.sub(" ", texto)
+    if "\u200b" in texto:
+        # (0.4.0, V-16 / R2-1) algunos EPUB separan palabras con espacios de ancho cero: en esos tramos pasan a espacio
+        # (si no, «Texto<ZWSP>con» quedaba «Textocon» en el lector y en la voz); el resto se quita como antes
+        texto = separar_zwsp(texto)
     return unicodedata.normalize("NFC", texto.translate(_TABLA_VISUAL))
 
 
