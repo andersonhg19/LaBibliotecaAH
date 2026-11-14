@@ -269,6 +269,7 @@ const styles = StyleSheet.create({
   capTitulo: { flex: 1, fontFamily: fuentes.titulo, fontSize: fontSize.md, fontVariant: ['lining-nums'] },
   capMin: { fontFamily: fuentes.ui, fontSize: fontSize.xs, fontVariant: ['lining-nums', 'tabular-nums'] },
   interruptor: {
+    marginLeft: 8,
     width: 44,
     height: 44,
     borderRadius: 22,

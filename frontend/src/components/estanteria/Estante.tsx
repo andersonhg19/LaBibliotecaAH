@@ -178,7 +178,7 @@ const Estante: React.FC<Props> = ({
         {libros.length === 0 ? (
           <View style={styles.vacio}>
             <Icono nombre="lomos" color={tinta} tamano={26} />
-            <Text style={[styles.vacioTexto, { color: tinta }]}>
+            <Text style={[styles.vacioTexto, { color: tinta }, !isDark && styles.sobrePapel]}>
               {vacio ?? 'Este estante está esperando su primer libro.'}
             </Text>
             {accionVacio ? (
@@ -281,6 +281,8 @@ const styles = StyleSheet.create({
   },
   pieSujeta: { position: 'absolute', bottom: 0, left: -10, width: 26, height: 5, backgroundColor: '#B8902C' },
   vacio: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18, gap: 10, minHeight: 150 },
+  /* UX5-03: de día, la tinta sobre la madera clara necesita su placa de papel (≥ 4,5:1). */
+  sobrePapel: { backgroundColor: 'rgba(251,247,238,0.92)', paddingHorizontal: 8, borderRadius: 4, overflow: 'hidden' },
   vacioTexto: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.md, textAlign: 'center' },
 })
 

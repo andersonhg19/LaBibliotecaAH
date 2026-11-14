@@ -65,8 +65,12 @@ export const lightColors: typeof darkColors = {
   surface: '#FBF7EE',
   surfaceLight: '#EADCBC',
   card: '#FFFDF8',
-  /** Cedro hondo: aguanta texto blanco encima. */
-  primary: '#8E4A22',
+  /**
+   * Cedro hondo: aguanta texto blanco encima. 0.4.0 (UX5-03): un punto más oscuro
+   * (#8E4A22 → #7A3B1A, 5,5 → 7:1 sobre el papel): medido en píxeles, la letra fina
+   * de los enlaces («Crea tu cuenta») se quedaba en 3,5–4,4:1 sobre la sala de día.
+   */
+  primary: '#7A3B1A',
   primaryLight: '#8B5A2B',
   secondary: '#6B1F2A',
   accent: '#2F4A3A',
@@ -75,7 +79,8 @@ export const lightColors: typeof darkColors = {
   success: '#2F5A40',
   text: '#2B1A10',
   textSecondary: '#4A2E1C',
-  textMuted: '#664A35',
+  /** 0.4.0 (UX5-03): #664A35 → #5A3F2C; los pies («0 documentos…») medían 3,4–3,8:1 en píxeles. */
+  textMuted: '#5A3F2C',
   border: '#C9B48E',
   velo: 'rgba(43,26,16,0.55)',
   vozFrase: 'rgba(217,163,91,0.45)',
