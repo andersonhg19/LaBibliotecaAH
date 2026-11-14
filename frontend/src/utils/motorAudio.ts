@@ -87,6 +87,7 @@ export interface LatidoVoz {
   modo: 'VOZ'
   sesionId: string
   capitulo: number
+  /** Fracción del capítulo oída (0–1), como la manda el lector (servicio de sesiones de web-ui). */
   posicion: number
   /** Segundos escuchados desde el latido anterior (0–120). */
   segundos: number
@@ -1869,7 +1870,10 @@ export class MotorAudio {
       modo: 'VOZ',
       sesionId: s.id,
       capitulo: enEsteLibro ? this.estado.capitulo : 0,
-      posicion: enEsteLibro ? Number(acotar(this.posicion(), 0, Number.MAX_SAFE_INTEGER, 0).toFixed(2)) : 0,
+      posicion:
+        enEsteLibro && this.estado.duracion > 0
+          ? Number(acotar(this.posicion() / this.estado.duracion, 0, 1, 0).toFixed(4))
+          : 0,
       segundos,
       dispositivo: this.deps.dispositivo(),
     }

@@ -13,6 +13,7 @@ export interface LatidoDTO {
   /** Lo genera el cliente (uuid): el servidor crea la sesión o la alarga. */
   sesionId?: string
   capitulo: number
+  /** Fracción del capítulo (0–1), como la manda también el lector. */
   posicion: number
   /** Segundos desde el latido anterior (0–120). */
   segundos: number
@@ -40,20 +41,20 @@ const B = BIBLIOTECA_PREFIJO
  * Authorization, para que llegue aunque la página se descargue (sendBeacon no puede llevar el token: daría 401).
  */
 export const enviarLatido = async (
-  datos: LatidoDTO,
-  o?: { alSalir?: boolean },
+  datos: LatidoDTO & { alSalir?: boolean },
 ): Promise<ResultDTO<LatidoRespuestaDTO>> => {
+  const { alSalir, ...cuerpo } = datos
   const token = tokenActual()
-  if (o?.alSalir && typeof fetch === 'function' && token) {
+  if (alSalir && typeof fetch === 'function' && token) {
     const r = await fetch(`${API_URL}${B}/sesiones/latido`, {
       method: 'POST',
       keepalive: true,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(datos),
+      body: JSON.stringify(cuerpo),
     })
     return (await r.json()) as ResultDTO<LatidoRespuestaDTO>
   }
-  return (await api.post<ResultDTO<LatidoRespuestaDTO>>(`${B}/sesiones/latido`, datos)).data
+  return (await api.post<ResultDTO<LatidoRespuestaDTO>>(`${B}/sesiones/latido`, cuerpo)).data
 }
 
 export const obtenerResumen = async (desde: string, hasta: string): Promise<ResultDTO<ResumenSesionesDTO>> =>

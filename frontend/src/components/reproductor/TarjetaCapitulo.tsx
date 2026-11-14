@@ -109,9 +109,13 @@ const TarjetaCapitulo: React.FC<{
     if (v.fase !== 'reproduciendo' && v.fase !== 'cargando') return
     const c = capitulos.find((x) => x.indice === v.capitulo)
     setAhora(TEXTOS_TARJETA.ahora(c?.titulo ?? `Capítulo ${v.capitulo + 1}`))
+  }, [v.capitulo, v.fase, capitulos])
+  /* Se va sola: su propio reloj (si dependiera de la fase, al pasar de «cargando» a «sonando» se quedaba). */
+  useEffect(() => {
+    if (!ahora) return
     const t = setTimeout(() => setAhora(null), AVISO_MS)
     return () => clearTimeout(t)
-  }, [v.capitulo, v.fase, capitulos])
+  }, [ahora])
 
   const texto = v.finDelLibro ? null : (ahora ?? anuncio)
   return (

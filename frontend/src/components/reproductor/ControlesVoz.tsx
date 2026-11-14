@@ -247,8 +247,8 @@ export function muescasQueCaben(ancho: number): number[] {
 export const SelectorVelocidad: React.FC<{ valor: number; onCambio: (v: number) => void }> = ({ valor, onCambio }) => {
   const { colors, isDark } = useTheme()
   const [ancho, setAncho] = useState(0)
-  // De día el latón como texto no llega a 4,5:1 sobre papel (UX5-03): latón oscuro; el latón queda para trazos.
-  const tinta = isDark ? SALA_ESCUCHA.laton : '#7A5A10'
+  // De día el latón como texto no llega a 4,5:1 sobre papel (UX5-03): el cedro del tema; el latón queda para trazos.
+  const tinta = isDark ? SALA_ESCUCHA.laton : colors.primary
   const muescas = muescasQueCaben(ancho)
   return (
     <View style={styles.velocidad}>

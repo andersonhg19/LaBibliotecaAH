@@ -47,7 +47,7 @@ export const motor = new MotorAudio({
   dispositivo: esteDispositivo,
   ahora: () => Date.now(),
   // 0.4.0 (C4): cada minuto sonando, y al pausar, se cuenta la escucha para las estadísticas.
-  latido: (d, o) => enviarLatido(d, o),
+  latido: (d, o) => enviarLatido(o?.alSalir ? { ...d, alSalir: true } : d),
   nuevoId: uuid,
   alVolverLaRed: (fn) => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return () => {}
