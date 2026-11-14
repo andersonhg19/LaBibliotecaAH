@@ -4,7 +4,7 @@ import pytest
 
 from app.conversion.numeros import femenino, numero_a_palabras, ordinal
 from app.voz.alineacion import alinear_palabras
-from app.voz.lectura import idioma_de_frase, preparar_lectura, voz_multilingue
+from app.voz.lectura import idioma_de_frase, idioma_de_libro, preparar_lectura, voz_multilingue
 
 
 def lee(voz: str, **k) -> str:
@@ -178,8 +178,80 @@ def test_frase_en_otro_idioma(texto, idioma):
     assert preparar_lectura(texto).idioma == idioma
 
 
-def test_otro_idioma_solo_en_libros_en_espanol():
-    assert preparar_lectura("The quick brown fox jumps over the lazy dog.", idioma_libro="en").idioma is None
+def test_libro_en_otro_idioma_entero_con_la_voz_multilingue():
+    # V-NUEVO-2: un libro en inglés se leía con la voz española («Eliad-221B va a querer sete en London») y con las
+    # horas en español («tres y media p.m.»). Ahora todo el libro va con la voz multilingüe y sin reglas del español
+    for idioma in ("en", "en-US", "English", "eng"):
+        r = preparar_lectura("It was 3:30 p.m. and Mr. Smith paid $1,250.50 for 2 books.", idioma_libro=idioma)
+        assert (r.texto, r.idioma) == ("It was 3:30 p.m. and Mr. Smith paid $1,250.50 for 2 books.", "en")
+    assert preparar_lectura("He lived at 221B Baker St. in London.", idioma_libro="en").idioma == "en"
+    assert preparar_lectura("Der Himmel ist blau.", idioma_libro="de").idioma == "de"
+    assert preparar_lectura("Καλημέρα κόσμε", idioma_libro="el").idioma == "otro"
+    # lo neutro sigue: emojis fuera
+    assert preparar_lectura("I love it 😍.", idioma_libro="en").texto == "I love it."
+    # español (en cualquier forma) o desconocido: como siempre
+    for idioma in (None, "es", "spa", "es-CO", "Castellano", "und", "xx"):
+        assert preparar_lectura("Son las 7:30 y ya.", idioma_libro=idioma).texto == "Son las siete y media y ya."
+    assert idioma_de_libro("pt-BR") == "pt" and idioma_de_libro("spa") is None and idioma_de_libro(None) is None
+
+
+@pytest.mark.parametrize(
+    ("voz", "esperado"),
+    [
+        (
+            "Abren a las 7:30 a. m. y cierran a las 5 p. m.",
+            "Abren a las siete y media de la mañana y cierran a las cinco de la tarde.",
+        ),
+        ("A las 3:30 p.m. salimos.", "A las tres y media de la tarde salimos."),
+        ("Desde las 12 p. m. hasta la 1 a.m.", "Desde las doce del mediodía hasta la una de la madrugada."),
+        ("Cena a las 9:15 pm.", "Cena a las nueve y cuarto de la noche."),
+        ("Llegaron 5 a Madrid.", "Llegaron 5 a Madrid."),
+    ],
+)
+def test_horas_con_a_m_y_p_m(voz, esperado):  # V-NUEVO-2 (en libros en español «a. m.» sonaba «AM»)
+    assert lee(voz) == esperado
+
+
+@pytest.mark.parametrize(
+    ("voz", "esperado"),
+    [
+        ("Real Madrid vs. Barcelona fue un partido raro.", "Real Madrid contra Barcelona fue un partido raro."),
+        ("Por ej., el 5.", "Por ejemplo, el 5."),
+        ("Frutas, p. ej. peras.", "Frutas, por ejemplo peras."),
+        ("Si x ≥ 3 entonces π es infinito.", "Si x ≥ 3 entonces pi es infinito."),
+        ("Comió x² de pan.", "Comió x al cuadrado de pan."),
+        ("Un cubo de 5 m³ y 20 m².", "Un cubo de 5 metros cúbicos y 20 metros cuadrados."),
+        (
+            "Llama al +57 300 123 4567 antes.",
+            "Llama al más cincuenta y siete, trescientos, ciento veintitrés, cuarenta y cinco sesenta y siete antes.",
+        ),
+        ("O al 300-123-4567.", "O al trescientos, ciento veintitrés, cuarenta y cinco sesenta y siete."),
+        ("En 1990 2000 y 2010.", "En 1990 2000 y 2010."),  # años seguidos no son un teléfono
+        ("Son 1.250.000 personas.", "Son un millón doscientas cincuenta mil personas."),
+    ],
+)
+def test_bajas_de_la_validacion(voz, esperado):  # V-NUEVO-5, V-NUEVO-6, V-NUEVO-7
+    assert lee(voz) == esperado
+
+
+@pytest.mark.parametrize(
+    ("texto", "idioma"),
+    [
+        ("Der schnelle braune Fuchs springt über den faulen Hund.", "de"),
+        ("O menino comeu o bolo inteiro ontem à noite.", "pt"),
+        ("Ich habe heute keine Zeit für dich.", "de"),
+        ("Ela falou que não vai sair hoje.", "pt"),
+        ("Uno o dos pingüinos en la nieve.", None),
+        ("Mi novio y yo fuimos a Lisboa ayer.", None),
+    ],
+)
+def test_aleman_y_portugues(texto, idioma):  # V-NUEVO-4 (B13)
+    assert idioma_de_frase(texto) == idioma
+
+
+def test_espacio_de_ancho_cero_dentro_de_una_palabra_no_la_parte():  # V-NUEVO-8
+    assert lee("Pala\u200bbras con espacio de ancho cero.") == "Palabras con espacio de ancho cero."
+    assert lee("Texto\u200bcon\u200bespacios\u200binvisibles") == "Texto con espacios invisibles"
 
 
 def test_voz_multilingue_por_genero_e_idioma():

@@ -40,16 +40,26 @@ _TABLA_VISUAL = {**{ord(k): v for k, v in LIGADURAS.items()}, **_INVISIBLES, **_
 _GUIONES_CORTE = "-‐­"
 
 
-_ZWSP_ENTRE_LETRAS = re.compile(r"(?<=\w)\u200b+(?=\w)")
+# letras de alfabetos que separan palabras con espacios (no CJK: ahí el ZWSP solo marca dónde se puede cortar)
+_LETRA_CON_ESPACIOS = r"[^\W\d_\u2e80-\u9fff\uac00-\ud7af\u3040-\u30ff]"
+_ZWSP_ENTRE_LETRAS = re.compile(rf"(?<={_LETRA_CON_ESPACIOS})\u200b+(?={_LETRA_CON_ESPACIOS})")
+
+
+def zwsp_separa(texto: str) -> bool:
+    """¿Este texto usa el espacio de ancho cero COMO SEPARADOR de palabras? Sí cuando hay al menos dos entre letras y
+    no menos que espacios normales («Texto<ZWSP>con<ZWSP>espacios», V-16). Uno suelto en una frase con espacios es un
+    punto de corte permitido DENTRO de una palabra («Pala<ZWSP>bras»): no se parte la palabra (V-NUEVO-8)."""
+    entre = len(_ZWSP_ENTRE_LETRAS.findall(texto))
+    return entre >= 2 and entre >= len(re.findall(r"\s+", texto.strip()))
 
 
 def normalizar_visual(texto: str) -> str:
     """Corrige defectos de extracción sin cambiar el contenido."""
     if not texto:
         return texto
-    if "\u200b" in texto:
+    if "\u200b" in texto and zwsp_separa(texto):
         # (0.4.0, V-16) algunos EPUB separan palabras con espacios de ancho cero: entre letras pasan a espacio (si no,
-        # «Texto<ZWSP>con» quedaba «Textocon» en el lector y en la voz); en otro sitio se quitan como antes
+        # «Texto<ZWSP>con» quedaba «Textocon» en el lector y en la voz); en otro caso se quitan como antes
         texto = _ZWSP_ENTRE_LETRAS.sub(" ", texto)
     return unicodedata.normalize("NFC", texto.translate(_TABLA_VISUAL))
 
@@ -279,6 +289,13 @@ def _construir_reglas() -> list[_Regla]:
         )
     )
     reglas.append(_Regla(r"(?<=\d)[¹²³⁰⁴-⁹]+", lambda m: f" elevado a {m.group(0).translate(_SUPERINDICES)}"))
+    # tras una letra suelta es una potencia, no una nota: «x²» → «x al cuadrado» (V-NUEVO-6)
+    reglas.append(
+        _Regla(
+            r"(?<![^\W\d_])([A-Za-z])([²³])(?!\w)",
+            lambda m: f"{m.group(1)} al {'cuadrado' if m.group(2) == '²' else 'cubo'}",
+        )
+    )
     reglas.append(_Regla(r"[¹²³⁰⁴-⁹]+", lambda m: ""))
     # 2) "Capítulo IV", "Parte II" (en títulos y en el texto)
     reglas.append(_Regla(rf"(?<!\w){_PALABRAS_TITULO}\s+({_ROMANO})\b", lambda m: _rom_cardinal(m, 1), grupo=1))

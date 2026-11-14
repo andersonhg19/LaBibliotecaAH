@@ -99,6 +99,9 @@ Detalle en §12. Resumen: `estructura.json` gana `"version": 2` y, por capítulo
 `envolvente` (C7); el taller normaliza el texto que se lee para todas las voces sin tocar el texto mostrado (C8); payload
 opcional `pronunciacion` en VOZ_CAPITULO (B17). Pausas nuevas (§5): 0,4 s al empezar, 0,35 entre frases, 0,7 al final
 de párrafo, 1 s antes y después de un título.
+Arreglos de la validación (rama `fix/taller`): `estructura.json` gana la clave raíz **`clasificador`** (entero; reglas de
+clasificación con que se escribió; ausente en un v2 = 1) y RECLASIFICAR_ESTRUCTURA rehace los v2 con `clasificador` < 2
+(§12.2); libros en otro idioma enteros con voz multilingüe; pico verdadero medido en el m4a (§12.3).
 
 ### v1.6 — 2026-11-12 (más formatos de documentos, visor de hojas de cálculo y carpetas del archivador)
 Todo es **aditivo**: lo que ya existía responde igual (salvo el texto de `formatoNoSoportado`, que lista los formatos nuevos).
@@ -687,9 +690,16 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
 ### 12.1 `estructura.json` v2 (C1)
 - Raíz: `"version": 2` (lo mira biblioteca-service para no volver a encolar la reclasificación). `versionFormato` sigue
   en 1 (el formato v1 no cambia). Metadatos: `subtitulo` opcional (EPUB3 `title-type=subtitle`).
-- (arreglos 0.4.0) Raíz: `"clasificador": <entero>` = versión de la regla de clasificación (sin el campo = 1). Las v2
-  con `clasificador` menor que `BIBLIOTECA_CLASIFICADOR_MINIMO` (por defecto 2) se vuelven a encolar para reclasificar
-  (ver «Versión del clasificador» en v1.7).
+- Raíz: **`"clasificador": 2`** (entero, `VERSION_CLASIFICADOR` de `taller/app/conversion/estructura.py`): versión de las
+  REGLAS con que se clasificaron los capítulos. Ausente en un `"version": 2` = **1** (taller 0.4.0 antes de los arreglos:
+  cuentos/poemas cortos con nombre antes de un capítulo largo salían `preliminar`, antes y fuera de la voz, V-NUEVO-1; y
+  un libro podía quedar sin ningún capítulo en voz, A-1). Sube cada vez que cambia el resultado de la clasificación. biblioteca-service reencola las v2 con `clasificador` menor
+  que `BIBLIOTECA_CLASIFICADOR_MINIMO` (por defecto 2; ver «Versión del clasificador» en v1.7).
+- Reglas del clasificador 2: una sección sin tipo con título propio (no genérico como «Sección 3» o «part0001», ni la
+  portadilla con el título del libro) y ≥ 20 palabras es cuerpo aunque sea corta (cuentos, poesía, infantiles), y se
+  numera por su título o en orden; si el índice no trae el número pero el primer encabezado del texto sí («Capítulo 7.
+  Enorme»), se usa cuando esos números van en orden creciente; si tras clasificar ningún capítulo queda con
+  `enVoz=true`, todos los que tienen texto (`palabrasVoz` > 0) pasan a `enVoz=true` (región y tipo no cambian).
 - Cada capítulo, además de lo de §4: `tipo` (capitulo|parte|prologo|epilogo|introduccion|preliminar|dedicatoria|epigrafe|
   creditos|indice|notas|apendice|agradecimientos|autor|publicidad|colofon|otro), `region` (antes|cuerpo|despues),
   `numero` (int o null; solo capítulos del cuerpo), `enVoz` (por defecto: cuerpo con texto), `palabrasVoz` (palabras de
@@ -706,8 +716,19 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
   (`estructura`), subproceso acotado como la conversión.
 - Lee el ORIGINAL (si es EPUB, reparte capítulos con el algoritmo de 0.3.3 y solo usa sus pistas si casan uno a uno por
   número y título); si no, clasifica por título y posición. Añade los campos de 12.1 y `"version": 2` **sin cambiar
-  índices, títulos, href ni palabras**. Idempotente: con `"version": 2` no hace nada. Si `estructura.json` cambia
-  mientras tanto (reconversión), no escribe. Sin `estructura.json` u original: termina HECHO y lo deja en el log.
+  índices, títulos, href ni palabras**. Idempotente: con `"version": 2` y `"clasificador"` ≥ 2 no hace nada. Si
+  `estructura.json` cambia mientras tanto (reconversión), no escribe. Sin `estructura.json` u original: termina HECHO y
+  lo deja en el log.
+- **Volver a clasificar con reglas nuevas**: un `"version": 2` con `clasificador` ausente (= 1) o menor que el del taller
+  se vuelve a clasificar; se REESCRIBEN solo `tipo`, `region`, `numero`, `enVoz`, `palabrasVoz` y `origenTipo` (y se
+  pone `"clasificador"`); índices, títulos, href, palabras, frases y audio, intactos. Si el original ya no da pistas, se
+  reutilizan las guardadas (`origenTipo` epub-type/landmarks/guide/linear). La preferencia del usuario (`enVoz` por
+  usuario en la base) no se toca.
+- **Para biblioteca-service** (pendiente en el backend, este taller ya lo soporta): para que los libros ya clasificados
+  con las reglas viejas se rehagan, `POST /v1/admin/libros/reclasificar-estructura` debe encolar RECLASIFICAR_ESTRUCTURA
+  también cuando `version >= 2` **y** el entero raíz `clasificador` de `estructura.json` falta o es **< 2**
+  (`raiz.path("clasificador").asInt(1) < 2`; contar esos como `archivosEncolados`, no como `yaReclasificados`). El
+  taller devuelve `"ya"` (HECHO sin escribir) si ya está al día, así que encolar de más es inocuo.
 
 ### 12.3 Voz (C7, C8, B17)
 - El taller aplica al SINTETIZAR una capa de lectura sobre `voz` (también en libros ya convertidos): números con
@@ -719,6 +740,14 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
   sigue LISTO; si son muchas (> 20 % y > 3) el trabajo falla como «servicio caído» y se reintenta. Un MP3 truncado
   nunca entra en la caché; uno truncado de antes se descarta al leerlo.
 - Volumen −18 LUFS integrado, pico ≤ −1,5 dBTP, 1x y 2x; la 2x se hace desde el PCM. Silencios internos ≤ 0,40 s.
+  (Arreglos B10/B8) El limitador trabaja sobremuestreado ×4 (techo −3 dBFS) y el pico verdadero se MIDE en cada m4a final
+  (1x y 2x): la variante que pase de −1,5 dBTP se recodifica (hasta 4 candidatos: techo más bajo y, si pierde > 1 LU, algo más de ganancia) y se queda la que cumple y suena más fuerte. El silencio interno se
+  mide por energía, también en las colas de las palabras que mete edge, y se deja en 0,36 s.
+- (V-NUEVO-2) Un libro cuyo idioma (`estructura.json` → `idioma`, normalizado: «en-US», «English», «eng» → en) no es
+  español y lo lee la voz multilingüe de edge (en, fr, de, it, pt, la, ca, gl, eu, nl, pl, ru, uk, el, ja, zh, ko, ar,
+  he, hi, sv, da, no, fi, tr, cs, ro, hu) se lee ENTERO con la voz multilingüe del mismo género que la elegida y sin las
+  reglas del español (horas, monedas, miles…); «spa», «es-CO», un código desconocido o ninguno: como español. En
+  español, «7:30 a. m.» → «siete y media de la mañana», «5 p. m.» → «cinco de la tarde».
 - `cap-NNN.tiempos.json` gana `"versionAudio": 2` y `"envolvente": {"hz": 10, "v": [0..100]}` (energía RMS en dB
   normalizada del audio 1x, un valor cada 100 ms; para la 2x se toman de dos en dos). Ausentes = audio anterior a 0.4.0.
 - payload VOZ_CAPITULO opcional `"pronunciacion": [{"de": "Hermione", "a": "Jermáyoni"}, …]` (≤ 500 reglas de ≤ 100

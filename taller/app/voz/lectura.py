@@ -24,6 +24,8 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from ..conversion.metadatos import normalizar_idioma
+from ..conversion.normalizador import zwsp_separa
 from ..conversion.numeros import apocopar, femenino, numero_a_palabras, ordinal, romano_a_entero
 
 # ---------------------------------------------------------------- resultado
@@ -34,7 +36,8 @@ class Lectura:
     texto: str
     # por carácter de `texto`: tramo [a, b) del texto de voz del que sale
     mapa: list[tuple[int, int]] = field(default_factory=list)
-    # None = idioma del libro; "en"/"fr"/"it"/"pt"/"de"/"la" = frase en otro idioma; "otro" = alfabeto no latino
+    # None = español (voz elegida); "en"/"fr"/"it"/"pt"/"de"/"la"… = frase (o libro entero) en otro idioma → voz
+    # multilingüe; "otro" = alfabeto no latino
     idioma: str | None = None
 
     @property
@@ -152,6 +155,26 @@ def _dinero(literal: str, moneda: str) -> str:
     return salida
 
 
+def _franja(h: int, sufijo: str) -> tuple[int, str]:
+    """(V-NUEVO-2) «7:30 a. m.» / «3 p. m.»: hora de 12 y la franja del día que se dice en español."""
+    h12 = h % 12 or 12
+    if sufijo == "a":
+        return h12, "de la noche" if h12 == 12 else "de la madrugada" if h12 < 6 else "de la mañana"
+    if h12 == 12:
+        return h12, "del mediodía"
+    return h12, "de la tarde" if h12 < 8 else "de la noche"
+
+
+def _hora_am_pm(m: re.Match[str]) -> str | None:
+    h, minutos = int(m.group(1)), int(m.group(2) or 0)
+    if not 1 <= h <= 12:
+        return None
+    h12, franja = _franja(h, m.group(3).lower())
+    if minutos == 0:
+        return f"{femenino(numero_a_palabras(h12))} {franja}"
+    return f"{_hora(h12, minutos)} {franja}"
+
+
 def _hora(h: int, m: int) -> str:
     horas = femenino(numero_a_palabras(h))  # «la una», «las veintiuna»
     if m == 0:
@@ -216,6 +239,25 @@ def _ordinal(m: re.Match[str]) -> str | None:
     return ordinal(n, "f" if genero == "f" else "m", apocope=apocope)
 
 
+def _grupo_telefono(g: str) -> str:
+    """«300» → «trescientos»; «4567» → «cuarenta y cinco sesenta y siete»; «05» → «cero cinco»."""
+    if g.startswith("0") or len(g) > 4:
+        return " ".join(numero_a_palabras(int(c)) for c in g)
+    if len(g) == 4:
+        return f"{_grupo_telefono(g[:2])} {_grupo_telefono(g[2:])}"
+    return numero_a_palabras(int(g))
+
+
+def _telefono(m: re.Match[str]) -> str | None:
+    """(V-NUEVO-7) «+57 300 123 4567» → «más cincuenta y siete, trescientos, ciento veintitrés, cuarenta y cinco
+    sesenta y siete»: por grupos, como se dicta un teléfono, y no cifra a cifra."""
+    texto = m.group(0)
+    grupos = re.findall(r"\d+", texto)
+    if sum(len(g) for g in grupos) < 7:
+        return None
+    return ("más " if texto.startswith("+") else "") + ", ".join(_grupo_telefono(g) for g in grupos)
+
+
 # ---------------------------------------------------------------- URL, correo, ruta
 
 
@@ -274,6 +316,11 @@ _INVISIBLES = "[\u200c\u200e\u200f\u2060\ufeff\u00ad]"
 
 # (patrón, reemplazo): abreviaturas que la conversión no expandía (V-09). Distinguen mayúsculas.
 _ABREVIATURAS = [
+    (r"Por\s[Ee]j\.", "Por ejemplo"),
+    (r"por\s[Ee]j\.", "por ejemplo"),
+    (r"[Pp]\.\s?[Ee]j\.", "por ejemplo"),
+    (r"[Ee]j\.(?=\s?[,:\d])", "ejemplo"),
+    (r"[Vv]s\.", "contra"),
     (r"[Aa]rts\.", "artículos"),
     (r"[Aa]rt\.", "artículo"),
     (r"S\.\s?A\.(?!\w)", "sociedad anónima"),
@@ -290,11 +337,49 @@ _ABREVIATURAS = [
 ]
 
 
-def _construir_reglas() -> list[_Regla]:
+_UNIDADES = {"km": "kilómetros", "cm": "centímetros", "mm": "milímetros", "m": "metros"}
+
+
+def _unidad_al_cuadrado(m: re.Match[str]) -> str:
+    return f" {_UNIDADES[m.group(1)]} {'cuadrados' if m.group(2) == '²' else 'cúbicos'}"
+
+
+def _zwsp(m: re.Match[str]) -> str:
+    """Espacio de ancho cero: separa palabras solo si el texto lo usa como separador (V-16); dentro de una palabra
+    («Pala<ZWSP>bras», un punto de corte permitido) se quita sin partirla (V-NUEVO-8). Mismo criterio que el lector."""
+    return " " if zwsp_separa(m.string) else ""
+
+
+def _construir_neutras() -> list[_Regla]:
+    """Reglas que valen en cualquier idioma (las únicas que se aplican a un libro que no está en español)."""
     r: list[_Regla] = []
     r.append(_Regla(_EMOJIS, _fijo(" ")))
     r.append(_Regla(_INVISIBLES, _fijo("")))
-    r.append(_Regla("\u200b", _fijo(" ")))  # espacio de ancho cero entre palabras: separa (V-16)
+    r.append(_Regla("\u200b", _zwsp))
+    # π suelta («π es infinito»): la voz española la borraba con las demás letras griegas (V-NUEVO-6)
+    r.append(_Regla(r"(?<![^\W\d_])π(?![^\W\d_])", _fijo(" pi ")))
+    return r
+
+
+def _construir_reglas() -> list[_Regla]:
+    r = _construir_neutras()
+    # superíndice tras una variable o un número: «x²» → «x al cuadrado» («m²» lo lee bien edge) (V-NUEVO-6)
+    r.append(
+        _Regla(
+            r"(?<![^\W\d_])([a-ln-zA-Z]|\d+|\))([²³])(?!\w)",
+            lambda m: f"{m.group(1)} al {'cuadrado' if m.group(2) == '²' else 'cubo'}",
+        )
+    )
+    # «5 m²», «3 km²», «2 m³»: la unidad entera («m dos» si no)
+    r.append(_Regla(r"(?<=\d)\s?(km|cm|mm|m)([²³])(?!\w)", _unidad_al_cuadrado))
+    # teléfonos: con prefijo de país, con el prefijo entre paréntesis o 300-123-4567 (V-NUEVO-7)
+    r.append(
+        _Regla(
+            r"(?<![\w+])(?:\+\d{1,3}(?:[ .-]?\d{1,4}){2,5}|\(\d{1,4}\)\s?\d{2,4}(?:[ -]\d{2,4}){1,3}"
+            r"|\d{3}-\d{3}-\d{4})(?![\d,.]?\d)",
+            _telefono,
+        )
+    )
     # URL, correo, ruta (antes que nada que mire números o puntos)
     r.append(_Regla(r"(?:https?://|www\.)[^\s<>\"«»“”]*[^\s<>\"«»“”.,;:!?)\]]", _url, flags=re.IGNORECASE))
     r.append(_Regla(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", _correo))
@@ -315,7 +400,13 @@ def _construir_reglas() -> list[_Regla]:
     )
     # porcentaje
     r.append(_Regla(rf"{_ANTES_NUM}({_NUM})\s?%", lambda m: numero_en_palabras(m.group(1)) + " por ciento"))
-    # horas: 22:00, 7:30, 10.30 h, 10 h
+    # horas: 7:30 a. m., 3 p. m. (antes que las de 24 h: «a. m.» sonaba «AM»), 22:00, 7:30, 10.30 h, 10 h
+    r.append(
+        _Regla(
+            r"(?<![\d:.,])(\d{1,2})(?::([0-5]\d))?\s?([AaPp])\.?\s?[Mm]\.?(?!\w)",
+            _hora_am_pm,
+        )
+    )
     r.append(
         _Regla(
             r"(?<![\d:.,])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?:\s?(?:h|hrs?)\b\.?)?",
@@ -360,6 +451,7 @@ def _numero_con_genero(m: re.Match[str]) -> str:
 
 
 _REGLAS = _construir_reglas()
+_REGLAS_NEUTRAS = _construir_neutras()
 _PUNTUACION_CIERRE = set(".,;:!?)]}»”’…")
 
 
@@ -397,16 +489,19 @@ _FRECUENTES_FRASE = {
         " mais ou plus était avait été fait comme tout leur être avoir très sans même donc alors quand petit"
     ),
     "de": _lista(
-        "der die und ist ich nicht sie ein eine zu mit sich auf für im dem von auch als nach wie"
-        " war aber hat er wir ihr noch nur oder wenn bei aus um sind kann dass"
+        "der die und ist ich nicht sie ein eine zu mit sich auf für im dem den das des von auch als nach wie"
+        " war aber hat er wir ihr noch nur oder wenn bei aus um sind kann dass über unter einen einem einer ihn ihm"
+        " uns euch mein dein sein unser heute gestern morgen sehr gut ja nein schon immer hier dort jetzt dann doch"
+        " nichts etwas viel alle diese dieser dieses wird werden wurde haben habe bin bist seid zum zur vom ins"
     ),
     "it": _lista(
         "il gli di della dei delle è che non per nel nella ma più anche questo questa sono"
         " aveva molto quando lui lei loro noi voi io ci già poi così perché tutto"
     ),
     "pt": _lista(
-        "os do dos em nas um uma não com mais ao à foi ele ela eles elas seu sua isso"
-        " este isto também já muito quando pelo pela tem ser está estava você eu meu minha"
+        "o os do dos da em no na nos nas um uma não com mais ao à às foi ele ela eles elas seu sua isso"
+        " este isto também já muito quando pelo pela tem ser está estava você eu meu minha ontem hoje noite"
+        " agora sempre nunca então bem nós vocês obrigado obrigada mas porque até sobre depois"
     ),
     "la": _lista(
         "est et in ad non sum quod qui quae sunt cum per hoc sed ut nec vel atque enim ergo esse etiam iacta"
@@ -414,6 +509,8 @@ _FRECUENTES_FRASE = {
     ),
 }
 _PALABRA_LATINA = re.compile(r"[^\W\d_]+")
+_GRAFIA_DE = re.compile(r"[äöß]|(?<!g)ü")
+_GRAFIA_PT = re.compile(r"[ãõç]|nh|lh|eu$|ou$")
 
 
 def idioma_de_frase(texto: str) -> str | None:
@@ -422,6 +519,10 @@ def idioma_de_frase(texto: str) -> str | None:
     if len(palabras) < 3:
         return None
     puntos = {i: sum(1 for p in palabras if p in lista) for i, lista in _FRECUENTES_FRASE.items()}
+    # grafías que el español no tiene (V-NUEVO-4): ä ö ß (y ü fuera de «gü») en alemán; ã õ ç nh lh y los pretéritos
+    # en -eu/-ou («comeu», «falou») en portugués
+    puntos["de"] += sum(1 for p in palabras if p not in _FRECUENTES_FRASE["de"] and _GRAFIA_DE.search(p))
+    puntos["pt"] += sum(1 for p in palabras if p not in _FRECUENTES_FRASE["pt"] and _GRAFIA_PT.search(p))
     es = puntos.pop("es")
     mejor = max(puntos, key=lambda i: puntos[i])
     if puntos[mejor] >= 2 and puntos[mejor] >= 2 * es and puntos[mejor] >= 0.25 * len(palabras):
@@ -430,6 +531,20 @@ def idioma_de_frase(texto: str) -> str | None:
 
 
 # ---------------------------------------------------------------- API
+
+
+# Idiomas de libro que se leen enteros con la voz multilingüe de edge (V-NUEVO-2). Cualquier otro código (o ninguno)
+# se lee como español con la voz elegida.
+IDIOMAS_MULTILINGUE = frozenset(
+    _lista("en fr de it pt la ca gl eu nl pl ru uk el ja zh ko ar he hi sv da no nb fi tr cs ro hu")
+)
+
+
+def idioma_de_libro(idioma: str | None) -> str | None:
+    """Idioma del libro si NO es español y la voz multilingüe lo lee («en-US» → «en», «English» → «en»); si no,
+    None (español: «spa», «es-CO», «Castellano», desconocido…)."""
+    codigo = normalizar_idioma(idioma)
+    return codigo if codigo in IDIOMAS_MULTILINGUE else None
 
 
 def _numero_unicode(c: str) -> str | None:
@@ -455,7 +570,9 @@ def preparar_lectura(
         if de.strip():
             patron = re.compile(r"(?<!\w)" + re.escape(de.strip()) + r"(?!\w)", re.IGNORECASE)
             spans.extend((m.start(), m.end(), prioridad, a) for m in patron.finditer(voz))
-    for regla in _REGLAS:
+    idioma_libro = idioma_de_libro(idioma_libro)
+    extranjero = idioma_libro is not None
+    for regla in _REGLAS_NEUTRAS if extranjero else _REGLAS:
         prioridad += 1
         if regla.formato_es and idioma_libro == "en":
             continue
@@ -486,10 +603,10 @@ def preparar_lectura(
         mapa.extend([(ini, fin)] * len(rep))
         pos = fin
     _copiar(voz, pos, len(voz), chars, mapa)
-    texto, mapa = _siglo("".join(chars), mapa)
-    lectura = _alfabetos(texto, mapa)
+    texto, mapa = ("".join(chars), mapa) if extranjero else _siglo("".join(chars), mapa)
+    lectura = _alfabetos(texto, mapa, idioma_libro if extranjero else None)
     lectura = _limpiar_espacios(lectura)
-    if lectura.idioma is None and idioma_libro in (None, "es"):
+    if lectura.idioma is None and not extranjero:
         lectura.idioma = idioma_de_frase(lectura.texto)
     return lectura
 
@@ -520,11 +637,12 @@ def _siglo(texto: str, mapa: list[tuple[int, int]]) -> tuple[str, list[tuple[int
     return "".join(chars), nuevo
 
 
-def _alfabetos(texto: str, mapa: list[tuple[int, int]]) -> Lectura:
-    """Números unicode a palabras; «ª»/«º» sueltas fuera; letras no latinas → voz multilingüe o fuera."""
+def _alfabetos(texto: str, mapa: list[tuple[int, int]], idioma_libro: str | None = None) -> Lectura:
+    """Números unicode a palabras; «ª»/«º» sueltas fuera; letras no latinas → voz multilingüe o fuera.
+    `idioma_libro` (libro que no está en español): todo va a la voz multilingüe, con su idioma."""
     no_latinas = sum(1 for c in texto if c.isalpha() and not es_latina(c) and c not in "ªº")
     latinas = sum(1 for c in texto if es_latina(c))
-    multilingue = no_latinas > 0 and (latinas == 0 or no_latinas >= 3)
+    multilingue = no_latinas > 0 and (latinas == 0 or no_latinas >= 3 or idioma_libro is not None)
     chars: list[str] = []
     nuevo: list[tuple[int, int]] = []
     for c, origen in zip(texto, mapa, strict=True):
@@ -540,7 +658,7 @@ def _alfabetos(texto: str, mapa: list[tuple[int, int]]) -> Lectura:
             continue
         chars.append(c)
         nuevo.append(origen)
-    return Lectura("".join(chars), nuevo, "otro" if multilingue else None)
+    return Lectura("".join(chars), nuevo, "otro" if multilingue else idioma_libro)
 
 
 def _limpiar_espacios(lectura: Lectura) -> Lectura:

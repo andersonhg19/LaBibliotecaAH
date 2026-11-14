@@ -9,7 +9,10 @@ el audio ya generado dependen de ellos). Solo añade campos y `"version": 2`.
   capítulo hereda las pistas del suyo. Si no casan (un libro convertido con un taller más viejo), se clasifica solo
   por título y posición.
 - `palabrasVoz` sale de `frases/cap-NNN.json` (lo que de verdad lee la voz).
-- Idempotente: un `estructura.json` que ya tiene `"version": 2` no se toca.
+- Idempotente: un `estructura.json` con `"version": 2` y `"clasificador"` ≥ VERSION_CLASIFICADOR no se toca. Uno v2
+  clasificado con reglas viejas (sin `clasificador`, o menor) se vuelve a clasificar: se REESCRIBEN solo los campos de
+  la clasificación (tipo, region, numero, enVoz, palabrasVoz, origenTipo); lo demás, intacto. Si el original ya no
+  da pistas, se reutilizan las que guardó la clasificación anterior (origenTipo epub-type/landmarks/guide/linear).
 """
 
 from __future__ import annotations
@@ -19,11 +22,12 @@ import logging
 import os
 import re
 import uuid
+from itertools import takewhile
 from pathlib import Path
 from typing import Any
 
 from ..dominio.modelo import Capitulo, ErrorDeTaller
-from .estructura import VERSION_ESTRUCTURA, Clasificacion, Entrada, clasificar
+from .estructura import VERSION_CLASIFICADOR, VERSION_ESTRUCTURA, Clasificacion, Entrada, clasificar
 from .frases import contar_palabras
 from .normalizador import normalizar_visual
 
@@ -36,12 +40,28 @@ def _clave_titulo(t: str) -> str:
     return re.sub(r"\s+", " ", normalizar_visual(t or "")).strip().casefold()
 
 
-def _palabras_voz(dir_normalizado: Path, indice: int) -> int:
+_CAMPOS = ("tipo", "region", "numero", "enVoz", "palabrasVoz", "origenTipo")
+_PISTAS_GUARDADAS = ("epub-type", "landmarks", "guide", "linear")
+
+
+def _frases(dir_normalizado: Path, indice: int) -> tuple[int, str | None]:
+    """(palabras que lee la voz, primer encabezado del texto) de `frases/cap-NNN.json`."""
     try:
         datos = json.loads((dir_normalizado / "frases" / f"cap-{indice:03d}.json").read_text(encoding="utf-8"))
-        return sum(contar_palabras(f.get("voz") or "") for f in datos.get("frases", []))
+        frases = [f for f in datos.get("frases", []) if isinstance(f, dict)]
+        palabras = sum(contar_palabras(f.get("voz") or "") for f in frases)
+        encabezado = " ".join(str(f.get("texto") or "") for f in takewhile(lambda f: f.get("esTitulo"), frases))
+        return palabras, encabezado.strip() or None
     except (OSError, ValueError, AttributeError):
+        return 0, None
+
+
+def clasificador_de(datos: dict[str, Any]) -> int:
+    """Versión de las reglas con que se clasificó: 0 = sin clasificar (v1); 1 = v2 de 0.4.0 (sin el campo)."""
+    if datos.get("version") != VERSION_ESTRUCTURA:
         return 0
+    valor = datos.get("clasificador")
+    return valor if isinstance(valor, int) and not isinstance(valor, bool) else 1
 
 
 def _padres(toc: list[dict[str, Any]]) -> set[int]:
@@ -92,15 +112,16 @@ def _pistas(original: Path | None, titulos: list[str]) -> list[Capitulo] | None:
 
 
 def reclasificar(dir_normalizado: Path, original: Path | None) -> str:
-    """Reescribe `estructura.json` con la clasificación. Devuelve "hecho", "ya" (tenía versión 2), "sin-estructura"
-    o "cambiado" (alguien lo reescribió mientras tanto: se deja como esté)."""
+    """Reescribe `estructura.json` con la clasificación. Devuelve "hecho", "ya" (ya clasificado con las reglas
+    actuales), "sin-estructura" o "cambiado" (alguien lo reescribió mientras tanto: se deja como esté)."""
     ruta = dir_normalizado / "estructura.json"
     try:
         crudo = ruta.read_bytes()
     except OSError:
         return "sin-estructura"
     datos = json.loads(crudo)
-    if datos.get("version") == VERSION_ESTRUCTURA:
+    anterior = clasificador_de(datos)
+    if anterior >= VERSION_CLASIFICADOR:
         return "ya"
     capitulos: list[dict[str, Any]] = datos.get("capitulos") or []
     es_hoja = (dir_normalizado / "hoja.json").exists() and all(c.get("href") is None for c in capitulos)
@@ -113,23 +134,35 @@ def reclasificar(dir_normalizado: Path, original: Path | None) -> str:
         entradas = []
         for k, c in enumerate(capitulos):
             p = pistas[k] if pistas else None
+            palabras_voz, encabezado = _frases(dir_normalizado, int(c.get("indice", k)))
+            tipo, origen, lineal = (p.tipo, p.origen_tipo, p.lineal) if p else (None, None, True)
+            if p is None and anterior and c.get("origenTipo") in _PISTAS_GUARDADAS and c.get("tipo"):
+                # reclasificación de un v2 sin pistas del original: las del formato que guardó la anterior
+                origen = str(c["origenTipo"])
+                lineal = origen != "linear"
+                tipo = str(c["tipo"]) if lineal else None
             entradas.append(
                 Entrada(
                     titulo=titulos[k],
                     palabras=int(c.get("palabras") or 0),
-                    palabras_voz=_palabras_voz(dir_normalizado, int(c.get("indice", k))),
-                    tipo=p.tipo if p else None,
-                    origen=p.origen_tipo if p else None,
-                    lineal=p.lineal if p else True,
+                    palabras_voz=palabras_voz,
+                    tipo=tipo,
+                    origen=origen,
+                    lineal=lineal,
                     region=p.region if p else None,
                     con_hijos=k in padres,
+                    encabezado=encabezado,
                 )
             )
-        clasificacion = clasificar(entradas)
+        clasificacion = clasificar(entradas, datos.get("titulo"))
     for c, cl in zip(capitulos, clasificacion, strict=True):
         for clave, valor in cl.a_json().items():
-            c.setdefault(clave, valor)  # nunca pisa lo que ya hay (índice, título, href, palabras…)
+            if anterior and clave in _CAMPOS:
+                c[clave] = valor  # reglas nuevas: solo se rehacen los campos de la clasificación
+            else:
+                c.setdefault(clave, valor)  # nunca pisa lo que ya hay (índice, título, href, palabras…)
     datos["version"] = VERSION_ESTRUCTURA
+    datos["clasificador"] = VERSION_CLASIFICADOR
     try:
         if ruta.read_bytes() != crudo:
             log.warning("estructura.json cambió mientras se reclasificaba (¿reconversión?): no se toca")
