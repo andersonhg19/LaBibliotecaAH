@@ -2,6 +2,7 @@ import { buscarFrase, buscarPalabra, capituloDeFrase, indiceDeFrase, inicioFrase
 import { normalizarVelocidad, planDeVelocidad, resaltaPalabra, tiempoEn1x, tiempoEnArchivo } from '@logica/velocidad'
 import type { CapituloResumen, EstadoAudioDTO, PartesCapitulo, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import type { Cinta } from '@utils/cinta'
+import { FalloCinta, clasificarFallo } from '@utils/fallosCinta'
 import { MENSAJES } from '@utils/mensajes'
 
 /*
@@ -63,7 +64,52 @@ export interface LibroEnVoz {
   capitulos: CapituloResumen[]
 }
 
-export type Temporizador = { tipo: 'minutos'; minutos: number; finEn: number } | { tipo: 'capitulo' } | null
+/**
+ * El temporizador. Por minutos solo cuenta mientras suena (RP-14): al pausar se
+ * guarda lo que faltaba en `pausadoCon` (ms) y al volver a sonar se reanuda.
+ */
+export type Temporizador =
+  { tipo: 'minutos'; minutos: number; finEn: number; pausadoCon?: number } | { tipo: 'capitulo' } | null
+
+/** Cuánto falta del temporizador por minutos, en segundos (contando la pausa), o null. */
+export function faltaTemporizador(t: Temporizador, ahora: number): number | null {
+  if (t?.tipo !== 'minutos') return null
+  const ms = t.pausadoCon ?? t.finEn - ahora
+  return Math.max(0, Math.round(ms / 1000))
+}
+
+/** El sello del progreso (F10): guardado en casa a tal hora, o pendiente de la red. */
+export type Guardado = { estado: 'ok'; en: number } | { estado: 'pendiente'; en: number } | null
+
+/** Lo que el motor manda como latido de la sesión de escucha (contrato C4). */
+export interface LatidoVoz {
+  ejemplarId: string
+  modo: 'VOZ'
+  sesionId: string
+  capitulo: number
+  /** Fracción del capítulo oída (0–1), como la manda el lector (servicio de sesiones de web-ui). */
+  posicion: number
+  /** Segundos escuchados desde el latido anterior (0–120). */
+  segundos: number
+  dispositivo?: string
+}
+
+/**
+ * El capítulo con voz que va después (o antes) de `desde` en la lista, o -1.
+ * No se oyen, escuchando de corrido: una página sin palabras (minutos 0) ni un
+ * capítulo apartado de la voz (`enVoz: false`, contrato C3). Elegido a mano, sí.
+ */
+export function vecinoConVoz(caps: readonly CapituloResumen[], desde: number, paso: 1 | -1): number {
+  const i0 = caps.findIndex((c) => c.indice === desde)
+  const inicio = i0 >= 0 ? i0 : desde
+  for (let i = inicio + paso; i >= 0 && i < caps.length; i += paso) {
+    const c = caps[i]
+    if (c.enVoz === false) continue
+    if ((c.minutosVoz ?? c.minutos) === 0) continue
+    return c.indice
+  }
+  return -1
+}
 
 /** Una espera del taller: desde cuándo y cuánto se calcula que tardará. */
 export interface Espera {
@@ -89,6 +135,14 @@ export interface EstadoVoz {
   preparacion: Espera | null
   /** Una voz nueva que se prepara mientras sigue sonando la actual. */
   vozPendiente: ({ id: string; nombre: string } & Espera) | null
+  /** Se llegó al final del libro (la pantalla ofrece «Volver a empezar», RP-02). */
+  finDelLibro: boolean
+  /** Cuánto ha bajado el capítulo que se pone en la cinta (0–1), para el anillo del ▶ (F6); null si no se sabe. */
+  carga: number | null
+  /** La escucha continua del iPhone (cinta): activa, apagada tras fallos repetidos (se avisa), o null si no aplica. */
+  escuchaContinua: 'activa' | 'apagada' | null
+  /** El último guardado del progreso en el servidor (F10). */
+  guardado: Guardado
 }
 
 export interface EventoFrase {
@@ -116,6 +170,10 @@ export interface DependenciasMotor {
   cargarPartes?: (url: string) => Promise<PartesCapitulo | null>
   /** (2026-11-12) La cinta continua (iPhone): un MediaSource con los capítulos seguidos. Null = <audio> normal. */
   cinta?: (el: HTMLAudioElement) => Cinta | null
+  /** (0.4.0, C4) Latido de la sesión de escucha: cada minuto sonando y al pausar. */
+  latido?: (d: LatidoVoz, o?: { alSalir?: boolean }) => Promise<unknown>
+  /** Un identificador nuevo para cada sesión de escucha (uuid). */
+  nuevoId?: () => string
 }
 
 /** El capítulo siguiente pedido antes de que acabe el actual (para pasar a él sin esperar al servidor). */
@@ -132,6 +190,11 @@ interface Precarga {
   duracion: number
   /** La URL que ya se mandó a la cinta. */
   enCinta: string | null
+  /** Fallos al ponerlo en la cinta y cuándo se puede volver a probar (RP-03: nunca en cada timeupdate). */
+  fallos: number
+  reintentoEn: number
+  /** No se vuelve a intentar: al acabar el capítulo se pide como siempre (con URL y token nuevos). */
+  fallida: boolean
 }
 
 /** Silencio WAV de 0,1 s: lo que suena en el primer toque para "desbloquear" el <audio> en iOS. */
@@ -149,6 +212,14 @@ export const TEXTOS_VOZ = {
   vozNuevaNoLista: (nueva: string, actual: string) => `La voz de ${nueva} no se pudo preparar; sigue ${actual}.`,
   tardaMas: 'tarda más de lo normal: puede haber otros libros en la cola',
   continuacion: 'Preparando la continuación…',
+  /** RP-01: tras «Al final del capítulo», ▶ sigue con el siguiente; se dice cuál. */
+  finCapituloSigue: (titulo: string) =>
+    `Fin del capítulo. El temporizador apagó la voz; toca ▶ para seguir con «${titulo}».`,
+  /** RP-02: al acabar el libro. */
+  finLibro: 'Has terminado el libro.',
+  /** RP-04: la cinta (escucha continua del iPhone) se apagó tras fallar varias veces. */
+  cintaApagada:
+    'La escucha continua se apagó por un fallo: con la pantalla bloqueada la voz puede pararse al cambiar de capítulo.',
 }
 
 const SALTO_SEG = 15
@@ -171,6 +242,29 @@ const REINTENTOS_MS = [2_000, 4_000, 8_000, 15_000, 30_000]
 const PRECARGA_SEG = 45
 /** Escuchando de corrido, cuántos capítulos en ERROR seguidos se saltan antes de parar y decirlo. */
 const MAX_SALTOS = 3
+/** RP-03: intentos de poner en la cinta el capítulo siguiente antes de dejarlo para el final del capítulo. */
+const MAX_FALLOS_PRECARGA = 3
+/** RP-04: fallos de la plataforma seguidos antes de apagar la cinta (y avisarlo). */
+const MAX_FALLOS_CINTA = 2
+/** RP-18: intentos de leer tiempos.json (con espera creciente y al volver la red). */
+const MAX_INTENTOS_TIEMPOS = 6
+/** C4: cada cuánto se manda el latido de la sesión mientras suena, y el máximo que acepta el servidor. */
+const LATIDO_MS = 60_000
+const LATIDO_MAX_SEG = 120
+/** Un hueco entre dos timeupdate mayor que esto no se cuenta entero (página congelada). */
+const TICK_MAX_MS = 15_000
+/** Tras esta pausa, volver a sonar es otra sesión de escucha. */
+const SESION_NUEVA_MS = 30 * 60 * 1000
+
+/** Un uuid v4 (crypto.randomUUID si está; si no, uno con Math.random, suficiente para agrupar latidos). */
+export function uuid(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (c?.randomUUID) return c.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0
+    return (ch === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
 
 /**
  * Cuánto tarda el taller en generar un capítulo (medido en QA: un capítulo de
@@ -222,6 +316,10 @@ const inicial: EstadoVoz = {
   tipoError: null,
   preparacion: null,
   vozPendiente: null,
+  finDelLibro: false,
+  carga: null,
+  escuchaContinua: null,
+  guardado: null,
 }
 
 export class MotorAudio {
@@ -267,14 +365,48 @@ export class MotorAudio {
   private precarga: Precarga | null = null
   /** La cinta continua (solo iPhone/iPad) y si se está llenando con un capítulo nuevo. */
   private cinta: Cinta | null = null
-  private cargandoCinta = false
+  /** Cargas de la cinta en vuelo (RP-12: un contador, no un sí/no; con dos seguidas la primera no lo apaga). */
+  private cargasCinta = 0
+  /** La URL que se está poniendo en la cinta (para contar lo que baja, F6). */
+  private srcCargando: string | null = null
+  /** Fallos de la plataforma seguidos al poner la cinta (RP-04). */
+  private fallosCinta = 0
+  /** Fallos 401/403/404 seguidos del capítulo pedido: el primero se reintenta solo (URL con token nuevo). */
+  private fallosAcceso = 0
   /** El tramo de la cinta cuyo final ya se atendió (para no pasar dos veces de capítulo). */
   private finAvisado: unknown = null
+  /** RP-01: el temporizador «Al final del capítulo» paró aquí; ▶ sigue con el siguiente. */
+  private paradoAlFinal = false
+  /** RP-18: tiempos.json que falló y se vuelve a pedir. */
+  private tiemposPendientes: {
+    url: string
+    turno: number
+    intentos: number
+    proximo: number
+    enVuelo: boolean
+  } | null = null
+  /** C4: la sesión de escucha (para los latidos). */
+  private sesionVoz: {
+    id: string
+    ejemplarId: string
+    acumulado: number
+    ultimoTick: number | null
+    ultimoEnvio: number
+    ultimaVez: number
+  } | null = null
 
   constructor(private deps: DependenciasMotor) {
     deps.alVolverLaRed?.(() => {
       if (this.estado.fase === 'error' && this.estado.tipoError === 'red') this.reintentar()
+      // Lo que no se pudo guardar o leer sin red, ahora.
+      if (this.estado.guardado?.estado === 'pendiente') this.guardar(true)
+      if (!this.tiempos && this.tiemposPendientes) this.pedirTiempos(true)
     })
+  }
+
+  /** ¿Se está llenando la cinta con un capítulo nuevo? */
+  private get cargandoCinta(): boolean {
+    return this.cargasCinta > 0
   }
 
   // ------------------------------------------------------------ suscripción
@@ -310,11 +442,10 @@ export class MotorAudio {
   /**
    * El capítulo con voz que va después (o antes) de `desde`, o -1. Una página sin ninguna palabra (minutos 0:
    * una imagen, una portadilla vacía) no se oye: se pasa de largo (2026-11-12, «Sección 4» paraba la escucha).
+   * Tampoco los capítulos apartados de la voz (`enVoz: false`, 0.4.0): no se piden ni se precargan.
    */
   private vecinoConVoz(desde: number, paso: 1 | -1): number {
-    const caps = this.estado.libro?.capitulos ?? []
-    for (let i = desde + paso; i >= 0 && i < caps.length; i += paso) if (caps[i].minutos !== 0) return i
-    return -1
+    return vecinoConVoz(this.estado.libro?.capitulos ?? [], desde, paso)
   }
 
   /** Hay algo que sonar: el capítulo entero o, mientras se genera, sus partes. */
@@ -365,6 +496,13 @@ export class MotorAudio {
       console.error('[voz] sin cinta', e)
       this.cinta = null
     }
+    if (this.cinta) {
+      const c = this.cinta
+      c.alProgresar = (url, f) => this.alProgresarCinta(url, f)
+      c.alCerrarse = () => this.rehacerCinta()
+      c.alFallarDescarga = (url, e) => this.alFallarDescarga(url, e)
+      this.poner({ escuchaContinua: 'activa' })
+    }
     el.addEventListener('timeupdate', this.alAvanzar)
     el.addEventListener('ended', this.alTerminar)
     // En la cinta no hay 'ended': al quedarse sin datos al final de un capítulo, se mira si toca pasar al siguiente.
@@ -372,19 +510,21 @@ export class MotorAudio {
     el.addEventListener('play', () => {
       // El silencio de desbloqueo no es "sonar": no debe tapar el «Preparando…».
       if (!this.estado.libro || el.src === SILENCIO) return
-      this.poner({ fase: 'reproduciendo', mensaje: null, tipoError: null, preparacion: null })
-      this.arrancarRaf()
-      this.sesionMedios()
+      this.alEmpezarASonar()
     })
     el.addEventListener('pause', () => {
       if (el.src === SILENCIO) return
       if (this.estado.fase === 'reproduciendo') this.poner({ fase: 'pausado' })
       this.ultimaPausa = this.deps.ahora()
+      this.pausarTemporizador()
       this.guardar(true)
+      this.latir(true)
       this.estadoSesion('paused')
     })
     el.addEventListener('loadedmetadata', this.alCargarMetadatos)
     el.addEventListener('error', () => {
+      // Mientras se rehace la cinta, el <audio> se queda un instante sin fuente: no es un fallo del capítulo.
+      if (this.cargandoCinta) return
       if (el.src && el.src !== SILENCIO && this.estado.libro && this.hayAudio()) {
         // Una parte que ya no está (el capítulo se terminó y se limpió): se sigue en el archivo entero.
         if (this.enPartes() && this.urls.u1) return this.aCompleto(this.posicion(), this.quiereSonar)
@@ -475,12 +615,17 @@ export class MotorAudio {
     const turno = ++this.turno
     this.cancelarSondeo()
     this.quiereSonar = reproducir
+    if (this.pedido?.capitulo !== capitulo) this.fallosAcceso = 0
     this.pedido = { capitulo, posicion, fraseId }
     this.tiempos = null
+    this.tiemposPendientes = null
     this.urls = { u1: null, u2: null }
     this.olvidarPartes()
     this.fraseObjetivo = fraseId
     this.palabraActual = null
+    this.paradoAlFinal = false
+    // Una precarga en vuelo de antes (otra voz, otro capítulo) ya no vale (RP-06).
+    this.precarga = null
     this.poner({
       capitulo,
       posicion,
@@ -490,6 +635,8 @@ export class MotorAudio {
       mensaje: null,
       tipoError: null,
       preparacion: null,
+      finDelLibro: false,
+      carga: null,
     })
     // Al llegar solo (fin del anterior) no se pausa: en la cinta el <audio> sigue «sonando» mientras llega el capítulo.
     if (!automatico) this.el?.pause()
@@ -592,13 +739,34 @@ export class MotorAudio {
     await pedir()
   }
 
-  /** Lee tiempos.json del capítulo cargado (frases y palabras) y, si se pidió una frase, va a ella. */
+  /**
+   * Lee tiempos.json del capítulo cargado (frases y palabras) y, si se pidió una frase, va a ella. Si falla
+   * (sin red), se vuelve a pedir con espera creciente y al volver la red (RP-18): sin él no hay resaltado.
+   */
   private leerTiempos(ut: string | null, turno: number) {
     if (!ut) return
+    this.tiemposPendientes = { url: ut, turno, intentos: 0, proximo: 0, enVuelo: false }
+    this.pedirTiempos(true)
+  }
+
+  private pedirTiempos(ya = false) {
+    const tp = this.tiemposPendientes
+    if (!tp || tp.enVuelo || tp.turno !== this.turno) return
+    const ahora = this.deps.ahora()
+    if (!ya && (ahora < tp.proximo || tp.intentos >= MAX_INTENTOS_TIEMPOS)) return
+    tp.enVuelo = true
+    tp.intentos++
+    tp.proximo = ahora + Math.min(30_000, 2_000 * 2 ** tp.intentos)
+    const fallo = () => {
+      tp.enVuelo = false
+    }
     this.deps
-      .cargarTiempos(ut)
+      .cargarTiempos(tp.url)
       .then((t) => {
-        if (turno !== this.turno || !t) return
+        tp.enVuelo = false
+        if (tp.turno !== this.turno || this.tiemposPendientes !== tp) return
+        if (!t) return fallo()
+        this.tiemposPendientes = null
         this.tiempos = t
         if (!this.estado.duracion && t.duracion) this.poner({ duracion: t.duracion })
         if (this.fraseObjetivo) {
@@ -608,7 +776,19 @@ export class MotorAudio {
         }
         this.actualizarFrase(true)
       })
-      .catch(() => {})
+      .catch(fallo)
+  }
+
+  /**
+   * F7: la energía de la voz ahora mismo (0–1), de la envolvente precalculada en tiempos.json (contrato C7;
+   * sin Web Audio, que en iOS silencia el audio en segundo plano). Null si el capítulo no la trae.
+   */
+  nivelVoz = (): number | null => {
+    const e = this.tiempos?.envolvente
+    if (!e || !(e.hz > 0) || !Array.isArray(e.v) || !e.v.length) return null
+    const i = Math.floor(this.posicion() * e.hz)
+    const v = e.v[Math.max(0, Math.min(e.v.length - 1, i))]
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : null
   }
 
   // ------------------------------------------------------------ precarga y cinta (2026-11-12)
@@ -636,6 +816,7 @@ export class MotorAudio {
   private precargarSiguiente() {
     const l = this.estado.libro
     if (!l || !this.urls.u1 || this.enPartes() || this.estado.temporizador?.tipo === 'capitulo') return
+    if (this.paradoAlFinal || this.estado.finDelLibro) return
     const dur = this.estado.duracion
     // En segundos reales: a 5x, 45 s del libro serían 9 s (poco para bajar el capítulo con datos móviles).
     if (!(dur > 0) || dur - this.posicion() > PRECARGA_SEG * Math.max(1, this.estado.velocidad)) return
@@ -667,6 +848,9 @@ export class MotorAudio {
       ut: null,
       duracion: 0,
       enCinta: null,
+      fallos: 0,
+      reintentoEn: 0,
+      fallida: false,
     }
     this.precarga = p
     this.deps
@@ -694,7 +878,8 @@ export class MotorAudio {
   private precargaPara(capitulo: number): Precarga | null {
     const p = this.precarga
     const l = this.estado.libro
-    if (!p || !l || !p.listo || !p.u1) return null
+    // Una precarga que no se pudo poner en la cinta no vale: al acabar se pide como siempre (URL y token nuevos).
+    if (!p || !l || !p.listo || !p.u1 || p.fallida) return null
     return p.capitulo === capitulo && p.vozId === this.estado.vozId && p.clave.startsWith(`${l.ejemplarId}|`) ? p : null
   }
 
@@ -702,16 +887,39 @@ export class MotorAudio {
   private encolarEnCinta(p: Precarga) {
     const c = this.cinta
     if (!c || !this.enCinta() || this.cargandoCinta) return
+    // RP-03: tras un fallo se espera (2, 4, 8… s) y, tras varios o con 401/403/404, se deja para el final.
+    if (p.fallida || this.deps.ahora() < p.reintentoEn) return
     const { src } = this.elegirFuente({ u1: p.u1, u2: p.u2 })
     if (!src) return
     const sig = c.siguienteDe(c.actual)
     if (sig?.clave === src || (p.enCinta === src && !sig)) return
     if (sig) c.olvidarSiguientes() // otra velocidad: se vuelve a poner con el archivo que toca
     p.enCinta = src
-    c.encolar(src).catch((e) => {
-      console.error('[voz] cinta: no se pudo poner el capítulo siguiente', e)
-      p.enCinta = null
-    })
+    c.encolar(src)
+      .then((t) => {
+        // Cancelado (se olvidó lo de detrás entre tanto): se podrá volver a poner.
+        if (!t && this.precarga === p && p.enCinta === src && !c.siguienteDe(c.actual)) p.enCinta = null
+      })
+      .catch((e) => {
+        if (p.enCinta === src) p.enCinta = null
+        this.fallarPrecarga(p, clasificarFallo(e), e)
+      })
+  }
+
+  /** Un fallo al poner el capítulo siguiente en la cinta: se espera más cada vez y, si no tiene arreglo, se deja. */
+  private fallarPrecarga(p: Precarga, tipo: FalloCinta, e: unknown) {
+    if (tipo === 'cancelada') return
+    console.error('[voz] cinta: no se pudo poner el capítulo siguiente', e)
+    p.fallos++
+    p.reintentoEn = this.deps.ahora() + Math.min(30_000, 1_000 * 2 ** p.fallos)
+    if (tipo === 'acceso' || tipo === 'plataforma' || p.fallos >= MAX_FALLOS_PRECARGA) p.fallida = true
+  }
+
+  /** Quita de la cinta lo que va detrás del capítulo actual (y, si estaba en vuelo, no llega a ponerse). */
+  private olvidarSiguientesEnCinta() {
+    const c = this.cinta
+    if (c && this.enCinta()) c.olvidarSiguientes()
+    if (this.precarga) this.precarga.enCinta = null
   }
 
   /**
@@ -728,10 +936,13 @@ export class MotorAudio {
     this.pedido = { capitulo: p.capitulo, posicion: 0, fraseId: null }
     this.urls = { u1: p.u1, u2: p.u2 }
     this.tiempos = null
+    this.tiemposPendientes = null
     this.olvidarPartes()
     this.fraseObjetivo = null
     this.palabraActual = null
     this.finAvisado = null
+    this.paradoAlFinal = false
+    this.fallosAcceso = 0
     this.poner({
       capitulo: p.capitulo,
       posicion: 0,
@@ -740,6 +951,7 @@ export class MotorAudio {
       mensaje: null,
       tipoError: null,
       preparacion: null,
+      finDelLibro: false,
     })
     const c = this.cinta
     const { src } = this.elegirFuente(this.urls)
@@ -922,20 +1134,93 @@ export class MotorAudio {
       return despues()
     }
     const turno = this.turno
-    this.cargandoCinta = true
+    this.cargasCinta++
+    this.srcCargando = src
     this.finAvisado = null
     c.cargar(src, tArchivo)
       .then(() => {
-        this.cargandoCinta = false
-        if (turno === this.turno) despues()
+        this.cargasCinta--
+        if (turno !== this.turno) return
+        this.fallosCinta = 0
+        this.fallosAcceso = 0
+        if (this.estado.carga != null) this.poner({ carga: null })
+        despues()
       })
       .catch((e) => {
-        this.cargandoCinta = false
-        console.error('[voz] la cinta falló; se sigue con el audio normal', e)
-        c.soltar()
-        this.cinta = null
-        if (turno === this.turno) this.ponerFuente(pos1x, reproducir || this.quiereSonar)
+        this.cargasCinta--
+        const tipo = clasificarFallo(e)
+        if (tipo === 'cancelada' || turno !== this.turno) return
+        this.fallarCinta(tipo, e, pos1x, reproducir || this.quiereSonar)
       })
+  }
+
+  /**
+   * La cinta no pudo poner el capítulo (RP-04). Un corte de red o un 5xx no la
+   * apagan: se dice y se reintenta solo. Un 401/403/404 (token caducado, audio
+   * regenerado) se vuelve a pedir una vez al servidor. Solo un fallo de la
+   * plataforma repetido la apaga para la sesión, y se avisa.
+   */
+  private fallarCinta(tipo: FalloCinta, e: unknown, pos1x: number, reproducir: boolean) {
+    if (this.estado.carga != null) this.poner({ carga: null })
+    const capitulo = this.pedido?.capitulo ?? this.estado.capitulo
+    this.pedido = { capitulo, posicion: pos1x, fraseId: null }
+    if (tipo === 'red' || tipo === 'servidor') {
+      console.warn('[voz] cinta: sin red al bajar el capítulo; se reintentará', e)
+      this.fallar('red', TEXTOS_VOZ.sinRedReintentando)
+      this.programarReintento()
+      return
+    }
+    if (tipo === 'acceso') {
+      console.warn('[voz] cinta: el audio no se pudo bajar (acceso)', e)
+      if (this.fallosAcceso++ < 1) {
+        // Se vuelve a preguntar al servidor: trae la URL con un token nuevo.
+        this.cargar(capitulo, pos1x, reproducir, null, false, true)
+        return
+      }
+      this.fallar('audio', TEXTOS_VOZ.audioFallo)
+      return
+    }
+    console.error('[voz] la cinta falló', e)
+    this.cinta?.soltar()
+    this.fallosCinta++
+    if (this.fallosCinta >= MAX_FALLOS_CINTA) {
+      // Ya no es un tropiezo: el resto de la sesión, con el <audio> normal; y se dice por qué.
+      this.cinta = null
+      this.poner({ escuchaContinua: 'apagada' })
+    }
+    this.ponerFuente(pos1x, reproducir)
+  }
+
+  /** F6: cuánto ha bajado el capítulo que se está poniendo en la cinta. */
+  private alProgresarCinta(url: string, f: number) {
+    if (!this.cargandoCinta || url !== this.srcCargando) return
+    const antes = this.estado.carga
+    if (antes == null || f >= 1 || Math.abs(f - antes) >= 0.02) this.poner({ carga: f })
+  }
+
+  /** RP-08: el navegador cerró la cinta (iOS bajo presión): se rehace en la misma posición. */
+  private rehacerCinta() {
+    if (!this.estado.libro || !this.urls.u1 || this.enPartes() || !this.cinta) return
+    const sonar = this.quiereSonar
+    this.ponerFuente(this.estado.posicion, sonar)
+  }
+
+  /** Una descarga que ya sonaba se cortó a medias (RP-07): el capítulo actual se rehace; el siguiente, se olvida. */
+  private alFallarDescarga(url: string, e: unknown) {
+    const c = this.cinta
+    if (!c) return
+    console.warn('[voz] cinta: la descarga se cortó a medias', e)
+    if (c.actual?.clave === url && !this.cargandoCinta) {
+      // Lo que falta no llegará: se rehace la cinta desde donde va (si sigue sin red, el reintento de siempre).
+      const pos = this.posicion()
+      c.soltar()
+      return this.ponerFuente(pos, this.quiereSonar)
+    }
+    if (c.siguienteDe(c.actual)?.clave === url) {
+      this.olvidarSiguientesEnCinta()
+      const p = this.precarga
+      if (p) this.fallarPrecarga(p, clasificarFallo(e), e)
+    }
   }
 
   /** Pone en el <audio> el archivo que toca para la velocidad actual, conservando la posición. */
@@ -1007,6 +1292,24 @@ export class MotorAudio {
       if (this.estado.tipoError !== 'conversion') this.reintentar()
       return
     }
+    if (this.paradoAlFinal) {
+      // RP-01: el temporizador paró al final del capítulo; ▶ sigue con el siguiente (no relee este).
+      this.paradoAlFinal = false
+      const sig = this.vecinoConVoz(this.estado.capitulo, 1)
+      if (sig >= 0) {
+        const pre = this.precargaPara(sig)
+        if (pre) return this.entrarEnPrecargado(pre)
+        this.saltosSeguidos = 0
+        void this.cargar(sig, 0, true, null, false, true)
+        return
+      }
+      this.poner({ finDelLibro: true })
+    }
+    if (this.estado.finDelLibro) {
+      // RP-02: al final del libro, ▶ vuelve a oír el último capítulo desde el principio (nunca «Pausar» mudo).
+      this.poner({ finDelLibro: false, mensaje: null })
+      this.buscar(0)
+    }
     if (!this.hayAudio()) return // aún preparando: sonará en cuanto esté
     if (this.cargandoCinta) return // sonará en cuanto la cinta tenga el capítulo
     if (this.esperandoParte) return // sonará en cuanto llegue la siguiente parte
@@ -1017,6 +1320,9 @@ export class MotorAudio {
       if (anterior) this.buscar(anterior.t0)
     }
     this.ultimaPausa = 0
+    // RP-17: si el <audio> ya estaba en marcha (la cinta sigue «sonando» mientras llega el capítulo siguiente),
+    // play() no dispara 'play': sin esto el reproductor se quedaría en «cargando» con la voz sonando.
+    const yaSonaba = !el.paused && el.src !== SILENCIO
     const p = el.play()
     if (p && typeof p.catch === 'function') {
       p.catch((e: unknown) => {
@@ -1024,6 +1330,25 @@ export class MotorAudio {
           this.poner({ fase: 'pausado', mensaje: MENSAJES.vozToqueParaEmpezar })
       })
     }
+    if (yaSonaba && this.estado.fase !== 'reproduciendo') this.alEmpezarASonar()
+  }
+
+  /** Empieza a sonar de verdad: fase, palabra a 60 fps, pantalla de bloqueo, temporizador y sesión de escucha. */
+  private alEmpezarASonar() {
+    this.poner({ fase: 'reproduciendo', mensaje: null, tipoError: null, preparacion: null, finDelLibro: false })
+    this.reanudarTemporizador()
+    this.empezarSesionVoz()
+    this.arrancarRaf()
+    this.sesionMedios()
+  }
+
+  /** Volver al principio del libro (el primer capítulo con voz). */
+  volverAEmpezar() {
+    const l = this.estado.libro
+    if (!l) return
+    const caps = l.capitulos
+    const primero = caps.length ? vecinoConVoz(caps, caps[0].indice - 1, 1) : -1
+    void this.cargar(primero >= 0 ? primero : (caps[0]?.indice ?? 0), 0, true)
   }
 
   pausar() {
@@ -1053,6 +1378,10 @@ export class MotorAudio {
     const el = this.el
     const max = this.estado.duracion || Number.MAX_SAFE_INTEGER
     let p = Math.max(0, Math.min(max - 0.05, pos1x))
+    // Moverse dentro del capítulo deshace el «parado al final» y el fin del libro: ▶ sigue desde aquí.
+    this.paradoAlFinal = false
+    this.finAvisado = null
+    if (this.estado.finDelLibro) this.poner({ finDelLibro: false })
     if (el && this.enPartes()) {
       const sonando = this.estado.fase === 'reproduciendo' || this.esperandoParte
       if (this.urls.u1) return this.aCompleto(p, sonando)
@@ -1077,7 +1406,19 @@ export class MotorAudio {
   }
 
   saltar(segundos: number) {
-    this.buscar(this.posicion() + segundos)
+    const destino = this.posicion() + segundos
+    const dur = this.estado.duracion
+    // RP-10: «+15 s» a pocos segundos del final sigue en el capítulo siguiente si ya está precargado.
+    if (segundos > 0 && dur > 0 && destino > dur - 0.05 && this.seguirSonando()) {
+      const sig = this.vecinoConVoz(this.estado.capitulo, 1)
+      const pre = sig >= 0 && this.estado.temporizador?.tipo !== 'capitulo' ? this.precargaPara(sig) : null
+      if (pre) {
+        this.entrarEnPrecargado(pre)
+        this.buscar(Math.max(0, destino - dur))
+        return
+      }
+    }
+    this.buscar(destino)
   }
   atras15 = () => this.saltar(-SALTO_SEG)
   adelante15 = () => this.saltar(SALTO_SEG)
@@ -1265,14 +1606,42 @@ export class MotorAudio {
     const el = this.el
     if (el) el.volume = 1
     if (t === null) return this.poner({ temporizador: null })
-    if (t === 'capitulo') return this.poner({ temporizador: { tipo: 'capitulo' } })
-    this.poner({ temporizador: { tipo: 'minutos', minutos: t.minutos, finEn: this.deps.ahora() + t.minutos * 60_000 } })
+    if (t === 'capitulo') {
+      // En la cinta, lo de detrás se quita: la voz no debe colarse en el capítulo siguiente al parar (RP-01).
+      this.olvidarSiguientesEnCinta()
+      return this.poner({ temporizador: { tipo: 'capitulo' } })
+    }
+    const ms = t.minutos * 60_000
+    // Puesto en pausa, empieza a contar al sonar (RP-14).
+    const sonando = this.estado.fase === 'reproduciendo'
+    this.poner({
+      temporizador: {
+        tipo: 'minutos',
+        minutos: t.minutos,
+        finEn: this.deps.ahora() + ms,
+        ...(sonando ? {} : { pausadoCon: ms }),
+      },
+    })
+  }
+
+  /** RP-14: el temporizador por minutos no cuenta con la voz en pausa. */
+  private pausarTemporizador() {
+    const t = this.estado.temporizador
+    if (t?.tipo !== 'minutos' || t.pausadoCon != null) return
+    if (this.el) this.el.volume = 1
+    this.poner({ temporizador: { ...t, pausadoCon: Math.max(0, t.finEn - this.deps.ahora()) } })
+  }
+
+  private reanudarTemporizador() {
+    const t = this.estado.temporizador
+    if (t?.tipo !== 'minutos' || t.pausadoCon == null) return
+    this.poner({ temporizador: { tipo: 'minutos', minutos: t.minutos, finEn: this.deps.ahora() + t.pausadoCon } })
   }
 
   private revisarTemporizador() {
     const t = this.estado.temporizador
     const el = this.el
-    if (!t || t.tipo !== 'minutos' || !el) return
+    if (!t || t.tipo !== 'minutos' || !el || t.pausadoCon != null) return
     const falta = t.finEn - this.deps.ahora()
     if (falta <= 0) {
       this.quiereSonar = false
@@ -1296,6 +1665,7 @@ export class MotorAudio {
     }
     this.poner({ posicion: pos })
     this.actualizarFrase(false)
+    if (!this.tiempos && this.tiemposPendientes) this.pedirTiempos()
     this.revisarTemporizador()
     this.precargarSiguiente()
     if (this.enCinta()) {
@@ -1303,6 +1673,7 @@ export class MotorAudio {
       this.vigilarFinCinta()
     }
     const ahora = this.deps.ahora()
+    if (!el.paused) this.contarEscucha(ahora)
     if (ahora - this.ultimoLocal >= CADA_LOCAL_MS) this.guardar(false)
     if (ahora - this.ultimoServidor >= CADA_SERVIDOR_MS) this.guardar(true)
   }
@@ -1310,6 +1681,9 @@ export class MotorAudio {
   private alTerminar = () => {
     const l = this.estado.libro
     if (!l || !this.hayAudio()) return
+    // RP-16: el 'ended' del silencio de desbloqueo (o uno que llega mientras la cinta aún baja el capítulo)
+    // no es el final del capítulo pedido.
+    if (this.el?.src === SILENCIO || this.cargandoCinta) return
     const p = this.enPartes() ? this.partes?.m : null
     if (p) {
       const ultima = this.parteActual >= p.partes.length - 1
@@ -1328,14 +1702,22 @@ export class MotorAudio {
         return
       }
     }
+    const sig = this.vecinoConVoz(this.estado.capitulo, 1)
     if (this.estado.temporizador?.tipo === 'capitulo') {
       this.quiereSonar = false
+      // RP-01: ▶ seguirá con el siguiente (no relee este ni deja la cuenta atrás en la cinta).
+      this.paradoAlFinal = true
       this.el?.pause() // en la cinta el audio seguiría con el capítulo siguiente
-      this.poner({ temporizador: null, fase: 'pausado', mensaje: MENSAJES.vozFinCapitulo })
+      this.olvidarSiguientesEnCinta()
+      const titulo = sig >= 0 ? l.capitulos.find((c) => c.indice === sig)?.titulo : null
+      this.poner({
+        temporizador: null,
+        fase: 'pausado',
+        mensaje: titulo ? TEXTOS_VOZ.finCapituloSigue(titulo) : MENSAJES.vozFinCapitulo,
+      })
       this.guardar(true)
       return
     }
-    const sig = this.vecinoConVoz(this.estado.capitulo, 1)
     const pre = sig >= 0 ? this.precargaPara(sig) : null
     if (pre) return this.entrarEnPrecargado(pre)
     if (sig >= 0) {
@@ -1345,7 +1727,7 @@ export class MotorAudio {
     } else {
       this.quiereSonar = false
       this.el?.pause()
-      this.poner({ fase: 'pausado', mensaje: MENSAJES.vozFinLibro })
+      this.poner({ fase: 'pausado', mensaje: TEXTOS_VOZ.finLibro, finDelLibro: true })
       this.guardar(true)
     }
   }
@@ -1417,10 +1799,91 @@ export class MotorAudio {
     this.deps.guardarLocal(p).catch?.(() => {})
     if (servidor) {
       this.ultimoServidor = ahora
-      Promise.resolve(this.deps.guardarServidor(p)).catch((e) =>
-        console.error('[voz] no se pudo guardar el progreso', e),
-      )
+      const libro = p.ejemplarId
+      // F10: el sello «Guardado en casa · 10:42» o «se guardará al volver la red» dice lo que pasó de verdad.
+      Promise.resolve(this.deps.guardarServidor(p))
+        .then((r) => {
+          if (this.estado.libro?.ejemplarId !== libro) return
+          const rechazado = (r as { correct?: unknown } | null)?.correct === false
+          this.poner({ guardado: { estado: rechazado ? 'pendiente' : 'ok', en: this.deps.ahora() } })
+        })
+        .catch((e) => {
+          console.error('[voz] no se pudo guardar el progreso', e)
+          if (this.estado.libro?.ejemplarId === libro) this.poner({ guardado: { estado: 'pendiente', en: ahora } })
+        })
     }
+  }
+
+  // ------------------------------------------------------------ sesión de escucha (C4)
+  /** Al empezar a sonar: la sesión sigue (o empieza una nueva si es otro libro o pasó mucho rato). */
+  private empezarSesionVoz() {
+    const l = this.estado.libro
+    if (!l || !this.deps.latido) return
+    const ahora = this.deps.ahora()
+    const s = this.sesionVoz
+    if (!s || s.ejemplarId !== l.ejemplarId || ahora - s.ultimaVez > SESION_NUEVA_MS) {
+      if (s && s.acumulado >= 1) this.latir(true)
+      this.sesionVoz = {
+        id: (this.deps.nuevoId ?? uuid)(),
+        ejemplarId: l.ejemplarId,
+        acumulado: 0,
+        ultimoTick: ahora,
+        ultimoEnvio: ahora,
+        ultimaVez: ahora,
+      }
+      return
+    }
+    s.ultimoTick = ahora
+    s.ultimaVez = ahora
+  }
+
+  /** Cuenta el tiempo que de verdad suena (entre timeupdates) y, cada minuto, manda el latido. */
+  private contarEscucha(ahora: number) {
+    const s = this.sesionVoz
+    if (!s || this.estado.fase !== 'reproduciendo' || s.ejemplarId !== this.estado.libro?.ejemplarId) return
+    if (s.ultimoTick != null) s.acumulado += Math.max(0, Math.min(ahora - s.ultimoTick, TICK_MAX_MS)) / 1000
+    s.ultimoTick = ahora
+    s.ultimaVez = ahora
+    if (ahora - s.ultimoEnvio >= LATIDO_MS) this.latir(false)
+  }
+
+  /**
+   * Manda el latido con lo escuchado desde el anterior (0–120 s). `cerrar`: al pausar, salir o cambiar de libro
+   * (se cuenta hasta ahora y se deja de contar hasta que vuelva a sonar).
+   */
+  latir(cerrar = false, alSalir = false) {
+    const s = this.sesionVoz
+    const enviar = this.deps.latido
+    if (!s || !enviar) return
+    const ahora = this.deps.ahora()
+    if (cerrar && s.ultimoTick != null) {
+      s.acumulado += Math.max(0, Math.min(ahora - s.ultimoTick, TICK_MAX_MS)) / 1000
+      s.ultimoTick = null
+    }
+    s.ultimoEnvio = ahora
+    const segundos = Math.min(LATIDO_MAX_SEG, Math.round(s.acumulado))
+    if (segundos < 1) return
+    s.acumulado = Math.max(0, s.acumulado - segundos)
+    const enEsteLibro = this.estado.libro?.ejemplarId === s.ejemplarId
+    const d: LatidoVoz = {
+      ejemplarId: s.ejemplarId,
+      modo: 'VOZ',
+      sesionId: s.id,
+      capitulo: enEsteLibro ? this.estado.capitulo : 0,
+      posicion:
+        enEsteLibro && this.estado.duracion > 0
+          ? Number(acotar(this.posicion() / this.estado.duracion, 0, 1, 0).toFixed(4))
+          : 0,
+      segundos,
+      dispositivo: this.deps.dispositivo(),
+    }
+    Promise.resolve()
+      .then(() => enviar(d, alSalir ? { alSalir: true } : undefined))
+      .catch((e) => {
+        // Sin red: lo escuchado no se pierde, va en el siguiente latido (sin pasar del máximo).
+        console.warn('[voz] latido de sesión', e)
+        if (this.sesionVoz === s) s.acumulado = Math.min(LATIDO_MAX_SEG, s.acumulado + segundos)
+      })
   }
 
   /**
@@ -1433,7 +1896,12 @@ export class MotorAudio {
     this.cancelarSondeo()
     this.cancelarVozPendiente()
     this.guardar(o.servidor ?? true)
+    // Con la sesión caducada el latido daría 401: lo escuchado se pierde (es solo estadística).
+    if (o.servidor ?? true) this.latir(true)
+    this.sesionVoz = null
     this.quiereSonar = false
+    this.paradoAlFinal = false
+    this.tiemposPendientes = null
     this.pedido = null
     // Sin URLs antes de pausar: el 'pause' ya no guarda (con la sesión caducada daría 401).
     this.urls = { u1: null, u2: null }
@@ -1443,7 +1911,7 @@ export class MotorAudio {
     this.precarga = null
     this.el?.pause()
     this.cinta?.soltar()
-    this.poner({ ...inicial })
+    this.poner({ ...inicial, escuchaContinua: this.cinta ? 'activa' : this.estado.escuchaContinua })
     this.limpiarSesionMedios()
   }
 

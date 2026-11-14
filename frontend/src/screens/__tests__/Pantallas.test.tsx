@@ -256,7 +256,7 @@ describe('El reproductor', () => {
       <ReproductorScreen navigation={nav} route={{ key: 'r', name: 'Escuchar', params: { id: 'ej-guardian' } }} />,
       { wrapper: Envoltura },
     )
-    await waitFor(() => expect(r.getByLabelText('0.5x')).toBeTruthy())
+    await waitFor(() => expect(r.getByLabelText('0,5x')).toBeTruthy())
     expect(r.getByLabelText('5x')).toBeTruthy()
     expect(r.getByLabelText('Al final del capítulo')).toBeTruthy()
     // Las voces van plegadas: se ve la elegida y la lista se abre al tocar (2026-11-12).

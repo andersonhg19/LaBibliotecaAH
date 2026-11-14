@@ -400,6 +400,8 @@ export interface TiemposCapitulo {
   vozId: string
   duracion: number
   frases: FraseTiempo[]
+  /** 0.4.0 (contrato C7, opcional): energía de la voz del audio 1x, `hz` muestras por segundo, 0–100. */
+  envolvente?: { hz: number; v: number[] }
 }
 
 /** Traducción de un trozo de texto (POST /v1/traducir). */

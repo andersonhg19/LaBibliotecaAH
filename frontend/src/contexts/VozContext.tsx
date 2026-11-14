@@ -4,9 +4,10 @@ import { Platform } from 'react-native'
 
 import { urlBinaria } from '@servicios/archivos'
 import { audioService, progresoService } from '@servicios/bibliotecaService'
+import { enviarLatido } from '@servicios/sesionesService'
 import type { PartesCapitulo, TiemposCapitulo } from '@tipos'
 import { crearCinta } from '@utils/cinta'
-import { MotorAudio } from '@utils/motorAudio'
+import { MotorAudio, uuid } from '@utils/motorAudio'
 import { esteDispositivo, guardarProgresoLocal } from '@utils/progresoLocal'
 
 /*
@@ -45,6 +46,9 @@ export const motor = new MotorAudio({
   cinta: (el) => crearCinta(el),
   dispositivo: esteDispositivo,
   ahora: () => Date.now(),
+  // 0.4.0 (C4): cada minuto sonando, y al pausar, se cuenta la escucha para las estadísticas.
+  latido: (d, o) => enviarLatido(o?.alSalir ? { ...d, alSalir: true } : d),
+  nuevoId: uuid,
   alVolverLaRed: (fn) => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return () => {}
     window.addEventListener('online', fn)
@@ -52,11 +56,19 @@ export const motor = new MotorAudio({
   },
 })
 
-/* Al cerrar la pestaña, lo último que se oyó se sube al servidor. */
+/*
+ * Al cerrar la pestaña, lo último que se oyó se sube al servidor (y el latido de la sesión con lo escuchado: el
+ * servidor pide el token en la cabecera: va con fetch keepalive y Authorization, no con sendBeacon, que no la lleva).
+ */
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => motor.guardar(true))
+  window.addEventListener('pagehide', () => {
+    motor.guardar(true)
+    motor.latir(false, true)
+  })
   document.addEventListener?.('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') motor.guardar(true)
+    if (document.visibilityState !== 'hidden') return
+    motor.guardar(true)
+    motor.latir(false, true)
   })
 }
 

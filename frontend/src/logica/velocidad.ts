@@ -57,7 +57,9 @@ export function pasoVecino(velocidad: number, direccion: 1 | -1): number {
   return [...PASOS_VELOCIDAD].reverse().find((p) => p < v - 1e-9) ?? VELOCIDAD_MIN
 }
 
+/** «1x», «0,5x», «2,25x»: con coma decimal, como se escribe en español (E10). */
 export const textoVelocidad = (v: number) =>
   `${normalizarVelocidad(v)
     .toFixed(2)
-    .replace(/\.?0+$/, '')}x`
+    .replace(/\.?0+$/, '')
+    .replace('.', ',')}x`
