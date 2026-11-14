@@ -208,7 +208,7 @@ const Pronunciacion: React.FC<{ ejemplarId: string }> = ({ ejemplarId }) => {
             label="Palabra del libro"
             value={de}
             onChangeText={setDe}
-            placeholder="Hermione"
+            placeholder="p. ej., Hermione"
             autoCapitalize="none"
             compacto
             testID="pronunciacion-de"
@@ -219,7 +219,7 @@ const Pronunciacion: React.FC<{ ejemplarId: string }> = ({ ejemplarId }) => {
             label="Cómo decirla"
             value={a}
             onChangeText={setA}
-            placeholder="Jermáyoni"
+            placeholder="p. ej., Jermáyoni"
             autoCapitalize="none"
             compacto
             error={error}
