@@ -3,6 +3,7 @@ package com.bibliotecaah.auth.security;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.bibliotecaah.auth.repository.UserRepository;
@@ -61,12 +62,17 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
             String token = authHeader.substring(BEARER.length());
             /* exp y userId obligatorios (QA SE-18): un token sin caducidad o sin
                dueno no lo emite nunca este servicio. */
+            /* iat no se exige "en el pasado" (validacion web 0.4.0, V-NUEVO-2): con un reloj que se
+               corrige hacia atras (VM de Docker, NTP), un token recien emitido quedaba "del futuro" y se
+               rechazaba sin log. iat es informativo (BK-08); exp si se comprueba. */
             JWTVerifier verifier = JWT.require(Algorithm.HMAC256(secParams.getSecret()))
                     .withClaimPresence("exp")
                     .withClaimPresence(CLAIM_USER_ID)
+                    .ignoreIssuedAt()
                     .build();
             decodedJWT = verifier.verify(token);
         } catch (JWTVerificationException e) {
+            log.warn("Token rechazado en {} {}: {}", request.getMethod(), request.getRequestURI(), motivo(e));
             rechazar(response, TOKEN_INVALIDO);
             return;
         }
@@ -82,7 +88,8 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
                 .map(estado -> estado.admite(version))
                 .orElse(false);
         if (!vigente) {
-            log.info("Token rechazado: sesion revocada o cuenta inactiva (usuario {})", userId);
+            log.warn("Token rechazado en {} {}: sesion revocada o cuenta inactiva (usuario {}, ver {})",
+                    request.getMethod(), request.getRequestURI(), userId, version);
             rechazar(response, SESION_REVOCADA);
             return;
         }
@@ -104,6 +111,16 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * El tipo de rechazo, sin el token: la clase de la excepcion y, salvo en las de formato (cuyo mensaje
+     * puede copiar trozos del token decodificado), su mensaje (firma, caducidad, claim que falta...).
+     */
+    static String motivo(JWTVerificationException e) {
+        String tipo = e.getClass().getSimpleName();
+        if (e instanceof JWTDecodeException || e.getMessage() == null) return tipo;
+        return tipo + " (" + e.getMessage() + ")";
     }
 
     private static void rechazar(HttpServletResponse response, String cuerpo) throws IOException {
