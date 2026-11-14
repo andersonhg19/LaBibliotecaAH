@@ -69,7 +69,8 @@ jobs:
           pip install -e . --no-deps
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy .
+      # Como la imagen `pruebas` del taller: mypy segun [tool.mypy] de pyproject (paquete app), no las pruebas.
+      - run: mypy
       - run: pytest
 
   traductor:
