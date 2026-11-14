@@ -730,13 +730,15 @@ def sin_letras_no_latinas(lectura: Lectura) -> Lectura:
 
 MAX_REGLAS_PRONUNCIACION = 500
 MAX_LARGO_REGLA = 100
+MAX_LARGO_PRONUNCIACION = 120  # (B17) lo que acepta biblioteca-service para «a» (varchar 120)
 
 
 def reglas_de_pronunciacion(datos: object) -> list[tuple[str, str]]:
     """(B17) Diccionario de pronunciación del trabajo de voz: `[{"de": "Hermione", "a": "Jermáyoni"}, …]`.
 
     Lo que no tenga esa forma se ignora (nunca tumba el trabajo). Como mucho MAX_REGLAS_PRONUNCIACION reglas de
-    MAX_LARGO_REGLA caracteres; las más largas primero (así «Harry Potter» gana a «Harry»)."""
+    MAX_LARGO_REGLA caracteres (MAX_LARGO_PRONUNCIACION la pronunciación); las más largas primero (así «Harry Potter»
+    gana a «Harry»)."""
     reglas: list[tuple[str, str]] = []
     if not isinstance(datos, list):
         return reglas
@@ -745,5 +747,5 @@ def reglas_de_pronunciacion(datos: object) -> list[tuple[str, str]]:
             continue
         de, a = r.get("de"), r.get("a")
         if isinstance(de, str) and isinstance(a, str) and de.strip() and len(de) <= MAX_LARGO_REGLA:
-            reglas.append((de.strip(), a.strip()[:MAX_LARGO_REGLA]))
+            reglas.append((de.strip(), a.strip()[:MAX_LARGO_PRONUNCIACION]))
     return sorted(reglas, key=lambda x: -len(x[0]))

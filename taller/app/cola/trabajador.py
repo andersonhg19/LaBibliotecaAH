@@ -197,11 +197,20 @@ class ManejadorVoz(Manejador):
             motor, voz_motor = motor_para(voz_id, self.concurrencia)
         except ValueError as e:
             raise ErrorDefinitivo(Msj.VOZ_DESCONOCIDA, voz=voz_id) from e
-        if not repo.audio_estado(archivo_id, voz_id, capitulo, "GENERANDO"):
-            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
 
         def sigue_existiendo() -> bool:
             return self.rutas.normalizados(archivo_id).is_dir()
+
+        # (B17) Regenerar un capítulo ya LISTO (cambió el diccionario de pronunciación): el estado sigue LISTO y el
+        # audio viejo sonando mientras se genera el nuevo, sin partes; los m4a y tiempos se sustituyen de forma
+        # atómica al terminar. Si no hay audio que conservar, es una generación normal.
+        regenerar = bool(p.get("regenerar")) and self._hay_audio(archivo_id, voz_id, capitulo)
+        if regenerar:
+            if not sigue_existiendo():
+                raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
+            log.info("Regenerando el capítulo %s (%s) con el diccionario de pronunciación nuevo", capitulo, voz_id)
+        elif not repo.audio_estado(archivo_id, voz_id, capitulo, "GENERANDO"):
+            raise TrabajoCancelado(Msj.ARCHIVO_RETIRADO)
 
         duracion = asyncio.run(
             generar_capitulo(
@@ -216,6 +225,7 @@ class ManejadorVoz(Manejador):
                 concurrencia=self._concurrencia_de(trabajo),
                 urgente=self._es_urgente(trabajo),
                 pronunciacion=reglas_de_pronunciacion(p.get("pronunciacion")),
+                partes=not regenerar,
             )
         )
         listo = sigue_existiendo() and repo.audio_estado(
@@ -227,6 +237,10 @@ class ManejadorVoz(Manejador):
         log.info("Audio listo: voz=%s capitulo=%s duracion=%.1fs", voz_id, capitulo, duracion)
         limpiar_partes_viejas(self.rutas)  # (v1.5) partes de capítulos ya enteros (al final: no retrasa el arranque)
 
+    def _hay_audio(self, archivo_id: str, voz_id: str, capitulo: int) -> bool:
+        base = self.rutas.audio(archivo_id, voz_id) / f"cap-{capitulo:03d}"
+        return all(base.with_name(base.name + sufijo).is_file() for sufijo in (".m4a", "-2x.m4a", ".tiempos.json"))
+
     def _es_urgente(self, trabajo: Trabajo) -> bool:
         prioridad = trabajo.get("prioridad")
         return prioridad is not None and int(prioridad) <= self.prioridad_urgente
@@ -236,6 +250,17 @@ class ManejadorVoz(Manejador):
 
     def al_fallar(self, trabajo: Trabajo, repo: Repositorio, mensaje: str, definitivo: bool) -> None:
         p = _payload(trabajo)
+        # (B17) una regeneración que falla no estropea el audio que ya sonaba: sigue LISTO
+        if (
+            p.get("regenerar")
+            and p.get("vozId")
+            and p.get("capitulo") is not None
+            and self._hay_audio(str(trabajo["archivo_id"]), str(p["vozId"]), int(p["capitulo"]))
+        ):
+            log.warning(
+                "La regeneración del capítulo %s (%s) falló; queda el audio anterior", p["capitulo"], p["vozId"]
+            )
+            return
         if p.get("vozId") and p.get("capitulo") is not None:
             repo.audio_estado(
                 str(trabajo["archivo_id"]),

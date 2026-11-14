@@ -169,7 +169,8 @@ def test_manejador_voz_ok_y_errores(tmp_path, monkeypatch):
     import app.cola.trabajador as tr
 
     async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None, seguir=None, **opciones):
-        assert opciones == {"concurrencia": 4, "urgente": False, "pronunciacion": []}  # (v1.5) prioridad 100
+        # (v1.5) prioridad 100; (B17) partes salvo al regenerar
+        assert opciones == {"concurrencia": 4, "urgente": False, "pronunciacion": [], "partes": True}
         latido()
         assert seguir()
         return 12.345
@@ -190,6 +191,73 @@ def test_manejador_voz_ok_y_errores(tmp_path, monkeypatch):
     repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload='{"capitulo": 1}')])
     assert procesar(repo.tomar(["VOZ_CAPITULO"]), m, repo, 3) == "ERROR"
     assert repo.trabajos[0]["error"] == "La petición de audio está incompleta (falta la voz o el capítulo)."
+
+
+def _audio_viejo(rutas, voz, cap):
+    d = rutas.audio("a1", voz)
+    d.mkdir(parents=True, exist_ok=True)
+    for sufijo in (".m4a", "-2x.m4a", ".tiempos.json"):
+        (d / f"cap-{cap:03d}{sufijo}").write_bytes(b"viejo")
+    return d
+
+
+def test_regenerar_no_quita_el_audio_listo(tmp_path, monkeypatch):
+    # B17: al cambiar el diccionario de pronunciación, biblioteca-service encola «regenerar»: el audio viejo sigue
+    # LISTO (nunca pasa por GENERANDO), se genera sin partes y con el diccionario nuevo, y al final queda LISTO
+    import app.cola.trabajador as tr
+
+    vistas = []
+
+    async def generar_falso(rutas, aid, voz, cap, motor, voz_motor, latido=None, seguir=None, **opciones):
+        vistas.append(opciones)
+        return 20.0
+
+    monkeypatch.setattr(tr, "generar_capitulo", generar_falso)
+    rutas = Rutas(tmp_path)
+    rutas.normalizados("a1").mkdir(parents=True)
+    voz = "edge.es-ES-AlvaroNeural"
+    _audio_viejo(rutas, voz, 2)
+    p = {"vozId": voz, "capitulo": 2, "regenerar": True, "pronunciacion": [{"de": "Hermione", "a": "Jermáyoni"}]}
+    repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload=p)])
+    estados = []
+    original = repo.audio_estado
+    repo.audio_estado = lambda *a, **k: estados.append(a[3]) or original(*a, **k)
+    assert procesar(repo.tomar(["VOZ_CAPITULO"]), ManejadorVoz(rutas), repo, 3) == "HECHO"
+    assert estados == ["LISTO"]
+    assert vistas[0]["partes"] is False and vistas[0]["pronunciacion"] == [("Hermione", "Jermáyoni")]
+
+    # sin audio que conservar (se borró): generación normal, con GENERANDO y partes
+    estados.clear()
+    repo2 = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload={**p, "capitulo": 3})])
+    repo2.audio_estado = lambda *a, **k: estados.append(a[3]) or True
+    assert procesar(repo2.tomar(["VOZ_CAPITULO"]), ManejadorVoz(rutas), repo2, 3) == "HECHO"
+    assert estados == ["GENERANDO", "LISTO"] and vistas[1]["partes"] is True
+
+
+def test_regenerar_que_falla_deja_el_audio_anterior(tmp_path, monkeypatch):
+    import app.cola.trabajador as tr
+    from app.dominio.modelo import ErrorReintentable, Msj
+
+    async def generar_roto(*a, **k):
+        raise ErrorReintentable(Msj.SERVICIO_VOZ_CAIDO)
+
+    monkeypatch.setattr(tr, "generar_capitulo", generar_roto)
+    rutas = Rutas(tmp_path)
+    rutas.normalizados("a1").mkdir(parents=True)
+    voz = "edge.es-ES-AlvaroNeural"
+    d = _audio_viejo(rutas, voz, 1)
+    repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload={"vozId": voz, "capitulo": 1, "regenerar": True})])
+    repo.audios[("a1", voz, 1)] = {"estado": "LISTO", "duracion": 9.0, "error": None}
+    assert procesar(repo.tomar(["VOZ_CAPITULO"]), ManejadorVoz(rutas), repo, 1) == "ERROR"
+    assert repo.audios[("a1", voz, 1)]["estado"] == "LISTO"
+    assert (d / "cap-001.m4a").read_bytes() == b"viejo"
+
+    # archivo retirado mientras esperaba: se cancela sin tocar nada
+    import shutil
+
+    shutil.rmtree(rutas.normalizados("a1"))
+    repo = RepoFalso([trabajo(tipo="VOZ_CAPITULO", payload={"vozId": voz, "capitulo": 1, "regenerar": True})])
+    assert procesar(repo.tomar(["VOZ_CAPITULO"]), ManejadorVoz(rutas), repo, 3) == "ERROR"
 
 
 def test_voz_capitulo_inexistente_es_definitivo(tmp_path):

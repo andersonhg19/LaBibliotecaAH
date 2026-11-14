@@ -18,6 +18,7 @@ import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import LamparaCasa from '@componentes/molecules/LamparaCasa'
 import PrepararLibro from '@componentes/molecules/PrepararLibro'
+import Pronunciacion from '@componentes/molecules/Pronunciacion'
 import { elevarAvisos } from '@componentes/organisms/ToastContainer'
 import { usePreferencias } from '@contextos/PreferenciasContext'
 import { useTheme } from '@contextos/ThemeContext'
@@ -493,6 +494,8 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               onRecargar={cargar}
             />
           ) : null}
+          {/* B17: debajo del índice, para corregir cómo dice la voz un nombre del libro. */}
+          {!esHoja && !esDeseo && legible ? <Pronunciacion ejemplarId={libro.id} /> : null}
         </View>
       ) : null}
       {pestana === 'notas' ? (

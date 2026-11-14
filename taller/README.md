@@ -37,7 +37,7 @@ tests/                 corpus generado por programa (corpus.py) + pruebas pytest
 - **RECLASIFICAR_ESTRUCTURA** (`conversion/reclasificar.py`, hilo `estructura`): añade esa clasificación a libros ya
   convertidos sin cambiar índices; idempotente.
 - **Voz** (`voz/lectura.py`, `voz/volumen.py`): capa de lectura al sintetizar (números, abreviaturas, URL, emojis,
-  otros idiomas → voz multilingüe, diccionario de pronunciación del payload), frases mudas en vez de capítulos en
+  otros idiomas → voz multilingüe, diccionario de pronunciación del payload; con `"regenerar": true` rehace un capítulo LISTO sin quitarle el audio viejo hasta tener el nuevo), frases mudas en vez de capítulos en
   ERROR, MP3 truncados fuera de la caché, pausas 0,4/0,35/0,7/1,0 s y silencios internos ≤ 0,40 s, −18 LUFS /
   −1,5 dBTP (ganancia por voz calibrada en `cache-voz/volumen.json`), 2x desde el PCM y envolvente en `tiempos.json`.
 - Audio ya generado: no se regenera; suena como en 0.3.3 hasta que se regenere su capítulo.

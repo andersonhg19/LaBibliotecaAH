@@ -6202,6 +6202,222 @@
           ]
         },
         {
+          "name": "(B17) Diccionario de pronunciacion del libro (del ARCHIVO: lo comparten todos los ejemplares de ese archivo, como el audio): {entradas: [{de, a}], regenerando}. Solo el dueno del ejemplar (102 si no; 120 si es un deseo).",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/pronunciacion",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "pronunciacion"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "(B17) Diccionario de pronunciacion del libro (del ARCHIVO: lo comparten todos los ejemplares de ese archivo, como el audio): {entradas: [{de, a}], regenerando}. Solo el dueno del ejemplar (102 si no; 120 si es un deseo)."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/pronunciacion",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "pronunciacion"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "(B17) Diccionario de pronunciacion del libro (del ARCHIVO: lo comparten todos los ejemplares de ese archivo, como el audio): {entradas: [{de, a}], regenerando}. Solo el dueno del ejemplar (102 si no; 120 si es un deseo)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"entradas\": [\n      {\n        \"de\": \"Hermione\",\n        \"a\": \"Jermáyoni\"\n      },\n      {\n        \"de\": \"Voldemort\",\n        \"a\": \"Vóldemor\"\n      }\n    ],\n    \"regenerando\": 0\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "(B17) Sustituye el diccionario ENTERO (lista [{de, a}], hasta 200; [] = vaciarlo). de: 1-80 caracteres con alguna letra o cifra, sin repetir (sin mayusculas); a: 1-120. Se manda en el payload de cada VOZ_CAPITULO y los capitulos LISTO que contienen alguna palabra cambiada se regeneran (el audio viejo sigue sonando hasta que el nuevo esta LISTO). regenerando = trabajos de regeneracion vivos.",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/pronunciacion",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "pronunciacion"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "(B17) Sustituye el diccionario ENTERO (lista [{de, a}], hasta 200; [] = vaciarlo). de: 1-80 caracteres con alguna letra o cifra, sin repetir (sin mayusculas); a: 1-120. Se manda en el payload de cada VOZ_CAPITULO y los capitulos LISTO que contienen alguna palabra cambiada se regeneran (el audio viejo sigue sonando hasta que el nuevo esta LISTO). regenerando = trabajos de regeneracion vivos.",
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"de\": \"Hermione\",\n    \"a\": \"Jermáyoni\"\n  },\n  {\n    \"de\": \"Voldemort\",\n    \"a\": \"Vóldemor\"\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK (2 capitulos a regenerar)",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/pronunciacion",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "pronunciacion"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "(B17) Sustituye el diccionario ENTERO (lista [{de, a}], hasta 200; [] = vaciarlo). de: 1-80 caracteres con alguna letra o cifra, sin repetir (sin mayusculas); a: 1-120. Se manda en el payload de cada VOZ_CAPITULO y los capitulos LISTO que contienen alguna palabra cambiada se regeneran (el audio viejo sigue sonando hasta que el nuevo esta LISTO). regenerando = trabajos de regeneracion vivos.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "[\n  {\n    \"de\": \"Hermione\",\n    \"a\": \"Jermáyoni\"\n  },\n  {\n    \"de\": \"Voldemort\",\n    \"a\": \"Vóldemor\"\n  }\n]",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {\n    \"entradas\": [\n      {\n        \"de\": \"Hermione\",\n        \"a\": \"Jermáyoni\"\n      },\n      {\n        \"de\": \"Voldemort\",\n        \"a\": \"Vóldemor\"\n      }\n    ],\n    \"regenerando\": 2\n  }\n}"
+            },
+            {
+              "name": "Palabra repetida (120)",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/pronunciacion",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "pronunciacion"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "(B17) Sustituye el diccionario ENTERO (lista [{de, a}], hasta 200; [] = vaciarlo). de: 1-80 caracteres con alguna letra o cifra, sin repetir (sin mayusculas); a: 1-120. Se manda en el payload de cada VOZ_CAPITULO y los capitulos LISTO que contienen alguna palabra cambiada se regeneran (el audio viejo sigue sonando hasta que el nuevo esta LISTO). regenerando = trabajos de regeneracion vivos.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "[{\"de\": \"Hermione\", \"a\": \"x\"}, {\"de\": \"HERMIONE\", \"a\": \"y\"}]",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": false,\n  \"message\": \"La palabra \\\"HERMIONE\\\" está repetida en el diccionario (no se distinguen mayúsculas).\",\n  \"errorCode\": 120\n}"
+            }
+          ]
+        },
+        {
           "name": "Quitar 'solo la historia' (borra preferencias)",
           "request": {
             "method": "PUT",

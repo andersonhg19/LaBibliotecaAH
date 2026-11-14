@@ -87,6 +87,10 @@ public final class Message {
         casaDiscoDesconectado,
         casaTallerCaido,
         casaTallerLento,
-        casaTraductorCaido
+        casaTraductorCaido,
+        // B17: diccionario de pronunciacion por libro.
+        demasiadasPronunciaciones,
+        pronunciacionInvalida,
+        pronunciacionDuplicada
     }
 }
