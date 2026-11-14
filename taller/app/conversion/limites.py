@@ -47,28 +47,41 @@ def _mb(n: int) -> str:
     return f"{n // MB} MB"
 
 
-def revisar_zip(z: zipfile.ZipFile) -> None:
-    """Rechaza ZIP con demasiadas entradas, tamaños desmesurados o una compresión anómala (zip-bomb)."""
+_EXT_IMAGEN = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff")
+
+
+def revisar_zip(z: zipfile.ZipFile, omitir_imagenes: bool = False) -> frozenset[str]:
+    """Rechaza ZIP con demasiadas entradas, tamaños desmesurados o una compresión anómala (zip-bomb).
+
+    (0.4.0, CF-15) Con `omitir_imagenes`, una IMAGEN desmesurada o anómala (una portada lisa de 9000×13000 comprime
+    ×1000) no rechaza el libro: se devuelve su nombre para no leerla nunca, y no cuenta en el total."""
     infos = z.infolist()
     if len(infos) > MAX_ENTRADAS_ZIP:
         raise ErrorDefinitivo(Msj.LIBRO_DEMASIADO_GRANDE, motivo=f"tiene más de {MAX_ENTRADAS_ZIP} archivos internos")
     total = 0
     total_texto = 0
+    omitidas: set[str] = set()
     for i in infos:
         tam = i.file_size
-        total += tam
         es_texto = i.filename.lower().endswith(_EXT_TEXTO)
+        anomala = tam >= MIN_PARA_RATIO and tam > MAX_RATIO * max(i.compress_size, 1)
+        grande = tam > (MAX_ENTRADA_TEXTO if es_texto else MAX_ENTRADA_ZIP)
+        if omitir_imagenes and (anomala or grande) and i.filename.lower().endswith(_EXT_IMAGEN):
+            omitidas.add(i.filename)
+            continue
+        total += tam
         if es_texto:
             total_texto += tam
-        if tam >= MIN_PARA_RATIO and tam > MAX_RATIO * max(i.compress_size, 1):
+        if anomala:
             raise ErrorDefinitivo(Msj.ARCHIVO_SOSPECHOSO)
-        if tam > (MAX_ENTRADA_TEXTO if es_texto else MAX_ENTRADA_ZIP):
+        if grande:
             maximo = MAX_ENTRADA_TEXTO if es_texto else MAX_ENTRADA_ZIP
             raise ErrorDefinitivo(Msj.LIBRO_DEMASIADO_GRANDE, motivo=f"una de sus partes ocupa más de {_mb(maximo)}")
     if total > MAX_TOTAL_ZIP:
         raise ErrorDefinitivo(Msj.LIBRO_DEMASIADO_GRANDE, motivo=f"descomprimido ocupa más de {_mb(MAX_TOTAL_ZIP)}")
     if total_texto > MAX_TOTAL_TEXTO:
         raise ErrorDefinitivo(Msj.LIBRO_DEMASIADO_GRANDE, motivo=f"su texto ocupa más de {_mb(MAX_TOTAL_TEXTO)}")
+    return frozenset(omitidas)
 
 
 def revisar_zip_en_disco(ruta: Path) -> None:

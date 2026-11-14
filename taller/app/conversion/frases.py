@@ -138,7 +138,9 @@ def _colapsar(nodos: list[_Nodo]) -> None:
             break
 
 
-def _numerar(nodos: list[_Nodo], pos: int, partes: list[str], excluidos: set[int]) -> int:
+def _numerar(
+    nodos: list[_Nodo], pos: int, partes: list[str], excluidos: set[int], saltos: list[int] | None = None
+) -> int:
     for n in nodos:
         if isinstance(n, _Texto):
             n.ini = pos
@@ -148,9 +150,38 @@ def _numerar(nodos: list[_Nodo], pos: int, partes: list[str], excluidos: set[int
             pos += len(n.texto)
         else:
             n.ini = pos
-            pos = _numerar(n.hijos, pos, partes, excluidos)
+            if n.tag == "br" and saltos is not None:
+                saltos.append(pos)
+            pos = _numerar(n.hijos, pos, partes, excluidos, saltos)
             n.fin = pos
     return pos
+
+
+_CIERRE_VERSO = set(".,;:!?…—–-»”)]")
+MIN_SALTOS_POESIA = 2
+
+
+def _con_pausas_de_verso(texto: str, excluidos: set[int], saltos: list[int]) -> tuple[str, set[int]]:
+    """(0.4.0, V-12) Poesía: en un bloque con varios <br>, cada fin de verso sin puntuación lleva una coma en la VOZ
+    (pausa breve). El texto visual no cambia; los excluidos se desplazan con las comas insertadas."""
+    insertar: list[int] = []
+    for p in saltos:
+        q = p
+        while q > 0 and texto[q - 1] == " ":
+            q -= 1
+        if 0 < q < len(texto) and texto[q - 1] not in _CIERRE_VERSO:
+            insertar.append(q)
+    if not insertar:
+        return texto, excluidos
+    salida = []
+    previo = 0
+    for q in insertar:
+        salida.append(texto[previo:q])
+        salida.append(",")
+        previo = q
+    salida.append(texto[previo:])
+    movidos = {e + sum(1 for q in insertar if q <= e) for e in excluidos}
+    return "".join(salida), movidos
 
 
 def _cortar(nodos: list[_Nodo], a: int, b: int, total: int, es_ultimo: bool, hueco: bool = False) -> list[_Nodo]:
@@ -246,7 +277,10 @@ def _envolver_bloque(bloque: Elemento, capitulo: int, desde: int) -> list[Frase]
     _colapsar(modelo)
     partes: list[str] = []
     excluidos: set[int] = set()
-    total = _numerar(modelo, 0, partes, excluidos)
+    saltos: list[int] = []
+    total = _numerar(modelo, 0, partes, excluidos, saltos)
+    if len(saltos) < MIN_SALTOS_POESIA:
+        saltos = []
     texto = "".join(partes)
     rangos = segmentar(texto)
     # el bloque se reescribe aunque no haya frases (queda con espacios colapsados)
@@ -260,7 +294,10 @@ def _envolver_bloque(bloque: Elemento, capitulo: int, desde: int) -> list[Frase]
         return []
     es_titulo = bloque.tag in _TITULOS
     # notas al pie (epub:type footnote/endnote): se ven, pero no se leen en voz (plan §5.4)
-    es_nota_pie = any("bah-nota-pie" in (a.get("class") or "").split() for a in [bloque, *bloque.iterancestors()])
+    ancestros = [bloque, *bloque.iterancestors()]
+    es_nota_pie = any("bah-nota-pie" in (a.get("class") or "").split() for a in ancestros)
+    # (0.4.0, CF-14) las celdas de una tabla se ven, pero no se leen una a una («Día. Pleamar. Lunes. 06:12…»)
+    es_celda = any(a.tag in ("td", "th") for a in ancestros)
     frases: list[Frase] = []
     # línea de tiempo contigua: hueco, frase, hueco, frase, ..., hueco
     limites: list[tuple[int, int, int | None]] = []
@@ -283,8 +320,11 @@ def _envolver_bloque(bloque: Elemento, capitulo: int, desde: int) -> list[Frase]
         _materializar(span, nodos)
         texto_frase = texto[a:b]
         exc_rel = {p - a for p in excluidos if a <= p < b}
-        hablable = tiene_contenido_hablable(texto_frase) and not es_nota_pie
-        voz = preparar_voz(texto_frase, exc_rel, es_titulo) if hablable else ""
+        hablable = tiene_contenido_hablable(texto_frase) and not es_nota_pie and not es_celda
+        texto_voz = texto_frase
+        if saltos:
+            texto_voz, exc_rel = _con_pausas_de_verso(texto_frase, exc_rel, [p - a for p in saltos if a < p < b])
+        voz = preparar_voz(texto_voz, exc_rel, es_titulo) if hablable else ""
         if voz and not tiene_contenido_hablable(voz):
             voz = ""
         frases.append(Frase(fid, texto_frase, voz, fin_parrafo=(i == len(rangos) - 1), es_titulo=es_titulo))

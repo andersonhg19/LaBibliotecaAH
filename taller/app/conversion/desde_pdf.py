@@ -436,7 +436,10 @@ def _tramos(
             if n > nivel_corte:
                 continue
             if inicios and inicios[-1][2] == p - 1:
-                continue  # dos entradas en la misma página: se queda la primera
+                # (0.4.0, CF-10) varias entradas en la misma página («Portada», «Índice», «Capítulo 1»): gana la
+                # última, la más concreta (antes ganaba la primera y el capítulo 1 se llamaba «Portada»)
+                inicios[-1] = (t.strip(), n, p - 1)
+                continue
             inicios.append((t.strip(), n, p - 1))
         if inicios:
             tramos = []

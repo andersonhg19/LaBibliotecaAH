@@ -12,6 +12,7 @@ razonable por los límites de bloque (y los párrafos gigantes, por frases), con
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from lxml import etree
 
@@ -86,7 +87,7 @@ def partir_capitulos_largos(libro: Libro, maximo: int | None = None) -> None:
         piezas = _trocear(cap.cuerpo, maximo)
         if len(piezas) == 1:
             mapa[i] = [(len(nuevos), set())]
-            nuevos.append(Capitulo(cap.titulo, piezas[0], cap.nivel))
+            nuevos.append(replace(cap, cuerpo=piezas[0]))
             continue
         hubo_cambios = True
         mapa[i] = []
@@ -95,7 +96,7 @@ def partir_capitulos_largos(libro: Libro, maximo: int | None = None) -> None:
             ids = {str(e.get("id")) for e in pieza.iter() if e.get("id")}
             titulo = cap.titulo if k == 1 else f"{cap.titulo} (parte {k} de {n})"
             mapa[i].append((len(nuevos), ids))
-            nuevos.append(Capitulo(titulo[:300], pieza, cap.nivel))
+            nuevos.append(replace(cap, titulo=titulo[:300], cuerpo=pieza))
     if not hubo_cambios:
         return
 

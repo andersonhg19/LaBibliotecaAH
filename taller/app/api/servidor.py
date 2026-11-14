@@ -3,7 +3,8 @@
 - GET /salud  → estado del proceso, de los trabajadores y del volumen /datos.
 - GET /voces  → catálogo de voces (contratos.md §8).
 Al arrancar: devuelve a PENDIENTE TODOS los trabajos EN_CURSO del taller (con un único taller por base de datos,
-lo que estaba EN_CURSO murió con el proceso anterior; QA DA-01), inicia un hilo para CONVERTIR y `hilos_voz` para
+lo que estaba EN_CURSO murió con el proceso anterior; QA DA-01), inicia un hilo para CONVERTIR, uno para
+RELEER_METADATOS, uno para RECLASIFICAR_ESTRUCTURA (0.4.0) y `hilos_voz` para
 VOZ_CAPITULO (más uno reservado al capítulo que se escucha, v1.5), un barrendero que cada minuto devuelve a
 PENDIENTE los EN_CURSO sin latido, y genera en otro hilo las muestras de voz que falten.
 """
@@ -20,7 +21,14 @@ from fastapi import FastAPI
 
 from .. import __version__
 from ..cola.repositorio import Repositorio, RepositorioPg
-from ..cola.trabajador import Barrendero, ManejadorConvertir, ManejadorMetadatos, ManejadorVoz, Trabajador
+from ..cola.trabajador import (
+    Barrendero,
+    ManejadorConvertir,
+    ManejadorMetadatos,
+    ManejadorReclasificar,
+    ManejadorVoz,
+    Trabajador,
+)
 from ..config.ajustes import Ajustes
 from ..config.rutas import Rutas
 from ..dominio.voces import listar_voces
@@ -60,7 +68,10 @@ class Taller:
         )
         voz = ManejadorVoz(self.rutas, a.concurrencia_voz, a.concurrencia_voz_urgente, a.prioridad_urgente)
         releer = ManejadorMetadatos(self.rutas)
-        tipos = [*conversion.tipos, *voz.tipos, *releer.tipos]
+        estructura = ManejadorReclasificar(
+            self.rutas, a.aislar_conversion, a.memoria_conversion_mb, a.tiempo_conversion_seg
+        )
+        tipos = [*conversion.tipos, *voz.tipos, *releer.tipos, *estructura.tipos]
         self.barrendero = Barrendero(
             self.fabrica_repo, tipos, a.minutos_atascado * 60, a.intervalo_barrido_seg, self.parar
         )
@@ -72,6 +83,7 @@ class Taller:
         self.trabajadores = [
             Trabajador("conversion", conversion, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar),
             Trabajador("metadatos", releer, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar),
+            Trabajador("estructura", estructura, self.fabrica_repo, a.intervalo_seg, a.max_intentos, self.parar),
         ]
         nombres_voz = ["voz"] + [f"voz-{k}" for k in range(2, a.hilos_voz + 1)]
         self.trabajadores += [

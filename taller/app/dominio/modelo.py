@@ -37,6 +37,12 @@ class Capitulo:
     titulo: str
     cuerpo: etree._Element  # <body> limpio, sin espacio de nombres
     nivel: int = 1
+    # (0.4.0, contratos C1) pistas del formato de origen para clasificar la sección (conversion/estructura.py)
+    tipo: str | None = None  # tipo ya traducido (capitulo, notas, dedicatoria…) desde epub:type/landmarks/guide
+    origen_tipo: str | None = None  # "epub-type" | "landmarks" | "guide"
+    lineal: bool = True  # False = itemref linear="no" del spine
+    region: str | None = None  # "antes" (antes del comienzo del cuerpo) | "despues" (tras el último del índice)
+    epub_type: str | None = None  # valor original de epub:type del documento (se conserva en el EPUB de salida)
 
 
 @dataclass

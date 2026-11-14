@@ -9,6 +9,7 @@ from collections.abc import Iterable
 _TITULO_GENERICO = re.compile(
     r"^(?:microsoft word\b.*|word document|documento de (?:microsoft )?word|(?:documento|document|doc)\s*\d*"
     r"|untitled.*|sin t[ií]tulo.*|documento sin t[ií]tulo|t[ií]tulo|title|new document|nuevo documento"
+    r"|unknown|desconocido|t[ií]tulo desconocido"
     r"|.*\.(?:pdf|docx?|odt|rtf|txt))$",
     re.IGNORECASE,
 )
@@ -26,6 +27,47 @@ def titulo_desde_nombre(nombre: str) -> str | None:
     """Título a partir del nombre de archivo (sin extensión): "el_coronel-no" → "el coronel no"."""
     t = re.sub(r"[_\s]+", " ", nombre).strip(" -.")
     return t[:300] or None
+
+
+# (0.4.0, CF-12) autores que pone el programa y no el libro (Calibre: «Unknown»)
+_AUTOR_GENERICO = re.compile(r"^(?:unknown|desconocido|autor desconocido|unknown author|n/?a|-+)$", re.IGNORECASE)
+
+
+def autor_util(autor: str | None) -> str | None:
+    """El autor normalizado («Pérez, Ana» → «Ana Pérez») o None si está vacío o es genérico («Unknown»)."""
+    a = re.sub(r"\s+", " ", autor or "").strip()
+    if not a or _AUTOR_GENERICO.match(a):
+        return None
+    return _invertir(a) if a.count(",") == 1 else a
+
+
+# (0.4.0, CF-12) idioma a ISO 639-1: códigos de 3 letras, nombres y variantes regionales («spa», «Castellano», «es-ES»)
+_IDIOMAS = {
+    "es": ("es", "spa", "esp", "castellano", "español", "espanol", "spanish"),
+    "en": ("en", "eng", "inglés", "ingles", "english"),
+    "pt": ("pt", "por", "portugués", "portugues", "português", "portuguese"),
+    "fr": ("fr", "fra", "fre", "francés", "frances", "français", "french"),
+    "it": ("it", "ita", "italiano", "italian"),
+    "de": ("de", "deu", "ger", "alemán", "aleman", "deutsch", "german"),
+    "ca": ("ca", "cat", "catalán", "catalan", "català"),
+    "gl": ("gl", "glg", "gallego", "galego", "galician"),
+    "eu": ("eu", "eus", "baq", "euskera", "basque"),
+    "la": ("la", "lat", "latín", "latin"),
+}
+_IDIOMA_DE = {nombre: codigo for codigo, nombres in _IDIOMAS.items() for nombre in nombres}
+
+
+def normalizar_idioma(idioma: str | None) -> str | None:
+    """«spa»/«Castellano»/«es-ES» → «es». Un código que no se conoce se deja en minúscula y sin región."""
+    t = re.sub(r"\s+", " ", idioma or "").strip().lower()
+    if not t:
+        return None
+    if t in _IDIOMA_DE:
+        return _IDIOMA_DE[t]
+    base = re.split(r"[-_ ]", t)[0]
+    if base in _IDIOMA_DE:
+        return _IDIOMA_DE[base]
+    return base[:10] if re.fullmatch(r"[a-z]{2,3}", base) else None
 
 
 def _invertir(autor: str) -> str:

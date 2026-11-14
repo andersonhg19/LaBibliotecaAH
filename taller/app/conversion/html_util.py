@@ -181,7 +181,13 @@ def _copiar_hijos(
         elif _es_enlace_de_vuelta(hijo):
             pass  # "↩︎" de vuelta desde una nota (pandoc/mammoth): ni se ve ni se lee
         elif nombre in BLOQUES_HOJA_O_CONTENEDOR or nombre in EN_LINEA:
-            nuevo = etree.SubElement(destino, nombre)
+            estructural = _tipo_estructural(hijo) if nombre in _CON_TIPO else None
+            if estructural:
+                # (0.4.0, contratos C1) epub:type de secciones (chapter, epigraph, dedication…) se conserva
+                nuevo = etree.SubElement(destino, nombre, nsmap={"epub": NS_EPUB})
+                nuevo.set(f"{{{NS_EPUB}}}type", estructural)
+            else:
+                nuevo = etree.SubElement(destino, nombre)
             marca = _marca_de_nota(hijo)
             if marca:
                 nuevo.set("class", marca)
@@ -215,6 +221,48 @@ def _copiar_hijos(
             # desconocida: se desenvuelve
             _copiar_hijos(hijo, destino, r_img, r_enl)
         _anexar_texto(destino, tail)
+
+
+NS_EPUB = "http://www.idpf.org/2007/ops"
+_CON_TIPO = {"section", "div", "article", "blockquote", "figure"}
+# valores de epub:type que describen la estructura (no las notas: esas se marcan con clases propias)
+_ESTRUCTURALES = {
+    "part",
+    "chapter",
+    "division",
+    "volume",
+    "subchapter",
+    "prologue",
+    "epilogue",
+    "introduction",
+    "preface",
+    "foreword",
+    "afterword",
+    "conclusion",
+    "preamble",
+    "dedication",
+    "epigraph",
+    "titlepage",
+    "halftitlepage",
+    "copyright-page",
+    "colophon",
+    "acknowledgments",
+    "appendix",
+    "bibliography",
+    "glossary",
+    "frontmatter",
+    "bodymatter",
+    "backmatter",
+    "pullquote",
+}
+
+
+def _tipo_estructural(el: Elemento) -> str | None:
+    valores: list[str] = []
+    for k, v in el.attrib.items():
+        if _es_epub_type(str(k)):
+            valores += [x for x in str(v).split() if x in _ESTRUCTURALES]
+    return " ".join(valores) or None
 
 
 _TIPOS_NOTA_PIE = {"footnote", "endnote", "rearnote", "note", "footnotes", "endnotes", "rearnotes"}

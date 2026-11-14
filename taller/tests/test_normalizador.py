@@ -5,7 +5,10 @@ from app.conversion.numeros import numero_a_palabras, romano_a_entero
 def test_ligaduras_y_espacios_duros():
     assert normalizar_visual("la ﬁla ﬂota en la oﬃcina ﬀ ﬄ") == "la fila flota en la officina ff ffl"
     assert normalizar_visual("a b c") == "a b c"
-    assert normalizar_visual("pa­la​bra") == "palabra"
+    assert normalizar_visual("pa­labra") == "palabra"  # guion blando: fuera
+    # (0.4.0, V-16) espacio de ancho cero entre letras = separador de palabras; en otro sitio se quita
+    assert normalizar_visual("Texto​con​espacios") == "Texto con espacios"
+    assert normalizar_visual("fin.​") == "fin."
     assert normalizar_visual("árbol") == "árbol"  # NFC
 
 

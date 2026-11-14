@@ -1,6 +1,7 @@
 """Bucle de trabajadores: sondea la cola, ejecuta el manejador del tipo y registra el resultado.
 
 - (v1.4) Un hilo para RELEER_METADATOS (relleno de géneros: solo lee las materias del original).
+- (0.4.0) Un hilo para RECLASIFICAR_ESTRUCTURA (tipo de cada capítulo de un libro ya convertido, sin reconvertir).
 - Un hilo para CONVERTIR y `hilos_voz` (2) para VOZ_CAPITULO: la voz nunca bloquea conversiones y un capítulo
   largo no deja esperando a los demás (QA DA-19).
 - Máx. `max_intentos` (3): un fallo con intentos < 3 vuelve a PENDIENTE; al 3.º queda ERROR.
@@ -27,6 +28,7 @@ from ..config.rutas import Rutas
 from ..conversion.aislado import ejecutar_aislado
 from ..conversion.convertir import VERSION_TEXTO, buscar_original, convertir
 from ..conversion.materias import leer_materias
+from ..conversion.reclasificar import reclasificar
 from ..dominio.mensajes import Msj, texto
 from ..dominio.modelo import ErrorDefinitivo, ErrorDeTaller, TrabajoCancelado
 from ..dominio.voces import voz_conocida
@@ -130,6 +132,39 @@ class ManejadorMetadatos(Manejador):
             log.info("Materias releídas: %d (%s)", len(materias), "; ".join(materias))
         else:
             log.info("Relectura de materias descartada: el archivo ya no existe o no está LISTO")
+
+
+class ManejadorReclasificar(Manejador):
+    """RECLASIFICAR_ESTRUCTURA (0.4.0, contratos C2): añade tipo/región/número/enVoz a los capítulos de un libro ya
+    convertido, sin cambiar sus índices ni reconvertirlo. Lee el original en un subproceso acotado (como la
+    conversión). Un libro sin `estructura.json` o sin original no es un error: se registra y el trabajo termina."""
+
+    tipos = ("RECLASIFICAR_ESTRUCTURA",)
+
+    def __init__(self, rutas: Rutas, aislar: bool = True, memoria_mb: int = 1536, tiempo_seg: float = 1200):
+        self.rutas = rutas
+        self.aislar = aislar
+        self.memoria_mb = memoria_mb
+        self.tiempo_seg = tiempo_seg
+
+    def ejecutar(self, trabajo: Trabajo, repo: Repositorio) -> None:
+        archivo_id = str(trabajo["archivo_id"])
+        try:
+            original = buscar_original(self.rutas.originales(archivo_id))
+        except ErrorDefinitivo:
+            original = None
+        args = (self.rutas.normalizados(archivo_id), original)
+        if self.aislar:
+            r = ejecutar_aislado(
+                reclasificar,
+                args,
+                memoria_mb=self.memoria_mb,
+                tiempo_seg=self.tiempo_seg,
+                ids=(str(trabajo["id"]), archivo_id),
+            )
+        else:
+            r = reclasificar(*args)
+        log.info("Reclasificación de la estructura: %s", r)
 
 
 class ManejadorVoz(Manejador):
