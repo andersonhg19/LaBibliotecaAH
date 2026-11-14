@@ -47,7 +47,7 @@ export const motor = new MotorAudio({
   dispositivo: esteDispositivo,
   ahora: () => Date.now(),
   // 0.4.0 (C4): cada minuto sonando, y al pausar, se cuenta la escucha para las estadísticas.
-  latido: (d) => enviarLatido(d),
+  latido: (d, o) => enviarLatido(d, o),
   nuevoId: uuid,
   alVolverLaRed: (fn) => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return () => {}
@@ -58,17 +58,17 @@ export const motor = new MotorAudio({
 
 /*
  * Al cerrar la pestaña, lo último que se oyó se sube al servidor (y el latido de la sesión con lo escuchado: el
- * servidor pide el token en la cabecera, así que va por la API normal y no por sendBeacon, que no la lleva).
+ * servidor pide el token en la cabecera: va con fetch keepalive y Authorization, no con sendBeacon, que no la lleva).
  */
 if (Platform.OS === 'web' && typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     motor.guardar(true)
-    motor.latir()
+    motor.latir(false, true)
   })
   document.addEventListener?.('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return
     motor.guardar(true)
-    motor.latir()
+    motor.latir(false, true)
   })
 }
 

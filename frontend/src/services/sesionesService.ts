@@ -1,5 +1,5 @@
-import { BIBLIOTECA_PREFIJO } from '@config'
-import api from '@servicios/api'
+import { API_URL, BIBLIOTECA_PREFIJO } from '@config'
+import api, { tokenActual } from '@servicios/api'
 import type { ResultDTO } from '@tipos'
 
 /*
@@ -35,8 +35,26 @@ export interface ResumenSesionesDTO {
 
 const B = BIBLIOTECA_PREFIJO
 
-export const enviarLatido = async (datos: LatidoDTO): Promise<ResultDTO<LatidoRespuestaDTO>> =>
-  (await api.post<ResultDTO<LatidoRespuestaDTO>>(`${B}/sesiones/latido`, datos)).data
+/**
+ * El latido. Con `alSalir` (la pestaña se oculta o se cierra) va con fetch `keepalive` y la cabecera
+ * Authorization, para que llegue aunque la página se descargue (sendBeacon no puede llevar el token: daría 401).
+ */
+export const enviarLatido = async (
+  datos: LatidoDTO,
+  o?: { alSalir?: boolean },
+): Promise<ResultDTO<LatidoRespuestaDTO>> => {
+  const token = tokenActual()
+  if (o?.alSalir && typeof fetch === 'function' && token) {
+    const r = await fetch(`${API_URL}${B}/sesiones/latido`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(datos),
+    })
+    return (await r.json()) as ResultDTO<LatidoRespuestaDTO>
+  }
+  return (await api.post<ResultDTO<LatidoRespuestaDTO>>(`${B}/sesiones/latido`, datos)).data
+}
 
 export const obtenerResumen = async (desde: string, hasta: string): Promise<ResultDTO<ResumenSesionesDTO>> =>
   (await api.get<ResultDTO<ResumenSesionesDTO>>(`${B}/sesiones/resumen`, { params: { desde, hasta } })).data

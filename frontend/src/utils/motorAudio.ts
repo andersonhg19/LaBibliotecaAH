@@ -170,7 +170,7 @@ export interface DependenciasMotor {
   /** (2026-11-12) La cinta continua (iPhone): un MediaSource con los capítulos seguidos. Null = <audio> normal. */
   cinta?: (el: HTMLAudioElement) => Cinta | null
   /** (0.4.0, C4) Latido de la sesión de escucha: cada minuto sonando y al pausar. */
-  latido?: (d: LatidoVoz) => Promise<unknown>
+  latido?: (d: LatidoVoz, o?: { alSalir?: boolean }) => Promise<unknown>
   /** Un identificador nuevo para cada sesión de escucha (uuid). */
   nuevoId?: () => string
 }
@@ -1850,7 +1850,7 @@ export class MotorAudio {
    * Manda el latido con lo escuchado desde el anterior (0–120 s). `cerrar`: al pausar, salir o cambiar de libro
    * (se cuenta hasta ahora y se deja de contar hasta que vuelva a sonar).
    */
-  latir(cerrar = false) {
+  latir(cerrar = false, alSalir = false) {
     const s = this.sesionVoz
     const enviar = this.deps.latido
     if (!s || !enviar) return
@@ -1874,7 +1874,7 @@ export class MotorAudio {
       dispositivo: this.deps.dispositivo(),
     }
     Promise.resolve()
-      .then(() => enviar(d))
+      .then(() => enviar(d, alSalir ? { alSalir: true } : undefined))
       .catch((e) => {
         // Sin red: lo escuchado no se pierde, va en el siguiente latido (sin pasar del máximo).
         console.warn('[voz] latido de sesión', e)
