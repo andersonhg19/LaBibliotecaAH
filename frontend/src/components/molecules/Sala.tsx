@@ -20,6 +20,7 @@ const Sala: React.FC<{ children: React.ReactNode; style?: ViewStyle; testID?: st
   return (
     <View
       testID={testID}
+      role="main"
       style={[
         styles.sala,
         { backgroundColor: colors.background },

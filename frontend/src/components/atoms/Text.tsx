@@ -24,6 +24,12 @@ interface TextProps {
   accessibilityLabel?: string
   accessibilityRole?: 'header' | 'text' | 'none'
   selectable?: boolean
+  /**
+   * Nivel del encabezado (UX5-09): 1 el rótulo de la sala, 2 el libro y las
+   * placas, 3 las secciones. Sin él, `display` es 1 y `title`, 2 (antes todo
+   * salía como <h1> y el rotor de VoiceOver no distinguía niveles).
+   */
+  nivel?: 1 | 2 | 3 | 4
 }
 
 const AppText: React.FC<TextProps> = ({
@@ -38,6 +44,7 @@ const AppText: React.FC<TextProps> = ({
   accessibilityLabel,
   accessibilityRole,
   selectable,
+  nivel,
 }) => {
   const { colors } = useTheme()
 
@@ -49,6 +56,8 @@ const AppText: React.FC<TextProps> = ({
           fontFamily: fuentes.tituloNegrita,
           fontWeight: fontWeight.bold,
           letterSpacing: 0.3,
+          // UX5-11: Cormorant trae cifras antiguas («Capítulo ı»): en títulos, cifras modernas.
+          fontVariant: ['lining-nums'],
         }
       case 'title':
         return {
@@ -56,9 +65,15 @@ const AppText: React.FC<TextProps> = ({
           fontFamily: fuentes.titulo,
           fontWeight: fontWeight.semiBold,
           letterSpacing: 0.2,
+          fontVariant: ['lining-nums'],
         }
       case 'subtitle':
-        return { fontSize: fontSize.xl, fontFamily: fuentes.titulo, fontWeight: fontWeight.semiBold }
+        return {
+          fontSize: fontSize.xl,
+          fontFamily: fuentes.titulo,
+          fontWeight: fontWeight.semiBold,
+          fontVariant: ['lining-nums'],
+        }
       case 'caption':
         return { fontSize: fontSize.xs, fontFamily: fuentes.ui, fontWeight: fontWeight.regular }
       case 'label':
@@ -80,6 +95,10 @@ const AppText: React.FC<TextProps> = ({
     }
   }
 
+  const rol = accessibilityRole ?? (variant === 'display' || variant === 'title' ? 'header' : undefined)
+  const nivelEfectivo = rol === 'header' ? (nivel ?? (variant === 'display' ? 1 : 2)) : undefined
+  /* En la web, role="heading" + aria-level sale como <h1>…<h4>; en nativo, accessibilityRole header. */
+  const encabezado = nivelEfectivo ? ({ role: 'heading', 'aria-level': nivelEfectivo } as object) : {}
   return (
     <RNText
       style={[variantStyle(), { color: color || defaultColor(), textAlign: align }, style]}
@@ -87,8 +106,9 @@ const AppText: React.FC<TextProps> = ({
       testID={testID}
       adjustsFontSizeToFit={adjustsFontSizeToFit}
       accessibilityLabel={accessibilityLabel}
-      accessibilityRole={accessibilityRole ?? (variant === 'display' || variant === 'title' ? 'header' : undefined)}
+      accessibilityRole={rol}
       selectable={selectable}
+      {...encabezado}
     >
       {children}
     </RNText>

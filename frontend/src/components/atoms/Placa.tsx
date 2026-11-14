@@ -39,6 +39,7 @@ const Placa: React.FC<Props> = ({ titulo, detalle, accessibilityLabel, testID })
     testID={testID}
     accessible
     accessibilityRole="header"
+    {...({ role: 'heading', 'aria-level': 2 } as object)}
     accessibilityLabel={accessibilityLabel ?? (detalle ? `${titulo}, ${detalle}` : titulo)}
     style={[
       styles.placa,
