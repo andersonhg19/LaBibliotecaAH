@@ -12,7 +12,8 @@ param(
     [string]$Proyecto = 'biblioteca-ah',
     [string[]]$Servicios = @('postgres', 'discovery-service', 'gateway-service', 'auth-service', 'biblioteca-service',
         'taller', 'traductor', 'frontend'),
-    [string[]]$Respaldos = @('D:\respaldos\biblioteca', 'C:\respaldos-espejo\biblioteca'),
+    # Carpetas con respaldo.log: principal (D:), espejo (C:) y el log fijo de respaldo.ps1 (-LogFijo, C:).
+    [string[]]$Respaldos = @('D:\respaldos\biblioteca', 'C:\respaldos-espejo\biblioteca', 'C:\srv\biblioteca-ah'),
     [int]$HorasRespaldo = 26,
     [string[]]$Discos = @('C', 'D', 'E'),
     [int]$MinLibrePct = 10,
@@ -95,10 +96,17 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
-# 2. Respaldo: la linea mas reciente de los respaldo.log (principal y espejo).
+# 2. Respaldo: la linea mas reciente de los respaldo.log (principal, espejo y log fijo).
 $ultimas = foreach ($r in $Respaldos) {
-    $f = Join-Path $r 'respaldo.log'
-    if (Test-Path $f) {
+    # Ruta como texto: Join-Path falla si la unidad no existe (V-NUEVO-5).
+    $f = "$($r.TrimEnd('\'))\respaldo.log"
+    $unidad = if ($r -match '^([A-Za-z]):') { $Matches[1].ToUpper() } else { $null }
+    if ($unidad -and -not (Get-PSDrive -Name $unidad -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        # Si el disco ya se vigila en -Discos, ese aviso basta; si no, se avisa aqui.
+        if ($Discos -notcontains $unidad) { $problemas["respaldo-$unidad"] = "No se puede leer $r (disco $unidad`: no conectado)" }
+        continue
+    }
+    if (Test-Path -LiteralPath $f -ErrorAction SilentlyContinue) {
         Get-Content $f -Encoding utf8 | Where-Object { $_ -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ' } | Select-Object -Last 1
     }
 }
