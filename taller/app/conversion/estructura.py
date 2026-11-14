@@ -18,6 +18,7 @@ algo que leer; `palabrasVoz` cuenta lo que de verdad lee la voz (sin notas ni ta
 
 from __future__ import annotations
 
+import itertools
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -26,6 +27,11 @@ from dataclasses import dataclass, field
 from .numeros import romano_a_entero
 
 VERSION_ESTRUCTURA = 2
+# versión de las REGLAS de clasificación (campo raíz «clasificador» de estructura.json; sin él = 1). Sube cuando
+# cambia el resultado de `clasificar` para libros ya clasificados, para que RECLASIFICAR_ESTRUCTURA los rehaga:
+# 1 = 0.4.0; 2 = capítulos con nombre y cortos antes de uno largo ya no son «preliminar», número del encabezado y
+# libro sin nada en voz → todo lo que tenga texto en voz (V-NUEVO-1, A-1).
+VERSION_CLASIFICADOR = 2
 
 TIPOS = (
     "capitulo",
@@ -56,6 +62,15 @@ PALABRAS_PRELIMINAR = 400  # una sección sin tipo antes del primer capítulo co
 PALABRAS_PORTADA = 150  # una «Portada» con más texto que esto no es una portada
 _PORTADA = re.compile(r"^(?:portada|portadilla|cubierta|cover|title page|anteportada)[.:]?$")
 PALABRAS_PARTE = 500  # una entrada con hijos en el índice y menos de esto es una parte (cabecera)
+# una sección sin tipo con título propio («La lluvia», «Canción de otoño») y al menos esto es cuerpo aunque sea corta
+# (cuentos, poemas, libros infantiles): por debajo es una portadilla, una dedicatoria sin título…
+PALABRAS_CON_NOMBRE = 20
+# títulos que no dicen nada (los pone el conversor o el programa que hizo el EPUB): no cuentan como «nombre propio»
+_GENERICO = re.compile(
+    r"^(?:(?:seccion|section|sec|texto?|split|page|pagina|item|doc|documento|file|archivo|html?|xhtml|content"
+    r"|contenido|part)[\s_.\-]*[0-9]*(?:[\s_.\-]+[0-9]+)*(?:\.x?html?)?|comienzo|inicio|start|begin|title|titulo"
+    r"|untitled|sin titulo)$"
+)
 
 # vocabulario EPUB SSV / DPUB-ARIA → tipo
 TIPO_EPUB = {
@@ -371,6 +386,7 @@ class Entrada:
     lineal: bool = True
     region: str | None = None  # pista: "antes" (antes del comienzo del cuerpo) / "despues" (tras el índice)
     con_hijos: bool = False  # tiene hijos en el índice (candidata a parte)
+    encabezado: str | None = None  # primer encabezado del texto («Capítulo 1. Números»), si el índice dice otra cosa
 
 
 @dataclass
@@ -399,9 +415,35 @@ def _base_de_trozo(titulo: str) -> str | None:
     return m.group(1) if m else None
 
 
-def clasificar(entradas: Sequence[Entrada]) -> list[Clasificacion]:
+def _con_nombre(e: Entrada, plano_libro: str) -> bool:
+    """Sección con título propio y algo de texto: un cuento, un poema, un capítulo con nombre (no una portadilla)."""
+    plano = _plano(e.titulo)
+    if not plano or _GENERICO.match(plano) or e.palabras < PALABRAS_CON_NOMBRE:
+        return False
+    # la página con el título del libro (y quizá el subtítulo) es la portadilla; un cuento que da título al libro
+    # tiene más texto
+    return not (plano_libro and plano.startswith(plano_libro) and e.palabras < 100)
+
+
+def _numeros_de_encabezado(entradas: Sequence[Entrada], tipos: list[str | None]) -> dict[int, int]:
+    """Números de capítulo escritos en el primer encabezado del texto cuando el título del índice no trae («Números»
+    en el índice, «Capítulo 1. Números» en el texto). Solo se usan si van en orden creciente: si no, mandan las
+    posiciones."""
+    salida: dict[int, int] = {}
+    for i, e in enumerate(entradas):
+        if tipos[i] != "capitulo" or _base_de_trozo(e.titulo) is not None or numero_en_titulo(e.titulo) is not None:
+            continue
+        n = numero_en_titulo(e.encabezado) if e.encabezado and _CAPITULO.match(e.encabezado.strip()) else None
+        if n is not None:
+            salida[i] = n
+    valores = list(salida.values())
+    return salida if all(a < b for a, b in itertools.pairwise(valores)) else {}
+
+
+def clasificar(entradas: Sequence[Entrada], titulo_libro: str | None = None) -> list[Clasificacion]:
     """Clasifica los capítulos de un libro (en orden). Nunca cambia cuántos hay ni su orden."""
     n = len(entradas)
+    plano_libro = _plano(titulo_libro or "")
     tipos: list[str | None] = [None] * n
     origenes: list[str] = ["posicion"] * n
     # 1) pistas del formato, linear="no", título; los trozos «(parte k de n)» copian al primero
@@ -424,15 +466,19 @@ def clasificar(entradas: Sequence[Entrada]) -> list[Clasificacion]:
                 tipos[i], origenes[i] = por_titulo, "titulo"
             elif e.con_hijos and e.palabras < PALABRAS_PARTE:
                 tipos[i], origenes[i] = "parte", "titulo"
+            elif e.encabezado and _CAPITULO.match(e.encabezado.strip()):
+                # el índice dice «Números» y el texto «Capítulo 1. Números»: es un capítulo (V-NUEVO-1)
+                tipos[i], origenes[i] = "capitulo", "titulo"
     total = sum(e.palabras for e in entradas) or 1
 
     def sustancial(i: int, minimo: int) -> bool:
         e = entradas[i]
         if not e.lineal or e.region == "antes":
             return False
-        return tipos[i] in CUERPO or (tipos[i] is None and e.palabras >= minimo)
+        return tipos[i] in CUERPO or (tipos[i] is None and (e.palabras >= minimo or _con_nombre(e, plano_libro)))
 
-    # 2) dónde empieza el libro de verdad: el primer capítulo reconocido o la primera sección sin tipo con texto
+    # 2) dónde empieza el libro de verdad: el primer capítulo reconocido o la primera sección sin tipo con texto o
+    # con nombre propio (un libro de cuentos cortos: «La lluvia», «El gato»… son el libro, no preliminares; V-NUEVO-1)
     primero = next((i for i in range(n) if sustancial(i, PALABRAS_PRELIMINAR)), None)
     final = next((i for i in range(n) if tipos[i] in FINALES and entradas[i].lineal), None)
     if final is not None and (primero is None or final < primero):
@@ -483,6 +529,7 @@ def clasificar(entradas: Sequence[Entrada]) -> list[Clasificacion]:
             # «Resumen», «Notas de viaje»… en mitad del libro y con texto: es un capítulo con ese nombre
             tipos[i], origenes[i] = "capitulo", "posicion"
     # 5) región, número y voz
+    del_encabezado = _numeros_de_encabezado(entradas, tipos)
     cuerpo_idx = [i for i in range(n) if tipos[i] in CUERPO and (barrera is None or i < barrera)]
     ini_cuerpo = cuerpo_idx[0] if cuerpo_idx else n
     fin_cuerpo = cuerpo_idx[-1] if cuerpo_idx else -1
@@ -507,8 +554,15 @@ def clasificar(entradas: Sequence[Entrada]) -> list[Clasificacion]:
                 numero = salida[-1].numero
             else:
                 propio = numero_en_titulo(base or e.titulo)
+                if propio is None:
+                    propio = del_encabezado.get(i)
                 numero = propio if propio is not None else siguiente
                 siguiente = numero + 1
         en_voz = tipo in CUERPO and region == "cuerpo" and e.lineal and e.palabras_voz > 0
         salida.append(Clasificacion(tipo, region, numero, en_voz, e.palabras_voz, origenes[i]))
+    if not any(c.en_voz for c in salida):
+        # nada en voz (un libro de un solo «Epígrafe», unas «Notas» sueltas…): el libro no tendría audio de corrido;
+        # se lee todo lo que tenga texto, como en un libro v1 (A-1)
+        for c in salida:
+            c.en_voz = c.palabras_voz > 0
     return salida

@@ -9,6 +9,7 @@ import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import takewhile
 from pathlib import Path
 
 from ..dominio.mensajes import Msj
@@ -21,7 +22,7 @@ from .desde_pdf import convertir_pdf
 from .desde_pptx import convertir_pptx
 from .desde_txt import convertir_txt
 from .epub_salida import escribir_epub, href_capitulo, href_toc, toc_efectivo
-from .estructura import VERSION_ESTRUCTURA, Entrada, clasificar
+from .estructura import VERSION_CLASIFICADOR, VERSION_ESTRUCTURA, Entrada, clasificar
 from .formatos import EXTENSIONES_TEXTO, HOJAS, tipo_ole, tipo_zip
 from .frases import contar_palabras, envolver_capitulo
 from .hojas import leer_hoja_de_calculo
@@ -201,6 +202,7 @@ def convertir(
                 lineal=cap.lineal,
                 region=cap.region,
                 con_hijos=i in padres,
+                encabezado=" ".join(f.texto for f in takewhile(lambda f: f.es_titulo, frases)) or None,
             )
         )
         capitulos_json.append(
@@ -223,7 +225,7 @@ def convertir(
         raise ErrorDefinitivo(Msj.SIN_TEXTO)
 
     # (0.4.0, contratos C1) qué es cada capítulo, su número visible y si entra en el audiolibro
-    clasificacion = clasificar(entradas)
+    clasificacion = clasificar(entradas, md.get("titulo"))
     for cap_json, c in zip(capitulos_json, clasificacion, strict=True):
         cap_json.update(c.a_json())
 
@@ -240,6 +242,7 @@ def convertir(
     estructura = {
         "versionFormato": VERSION_FORMATO,
         "version": VERSION_ESTRUCTURA,
+        "clasificador": VERSION_CLASIFICADOR,
         "versionTexto": VERSION_TEXTO,
         **metadatos,
         "tienePortada": portada is not None,

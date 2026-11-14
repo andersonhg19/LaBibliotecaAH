@@ -10,7 +10,7 @@ import pytest
 from app.cola.trabajador import ManejadorReclasificar
 from app.config.rutas import Rutas
 from app.conversion.convertir import convertir
-from app.conversion.estructura import Entrada, clasificar, numero_en_titulo, tipo_por_titulo
+from app.conversion.estructura import VERSION_CLASIFICADOR, Entrada, clasificar, numero_en_titulo, tipo_por_titulo
 from app.conversion.metadatos import autor_util, normalizar_idioma
 from app.conversion.reclasificar import reclasificar
 from tests import corpus_estructura
@@ -369,6 +369,7 @@ def _como_033(e: dict) -> dict:
     """Lo que tendría un libro convertido con 0.3.3: sin «version» ni los campos de C1."""
     viejo = json.loads(json.dumps(e))
     viejo.pop("version", None)
+    viejo.pop("clasificador", None)
     for c in viejo["capitulos"]:
         for k in ("tipo", "region", "numero", "enVoz", "palabrasVoz", "origenTipo"):
             c.pop(k)
@@ -457,3 +458,145 @@ def test_manejador_reclasificar(corpus, tmp_path, convertidos):
     assert [c["tipo"] for c in r["capitulos"]] == [c["tipo"] for c in nuevo["capitulos"]]
     # sin original ni estructura: no falla
     ManejadorReclasificar(rutas, aislar=False).ejecutar({"id": "t", "archivo_id": "otro"}, None)  # type: ignore[arg-type]
+
+
+# ------------------------------------------------------------------ arreglos de la validación 0.4.0 (V-NUEVO-1, A-1)
+
+_CUENTOS = ["La lluvia", "El gato", "La abuela", "Mi calle", "El río"]
+
+
+def test_v_nuevo_1_cuentos_cortos_antes_de_uno_largo_son_el_libro():
+    # VS07: cinco cuentos de ~250 palabras y uno largo; 0.4.0 dejaba los cinco en «preliminar», antes y fuera de voz
+    c = clasificar([_e(t, 250) for t in _CUENTOS] + [_e("El viaje", 900)])
+    assert [(x.tipo, x.region, x.numero, x.en_voz) for x in c] == [("capitulo", "cuerpo", k, True) for k in range(1, 7)]
+    # VS08 (sin el largo) daba lo mismo: el resultado ya no depende de que haya un capítulo largo detrás
+    assert [x.numero for x in clasificar([_e(t, 250) for t in _CUENTOS])] == [1, 2, 3, 4, 5]
+
+
+def test_v_nuevo_1_portadilla_y_dedicatoria_siguen_antes():
+    entradas = [
+        _e("La casa del faro", 30),  # la página con el título del libro
+        _e("A mi madre", 6),  # dedicatoria sin título de diccionario: muy corta
+        _e("Sección 3", 60),  # título genérico que pone el conversor
+        _e("Dedicatoria", 10),
+    ] + [_e(t, 40) for t in _CUENTOS]  # poemas cortos con título
+    c = clasificar(entradas, "La casa del faro")
+    assert [x.region for x in c[:4]] == ["antes"] * 4 and not any(x.en_voz for x in c[:4])
+    assert [(x.tipo, x.numero, x.en_voz) for x in c[4:]] == [("capitulo", k, True) for k in range(1, 6)]
+
+
+def test_v_nuevo_1_cuento_que_da_titulo_al_libro_no_es_la_portadilla():
+    c = clasificar([_e("El llano en llamas", 300), _e("Macario", 300)], "El llano en llamas")
+    assert [x.numero for x in c] == [1, 2]
+
+
+def test_v_nuevo_1_numero_del_encabezado_si_el_indice_no_lo_trae():
+    titulos = ["Números", "Romanos", "Diálogos"]
+    con = [_e(t, 150, encabezado=f"Capítulo {k}. {t}") for k, t in enumerate(titulos, start=1)]
+    c = clasificar([*con, _e("Enorme", 4800, encabezado="Capítulo 7. Enorme")])
+    assert [(x.tipo, x.numero, x.en_voz) for x in c] == [
+        ("capitulo", 1, True),
+        ("capitulo", 2, True),
+        ("capitulo", 3, True),
+        ("capitulo", 7, True),
+    ]
+    # encabezados desordenados (qa-aud-voz: 1, IV, 3…): mandan las posiciones; «Enorme» ya no es el capítulo 1
+    raros = [("Números", "Capítulo 1. Números"), ("Romanos", "Capítulo IV"), ("Diálogos", "Capítulo 3. Diálogos")]
+    c = clasificar([_e(t, 150, encabezado=h) for t, h in raros] + [_e("Enorme", 4800, encabezado="Capítulo 7.")])
+    assert [x.numero for x in c] == [1, 2, 3, 4]
+
+
+def test_a1_si_nada_queda_en_voz_se_lee_todo_lo_que_tiene_texto():
+    # VS09: un solo cuento titulado «Epígrafe»
+    c = clasificar([_e("Epígrafe", 300)])
+    assert (c[0].tipo, c[0].en_voz) == ("epigrafe", True)
+    # qa-datos-E10: dos «Notas» y nada más; lo vacío sigue fuera
+    c = clasificar([_e("Notas", 200), _e("Notas", 150), _e("Créditos", 5, palabras_voz=0)])
+    assert [x.en_voz for x in c] == [True, True, False]
+    # si algo ya está en voz, lo demás no cambia
+    c = clasificar([_e("Dedicatoria", 10), _e("Capítulo 1", 900)])
+    assert [x.en_voz for x in c] == [False, True]
+
+
+def _v2_con_reglas_viejas(tmp_path: Path) -> dict:
+    """Un libro de cuentos clasificado por el taller 0.4.0 (V-NUEVO-1): v2 sin «clasificador»."""
+    capitulos = []
+    (tmp_path / "frases").mkdir()
+    for k, (t, palabras) in enumerate([*((t, 250) for t in _CUENTOS), ("El viaje", 900)]):
+        largo = k == 5
+        capitulos.append(
+            {
+                "indice": k,
+                "titulo": t,
+                "href": f"cap-{k:03d}.xhtml",
+                "nivel": 1,
+                "frases": 2,
+                "palabras": palabras,
+                "tipo": "capitulo" if largo else "preliminar",
+                "region": "cuerpo" if largo else "antes",
+                "numero": 1 if largo else None,
+                "enVoz": largo,
+                "palabrasVoz": palabras,
+                "origenTipo": "posicion",
+            }
+        )
+        frases = [{"id": f"c{k:03d}-s00000", "texto": t, "voz": t, "esTitulo": True}]
+        frases.append({"id": f"c{k:03d}-s00001", "texto": "x", "voz": " ".join(["palabra"] * palabras)})
+        (tmp_path / "frases" / f"cap-{k:03d}.json").write_text(json.dumps({"frases": frases}), encoding="utf-8")
+    datos = {"versionFormato": 1, "version": 2, "titulo": "Cuentos", "capitulos": capitulos, "toc": []}
+    (tmp_path / "estructura.json").write_text(json.dumps(datos), encoding="utf-8")
+    return datos
+
+
+def test_v_nuevo_1_reclasificar_rehace_lo_clasificado_con_reglas_viejas(tmp_path):
+    viejo = _v2_con_reglas_viejas(tmp_path)
+    assert reclasificar(tmp_path, None) == "hecho"
+    r = json.loads((tmp_path / "estructura.json").read_text(encoding="utf-8"))
+    assert r["version"] == 2 and r["clasificador"] == VERSION_CLASIFICADOR
+    assert [(c["tipo"], c["region"], c["numero"], c["enVoz"]) for c in r["capitulos"]] == [
+        ("capitulo", "cuerpo", k, True) for k in range(1, 7)
+    ]
+    campos = ("indice", "titulo", "href", "nivel", "frases", "palabras")
+    for a, b in zip(viejo["capitulos"], r["capitulos"], strict=True):
+        assert {k: b[k] for k in campos} == {k: a[k] for k in campos}
+    antes = (tmp_path / "estructura.json").read_bytes()
+    assert reclasificar(tmp_path, None) == "ya"  # idempotente con las reglas nuevas
+    assert (tmp_path / "estructura.json").read_bytes() == antes
+
+
+def test_reclasificar_v2_sin_original_conserva_las_pistas_del_formato(tmp_path):
+    datos = {
+        "version": 2,
+        "titulo": "x",
+        "toc": [],
+        "capitulos": [
+            {"indice": 0, "titulo": "Lo que sea", "palabras": 30, "tipo": "dedicatoria", "origenTipo": "epub-type"},
+            {"indice": 1, "titulo": "Glosa", "palabras": 900, "tipo": "otro", "origenTipo": "linear"},
+            {"indice": 2, "titulo": "Uno", "palabras": 900, "tipo": "capitulo", "origenTipo": "titulo"},
+        ],
+    }
+    (tmp_path / "estructura.json").write_text(json.dumps(datos), encoding="utf-8")
+    assert reclasificar(tmp_path, None) == "hecho"
+    r = json.loads((tmp_path / "estructura.json").read_text(encoding="utf-8"))["capitulos"]
+    assert [(c["tipo"], c["origenTipo"]) for c in r] == [
+        ("dedicatoria", "epub-type"),
+        ("otro", "linear"),
+        ("capitulo", "titulo"),
+    ]
+
+
+def test_v_nuevo_1_convertir_libro_de_cuentos(tmp_path):
+    corpus_estructura.OUT = tmp_path
+
+    def doc(k: int, t: str, parrafos: int) -> tuple[str, str, str]:  # sin epub:type: decide la posición
+        return f"c{k}", f"c{k}.xhtml", corpus_estructura.xhtml(f"<h1>{t}</h1>{corpus_estructura.parrafos(parrafos)}", t)
+
+    docs = [doc(k, t, 5) for k, t in enumerate(_CUENTOS)] + [doc(9, "El viaje", 25)]
+    toc = [(t, f"c{k}.xhtml") for k, t in enumerate(_CUENTOS)] + [("El viaje", "c9.xhtml")]
+    corpus_estructura.epub("cuentos.epub", docs, toc, titulo="Cuentos de la orilla")
+    convertir(tmp_path / "cuentos.epub", tmp_path / "n", "00000000-0000-0000-0000-0000000000e2")
+    e = json.loads((tmp_path / "n" / "estructura.json").read_text(encoding="utf-8"))
+    assert e["clasificador"] == VERSION_CLASIFICADOR
+    assert [(c["titulo"], c["numero"], c["enVoz"]) for c in e["capitulos"]] == [
+        (t, k, True) for k, t in enumerate([*_CUENTOS, "El viaje"], start=1)
+    ]
