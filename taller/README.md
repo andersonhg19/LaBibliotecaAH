@@ -28,6 +28,20 @@ app/
 tests/                 corpus generado por programa (corpus.py) + pruebas pytest
 ```
 
+## Novedades 0.4.0 (contratos §12)
+
+- **Estructura v2** (`conversion/estructura.py`): cada capítulo de `estructura.json` lleva `tipo`, `region`, `numero`,
+  `enVoz`, `palabrasVoz` y `origenTipo` (epub:type → landmarks/guide → linear → título → posición), con `"version": 2`.
+  Los XHTML con varios capítulos del índice se parten (libros nuevos); notas, «sobre el autor» y no lineales ya no se
+  pegan al último capítulo; metadatos OPF con criterio (título main, solo autores, idioma ISO 639-1).
+- **RECLASIFICAR_ESTRUCTURA** (`conversion/reclasificar.py`, hilo `estructura`): añade esa clasificación a libros ya
+  convertidos sin cambiar índices; idempotente.
+- **Voz** (`voz/lectura.py`, `voz/volumen.py`): capa de lectura al sintetizar (números, abreviaturas, URL, emojis,
+  otros idiomas → voz multilingüe, diccionario de pronunciación del payload), frases mudas en vez de capítulos en
+  ERROR, MP3 truncados fuera de la caché, pausas 0,4/0,35/0,7/1,0 s y silencios internos ≤ 0,40 s, −18 LUFS /
+  −1,5 dBTP (ganancia por voz calibrada en `cache-voz/volumen.json`), 2x desde el PCM y envolvente en `tiempos.json`.
+- Audio ya generado: no se regenera; suena como en 0.3.3 hasta que se regenere su capítulo.
+
 ## Configuración (variables de entorno, validadas al arrancar)
 
 | Variable | Defecto | Notas |
@@ -54,7 +68,8 @@ Zona horaria del contenedor: `America/Bogota`. Logs: `fecha nivel=… hilo=… t
 
 ## Cola de trabajos
 
-Hilos: `conversion` (tipo `CONVERTIR`) y `voz`, `voz-2`… (`TALLER_HILOS_VOZ`, tipo `VOZ_CAPITULO`); la voz nunca
+Hilos: `conversion` (tipo `CONVERTIR`), `metadatos` (`RELEER_METADATOS`), `estructura` (`RECLASIFICAR_ESTRUCTURA`,
+0.4.0) y `voz`, `voz-2`… (`TALLER_HILOS_VOZ`, tipo `VOZ_CAPITULO`); la voz nunca
 bloquea conversiones y un capítulo largo no deja esperando a los demás.
 (v1.5) Más `voz-urgente`, reservado al capítulo que se escucha. Síntesis por partes (contratos §6 bis): las frases
 se piden en orden y se ensamblan mientras llegan; la primera parte (3 frases) sale a los pocos segundos y la web
@@ -127,7 +142,7 @@ python -m app.cli voz 00000000-0000-0000-0000-000000000001 edge.es-ES-AlvaroNeur
 - OCR de PDF escaneados (Ola 7): hoy quedan en `ERROR` con "PDF escaneado: el OCR llegará en una ola posterior".
 - Motor Piper local: solo la interfaz (`PiperLocal`), sin modelos descargados.
 - PDF: las imágenes internas no se copian (solo la portada = página 1); capítulos con granularidad de página.
-- PDF sin marcadores: capítulos por tramos de 15 páginas, no por los títulos grandes (QA DA-22).
+- PDF sin marcadores: capítulos por tramos de 15 páginas, no por los títulos grandes (QA DA-22 / CF-11).
+- Voz: entonación de incisos de diálogo (M-10) y lectura de tablas por filas (hoy se omiten): pendientes.
 - PDF a tres columnas: el orden de lectura se mezcla (QA DA-23; dos columnas sí va bien).
-- Resaltado de palabra en expansiones de voz ("12/10/1492", "1.250,50") aproximado (QA DA-26).
 - RTF/MOBI/AZW3/FB2 (Calibre) no soportados todavía.

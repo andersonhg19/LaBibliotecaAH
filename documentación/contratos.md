@@ -5,6 +5,13 @@
 
 ## Cambios
 
+### 0.4.0 (taller) — 2026-11-14 (estructura v2, reclasificación y voz más natural; todo aditivo)
+Detalle en §12. Resumen: `estructura.json` gana `"version": 2` y, por capítulo, `tipo`, `region`, `numero`, `enVoz`,
+`palabrasVoz`, `origenTipo` (C1); trabajo nuevo `RECLASIFICAR_ESTRUCTURA` (C2); `tiempos.json` gana `versionAudio` y
+`envolvente` (C7); el taller normaliza el texto que se lee para todas las voces sin tocar el texto mostrado (C8); payload
+opcional `pronunciacion` en VOZ_CAPITULO (B17). Pausas nuevas (§5): 0,4 s al empezar, 0,35 entre frases, 0,7 al final
+de párrafo, 1 s antes y después de un título.
+
 ### v1.6 — 2026-11-12 (más formatos de documentos, visor de hojas de cálculo y carpetas del archivador)
 Todo es **aditivo**: lo que ya existía responde igual (salvo el texto de `formatoNoSoportado`, que lista los formatos nuevos).
 - **Formatos nuevos** (`formatoOriginal`, `VARCHAR(10)` sin cambio de esquema): `MD` (.md .markdown), `HTML` (.html .htm
@@ -571,3 +578,47 @@ pide por `GET /v1/archivos/{archivoId}/hoja.json` y lo valida (zod) antes de pin
   `negrita`, `cursiva`, `subrayado`, `alinear` (izquierda|centro|derecha), `vertical` (arriba|centro|abajo), `fondo` y
   `color` (#RRGGBB; el fondo blanco y el texto negro por defecto se omiten), `ajustar`.
 - Hojas ocultas fuera. Recortes (límites en §9): `recortada` por hoja y `recortado` si se omitieron hojas.
+
+## 12. Taller 0.4.0: estructura v2, reclasificación y voz (contratos C1, C2, C7, C8 de la ola 0.4.0)
+
+### 12.1 `estructura.json` v2 (C1)
+- Raíz: `"version": 2` (lo mira biblioteca-service para no volver a encolar la reclasificación). `versionFormato` sigue
+  en 1 (el formato v1 no cambia). Metadatos: `subtitulo` opcional (EPUB3 `title-type=subtitle`).
+- Cada capítulo, además de lo de §4: `tipo` (capitulo|parte|prologo|epilogo|introduccion|preliminar|dedicatoria|epigrafe|
+  creditos|indice|notas|apendice|agradecimientos|autor|publicidad|colofon|otro), `region` (antes|cuerpo|despues),
+  `numero` (int o null; solo capítulos del cuerpo), `enVoz` (por defecto: cuerpo con texto), `palabrasVoz` (palabras de
+  `voz` de sus frases: sin notas ni tablas), `origenTipo` (epub-type|landmarks|guide|linear|titulo|posicion).
+- Prioridad: epub:type/role doc-* → landmarks/`<guide>` → `linear="no"` → título (es/en) → posición. «Capítulo 7»,
+  «Capítulo primero», «CAPÍTULO 01», «Chapter One», «IV» dan su número; las partes no cuentan; los trozos
+  «(parte k de n)» heredan el número. Un «Capítulo 1» detrás de «Agradecimientos»/«Sobre la autora» es `publicidad`.
+- Libros NUEVOS: un XHTML con varias anclas del índice se parte en varios capítulos; los documentos no lineales, con tipo
+  propio o tras el último documento del índice (otro nombre de archivo) ya no se pegan al capítulo anterior. El EPUB de
+  salida conserva el `epub:type` estructural y el `<body>` lleva `data-bah-tipo`.
+
+### 12.2 Trabajo `RECLASIFICAR_ESTRUCTURA` (C2)
+- payload `{}`; prioridad la decide biblioteca-service (200, como RELEER_METADATOS). Hilo propio del taller
+  (`estructura`), subproceso acotado como la conversión.
+- Lee el ORIGINAL (si es EPUB, reparte capítulos con el algoritmo de 0.3.3 y solo usa sus pistas si casan uno a uno por
+  número y título); si no, clasifica por título y posición. Añade los campos de 12.1 y `"version": 2` **sin cambiar
+  índices, títulos, href ni palabras**. Idempotente: con `"version": 2` no hace nada. Si `estructura.json` cambia
+  mientras tanto (reconversión), no escribe. Sin `estructura.json` u original: termina HECHO y lo deja en el log.
+
+### 12.3 Voz (C7, C8, B17)
+- El taller aplica al SINTETIZAR una capa de lectura sobre `voz` (también en libros ya convertidos): números con
+  formato español (miles, decimales, ordinales, monedas, %, horas, fracciones, 2x1) iguales para todas las voces,
+  abreviaturas (art., S.A., C/, s. XIX…), URL → «enlace a dominio», correo, rutas, emojis fuera; frases en alfabeto no
+  latino o enteras en inglés/francés/alemán/italiano/portugués/latín → voz multilingüe de edge del mismo género. El
+  resaltado se mapea al texto visual original.
+- Una frase que edge no sabe leer (o que llega truncada tras los reintentos) queda en silencio (t0 = t1) y el capítulo
+  sigue LISTO; si son muchas (> 20 % y > 3) el trabajo falla como «servicio caído» y se reintenta. Un MP3 truncado
+  nunca entra en la caché; uno truncado de antes se descarta al leerlo.
+- Volumen −18 LUFS integrado, pico ≤ −1,5 dBTP, 1x y 2x; la 2x se hace desde el PCM. Silencios internos ≤ 0,40 s.
+- `cap-NNN.tiempos.json` gana `"versionAudio": 2` y `"envolvente": {"hz": 10, "v": [0..100]}` (energía RMS en dB
+  normalizada del audio 1x, un valor cada 100 ms; para la 2x se toman de dos en dos). Ausentes = audio anterior a 0.4.0.
+- payload VOZ_CAPITULO opcional `"pronunciacion": [{"de": "Hermione", "a": "Jermáyoni"}, …]` (≤ 500 reglas de ≤ 100
+  caracteres; palabra entera, sin distinguir mayúsculas; las más largas primero). Solo cambia lo que se dice. El audio es
+  por archivo y voz (no por usuario): biblioteca-service debe mandar el diccionario del LIBRO y, si cambia, regenerar.
+- Caché: la clave sigue siendo sha1(texto que se manda + voz + versión del motor) y la versión del motor NO cambia: solo
+  las frases cuyo texto cambia con la capa nueva se vuelven a pedir. El audio ya generado (m4a LISTO) no se regenera:
+  sigue sonando como antes (volumen y pausas de 0.3.3) hasta que se regenere ese capítulo.
+

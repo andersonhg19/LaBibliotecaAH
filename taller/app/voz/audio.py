@@ -72,6 +72,7 @@ def duracion_pcm(pcm_bytes: int) -> float:
 LUFS_OBJETIVO = -18.0
 PICO_OBJETIVO_DBTP = -1.5
 TECHO_MUESTRA_DB = -2.5
+COMPENSACION_2X_DB = 0.6
 
 
 def filtro_volumen(ganancia_db: float | None) -> str | None:
@@ -110,7 +111,10 @@ def codificar_1x_y_2x(ruta_pcm: Path, salida_1x: Path, salida_2x: Path, ganancia
     desde el AAC de la 1x (una pérdida menos) y los dos llevan el mismo volumen. Escritura atómica."""
     tmp1, tmp2 = _temporal(salida_1x), _temporal(salida_2x)
     filtro = filtro_volumen(ganancia_db)
-    cadena = (filtro + "," if filtro else "") + "asplit=2[a][b];[b]atempo=2.0[c]"
+    # atempo deja la 2x ~0,6 LU más baja y crea picos nuevos: se compensa y se vuelve a limitar (medido 2026-11-14)
+    filtro_2x = filtro_volumen(COMPENSACION_2X_DB) if filtro else None
+    cadena = (filtro + "," if filtro else "") + "asplit=2[a][b];[b]atempo=2.0" + ("," + filtro_2x if filtro_2x else "")
+    cadena += "[c]"
     _ejecutar(
         [
             *("ffmpeg", "-v", "error", "-nostdin", "-y", *_entrada_pcm(ruta_pcm)),
