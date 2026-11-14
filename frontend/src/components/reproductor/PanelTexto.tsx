@@ -17,11 +17,14 @@ import Button from '@componentes/atoms/Button'
 import Icono from '@componentes/atoms/Icono'
 import { SALA_ESCUCHA } from '@componentes/lector/disenoLector'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
+import { Velo, useFocoInicial } from '@componentes/molecules/Hoja'
 import { type FraseDeTexto, enParrafos, useFrasesCapitulo } from '@componentes/reproductor/useFrasesCapitulo'
 import { useTheme } from '@contextos/ThemeContext'
+import { motor } from '@contextos/VozContext'
 import { fontSize, fuentes } from '@tema'
 import { hoja as materialHoja } from '@tema/materiales'
 import { reducirMovimiento, web } from '@tema/web'
+import { ponerMarca, rectDePalabra } from '@utils/marcaPalabra'
 
 /*
  * «VER TEXTO» MIENTRAS SE ESCUCHA (como los lectores en voz alta).
@@ -37,6 +40,9 @@ import { reducirMovimiento, web } from '@tema/web'
  *   · Si el usuario se desplaza a mano, deja de seguir y aparece «Volver a la
  *     frase actual», que la centra y vuelve a seguir.
  *   · Tocar una frase lleva la voz a esa frase.
+ *   · La palabra que suena lleva una marca de latón que se DESLIZA de una a
+ *     otra (F1; utils/marcaPalabra). Con «Reducir movimiento»,
+ *     salta sin deslizarse.
  *   · Se cierra con la ✕, tocando fuera o con Escape (web).
  */
 
@@ -145,7 +151,22 @@ const PanelTexto: React.FC<Props> = ({
   }, [parrafos])
 
   const scroll = useRef<ScrollView>(null)
+  const marca = useRef<View>(null)
   const altoVista = useRef(0)
+  useFocoInicial(visible, 'panel-texto-titulo')
+
+  /* F1: la marca de la palabra sigue al motor de voz (sin pasar por React: una palabra cada ~300 ms). */
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'web' || typeof document === 'undefined') return
+    return motor.suscribirFrase((ev) => {
+      const m = marca.current as unknown as HTMLElement | null
+      if (!m) return
+      const el = ev.fraseId ? document.getElementById(idDom(ev.fraseId)) : null
+      const padre = m.offsetParent as HTMLElement | null
+      if (!el || !padre || !ev.palabra) return ponerMarca(m, null, false)
+      ponerMarca(m, rectDePalabra(el, ev.palabra[0], ev.palabra[1], padre), !reducirMovimiento())
+    })
+  }, [visible, frases])
   const yParrafos = useRef(new Map<number, number>())
   const ultimoAuto = useRef(0)
   const [siguiendo, setSiguiendo] = useState(true)
@@ -237,6 +258,7 @@ const PanelTexto: React.FC<Props> = ({
       transparent
       animationType={reducirMovimiento() ? 'none' : escritorio ? 'fade' : 'slide'}
       onRequestClose={onCerrar}
+      {...({ 'aria-label': `Texto: ${titulo}` } as object)}
     >
       <View
         style={[
@@ -248,12 +270,7 @@ const PanelTexto: React.FC<Props> = ({
           },
         ]}
       >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onCerrar}
-          accessibilityRole="button"
-          accessibilityLabel="Cerrar el texto"
-        />
+        <Velo onCerrar={onCerrar} testID="velo-texto" />
         <View
           testID={testID}
           accessibilityViewIsModal
@@ -278,6 +295,7 @@ const PanelTexto: React.FC<Props> = ({
                 style={[styles.cabeceraTitulo, { color: colors.text }]}
                 numberOfLines={2}
                 accessibilityRole="header"
+                nativeID="panel-texto-titulo"
               >
                 {titulo}
               </Text>
@@ -313,6 +331,17 @@ const PanelTexto: React.FC<Props> = ({
               scrollEventThrottle={64}
               testID="panel-texto-scroll"
             >
+              <View
+                ref={marca}
+                pointerEvents="none"
+                aria-hidden
+                testID="marca-palabra"
+                style={[
+                  styles.marca,
+                  { backgroundColor: 'rgba(201,162,39,0.32)' },
+                  web({ opacity: 0, boxShadow: `inset 0 -2px 0 ${SALA_ESCUCHA.laton}`, willChange: 'transform' }),
+                ]}
+              />
               {parrafos.map((p, i) => (
                 <Parrafo
                   key={p.frases[0].id}
@@ -384,7 +413,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   cabeceraTexto: { flex: 1, gap: 2 },
-  cabeceraTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg },
+  cabeceraTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, fontVariant: ['lining-nums'] },
   ayuda: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
   centro: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   scroll: { flex: 1 },
@@ -395,6 +424,8 @@ const styles = StyleSheet.create({
   textoGrande: { fontSize: 20, lineHeight: 34 },
   titulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.lg, lineHeight: 30, marginTop: 6 },
   actual: { borderRadius: 4 },
+  /* La marca de la palabra: encima del texto, translúcida, y sin recibir toques. */
+  marca: { position: 'absolute', left: 0, top: 0, width: 0, height: 0, borderRadius: 5, zIndex: 2, opacity: 0 },
   volverCaja: { position: 'absolute', left: 0, right: 0, bottom: 20, alignItems: 'center' },
   pie: {
     flexDirection: 'row',

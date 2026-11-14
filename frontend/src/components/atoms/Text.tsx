@@ -30,6 +30,8 @@ interface TextProps {
    * salía como <h1> y el rotor de VoiceOver no distinguía niveles).
    */
   nivel?: 1 | 2 | 3 | 4
+  /** id del DOM en la web (para aria-labelledby o llevar el foco). */
+  nativeID?: string
 }
 
 const AppText: React.FC<TextProps> = ({
@@ -45,6 +47,7 @@ const AppText: React.FC<TextProps> = ({
   accessibilityRole,
   selectable,
   nivel,
+  nativeID,
 }) => {
   const { colors } = useTheme()
 
@@ -108,6 +111,7 @@ const AppText: React.FC<TextProps> = ({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={rol}
       selectable={selectable}
+      nativeID={nativeID}
       {...encabezado}
     >
       {children}
