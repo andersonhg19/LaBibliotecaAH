@@ -2,6 +2,7 @@ import { motor } from '@contextos/VozContext'
 import { capituloDeFrase } from '@logica/tiempos'
 import { urlPortada } from '@servicios/archivos'
 import type { EjemplarDetalleDTO, ProgresoDTO } from '@tipos'
+import { vecinoConVoz } from '@utils/motorAudio'
 
 const TILDES: Record<string, string> = { Alvaro: 'Álvaro', Salome: 'Salomé', Tomas: 'Tomás', Ramon: 'Ramón' }
 
@@ -12,17 +13,27 @@ export function nombreDeVoz(vozId: string): string {
   return TILDES[n] ?? n
 }
 
+/** Desde dónde empieza (o retoma) la voz un libro. */
+export interface InicioDeEscucha {
+  capitulo: number
+  posicion: number
+  fraseId: string | null
+  vozId: string
+}
+
 /**
- * Empieza a escuchar un libro. Llamar DENTRO del toque del usuario (iOS).
- * Retoma desde el progreso del servidor: la posición de audio si lo último fue
- * la voz, o la frase en la que ibas leyendo.
+ * Desde dónde sonará el libro: la posición de audio si lo último fue la voz, la
+ * frase en la que ibas leyendo o, sin progreso, el PRIMER capítulo con voz (no la
+ * dedicatoria apartada: V-NUEVO-6). El reproductor lo enseña antes de empezar.
  */
-export function escucharLibro(
+export function inicioDeEscucha(
   libro: EjemplarDetalleDTO,
-  o: { vozId: string; velocidad: number; desdeFrase?: string | null; progreso?: ProgresoDTO | null },
-) {
+  o: { vozId: string; desdeFrase?: string | null; progreso?: ProgresoDTO | null },
+): InicioDeEscucha {
   const p = o.progreso ?? libro.progreso
-  let capitulo = p?.capitulo ?? 0
+  const caps = libro.capitulos ?? []
+  const primero = caps.length ? vecinoConVoz(caps, caps[0].indice - 1, 1) : -1
+  let capitulo = p ? (p.capitulo ?? 0) : Math.max(0, primero)
   let posicion = 0
   let fraseId: string | null = o.desdeFrase ?? null
   const vozId = o.vozId || p?.vozId || o.vozId
@@ -33,6 +44,19 @@ export function escucharLibro(
     fraseId = p.fraseId
     capitulo = Math.max(0, capituloDeFrase(p.fraseId))
   }
+  return { capitulo, posicion, fraseId, vozId }
+}
+
+/**
+ * Empieza a escuchar un libro. Llamar DENTRO del toque del usuario (iOS).
+ * Retoma desde el progreso del servidor (ver inicioDeEscucha).
+ */
+export function escucharLibro(
+  libro: EjemplarDetalleDTO,
+  o: { vozId: string; velocidad: number; desdeFrase?: string | null; progreso?: ProgresoDTO | null },
+) {
+  const p = o.progreso ?? libro.progreso
+  const { capitulo, posicion, fraseId, vozId } = inicioDeEscucha(libro, o)
   motor.abrir(
     {
       ejemplarId: libro.id,
