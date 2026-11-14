@@ -92,6 +92,14 @@ Flyway **V6** (solo tablas nuevas): `bah_lib_capitulo_voz` y `bah_lib_sesion`.
   con `timestamp`/`path`. En biblioteca-service una ruta inexistente responde **HTTP 404** con ResultDTO 102
   `rutaNoEncontrada` y un método que la ruta no admite **HTTP 405** con ResultDTO 120 `metodoNoPermitido` (antes:
   HTTP 200 con 103 y un `ERROR ... Error no previsto` en el log).
+- **Arreglos 0.4.0 (sesión, V-NUEVO-2)**: biblioteca-service guarda la respuesta de `POST /v1/auth/sesion` por
+  **(usuario, versión, huella del token)** (sha256 truncado; el token no se guarda ni se registra): un token rechazado
+  ya no deja fuera 10 min a los demás dispositivos de la cuenta, y una ráfaga con el mismo token hace una sola
+  pregunta a auth. Un 401 de auth con «Necesitas iniciar sesión» (auth no vio el token) no cuenta como revocación (se
+  deja pasar con la firma y se repregunta a los 5 s, como si auth no respondiera). auth-service ya no convierte un
+  error interno en 401 (`/error` abierto: sale 5xx). `iat` no se exige «en el pasado» (un reloj corregido hacia atrás
+  rechazaba tokens recién emitidos); `exp` sí. Cada 401 (firma/caducidad/formato, revocada, sin token) deja WARN con
+  el tipo y la ruta. Sin cambios en los cuerpos de respuesta.
 
 ### 0.4.0 (taller) — 2026-11-14 (estructura v2, reclasificación y voz más natural; todo aditivo)
 Detalle en §12. Resumen: `estructura.json` gana `"version": 2` y, por capítulo, `tipo`, `region`, `numero`, `enVoz`,

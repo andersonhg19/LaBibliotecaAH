@@ -3,8 +3,12 @@ package com.bibliotecaah.biblioteca.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+
+import java.net.http.HttpClient;
+import java.time.Duration;
 
 /** RestClient hacia el taller con timeouts explicitos (5 s conexion / 30 s lectura). */
 @Configuration
@@ -42,8 +46,13 @@ public class RestClientConfig {
     @Bean
     public RestClient clienteDeAuth(@Value("${biblioteca.auth-url:http://auth-service:8921}") String url,
                                     @Value("${biblioteca.sesion.timeout-ms:2000}") int timeout) {
-        SimpleClientHttpRequestFactory fabrica = new SimpleClientHttpRequestFactory();
-        fabrica.setConnectTimeout(timeout);
+        /* Validacion web 0.4.0 (V-NUEVO-2): con HttpURLConnection (SimpleClientHttpRequestFactory) el
+           cuerpo de un 401 se pierde, y hace falta para distinguir una revocacion del 401 «sin sesion»
+           de auth y para dejarlo en el log. El HttpClient del JDK si lo entrega. HTTP/1.1: sin el
+           intento de h2c contra Tomcat. */
+        HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofMillis(timeout)).build();
+        JdkClientHttpRequestFactory fabrica = new JdkClientHttpRequestFactory(http);
         fabrica.setReadTimeout(timeout);
         return RestClient.builder().baseUrl(url).requestFactory(fabrica).build();
     }

@@ -1,5 +1,6 @@
 package com.bibliotecaah.auth.security;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -38,6 +39,12 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/actuator/**").permitAll()
+                        /* Validacion web 0.4.0 (V-NUEVO-2): /error abierto, como en biblioteca. Si una
+                           excepcion salia de un filtro (p. ej. la consulta de la sesion con la base
+                           tropezando), el despacho a /error llegaba sin autenticacion y respondia 401
+                           «Necesitas iniciar sesión» a un token valido; biblioteca lo tomaba por una
+                           revocacion. Ahora sale el error de verdad (5xx). */
+                        .requestMatchers("/error").permitAll()
                         /* La especificacion OpenAPI y Swagger UI van sin token a
                            proposito: son la documentacion de como pedir el token.
                            Detras hay un boton "Authorize" que si lo exige para
@@ -61,7 +68,7 @@ public class SecurityConfig {
                    contrato (antes: 403 con el cuerpo vacio en ambos casos y la web no
                    distinguia "inicia sesion" de "no puedes"). */
                 .exceptionHandling(e -> e
-                        .authenticationEntryPoint((req, res, ex) -> escribir(res, 401, SIN_SESION))
+                        .authenticationEntryPoint((req, res, ex) -> sinSesion(req, res))
                         .accessDeniedHandler((req, res, ex) -> escribir(res, 403, SIN_PERMISO)))
                 .addFilterBefore(authorizationFilter, UsernamePasswordAuthenticationFilter.class);
 
@@ -80,6 +87,16 @@ public class SecurityConfig {
             log.info("Ruta rechazada por el cortafuegos: {} ({})", req.getMethod(), ex.getMessage());
             escribir(res, 400, RUTA_INVALIDA);
         };
+    }
+
+    /** 401 del contrato y, desde la validacion web 0.4.0 (V-NUEVO-2), WARN con la ruta (nunca el token). */
+    static void sinSesion(HttpServletRequest req, HttpServletResponse res) throws IOException {
+        String cabecera = req.getHeader("Authorization");
+        log.warn("Peticion sin sesion en {} {} (dispatch {}): {}", req.getMethod(), req.getRequestURI(),
+                req.getDispatcherType(), cabecera == null ? "sin cabecera Authorization"
+                        : cabecera.startsWith("Bearer ") ? "con Bearer (el token no llego al filtro)"
+                        : "cabecera Authorization sin Bearer");
+        escribir(res, 401, SIN_SESION);
     }
 
     static final String RUTA_INVALIDA = "{\"correct\":false,\"message\":\"La dirección pedida no es válida.\",\"errorCode\":400}";

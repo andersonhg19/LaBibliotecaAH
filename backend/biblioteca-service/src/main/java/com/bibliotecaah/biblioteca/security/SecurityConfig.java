@@ -5,17 +5,16 @@ import com.bibliotecaah.biblioteca.enums.Message;
 import com.bibliotecaah.biblioteca.util.CodigoError;
 import com.bibliotecaah.biblioteca.util.Mensajes;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
 
@@ -55,7 +54,7 @@ public class SecurityConfig {
                 /* Sin token: 401 (y no el 403 por defecto), para que la web
                    distinga "inicia sesion" de "no puedes". */
                 .exceptionHandling(e -> e
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint((req, res, ex) -> sinSesion(req, res))
                         /* Con sesion pero sin el rol: 403 con el ResultDTO del contrato. */
                         .accessDeniedHandler((req, res, ex) -> sinPermiso(res)))
                 .addFilterBefore(authorizationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -78,6 +77,23 @@ public class SecurityConfig {
             res.getWriter().write(json.writeValueAsString(
                     new ResultDTO(false, mensajes.texto(Message.Msj.rutaInvalida), CodigoError.DATO_INVALIDO)));
         };
+    }
+
+    /**
+     * Sin token: 401 sin cuerpo (como antes, HttpStatusEntryPoint). Validacion web 0.4.0 (V-NUEVO-2): ahora
+     * deja WARN con la ruta y que cabecera llego (nunca el token), para poder cazar un 401 inesperado.
+     */
+    static void sinSesion(HttpServletRequest req, HttpServletResponse res) {
+        log.warn("Peticion sin sesion en {} {} (dispatch {}): {}", req.getMethod(), req.getRequestURI(),
+                req.getDispatcherType(), cabecera(req.getHeader("Authorization")));
+        res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+    }
+
+    /** Que traia la cabecera Authorization, sin copiarla. */
+    static String cabecera(String authorization) {
+        if (authorization == null) return "sin cabecera Authorization";
+        if (authorization.startsWith("Bearer ")) return "con Bearer (el token no llego al filtro)";
+        return "cabecera Authorization sin Bearer";
     }
 
     void sinPermiso(HttpServletResponse res) throws IOException {

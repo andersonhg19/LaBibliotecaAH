@@ -2,12 +2,14 @@ package com.bibliotecaah.biblioteca.security;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -28,6 +30,7 @@ import java.util.regex.Pattern;
  * cabeceras. Solo ahi: en el resto de la API un token en la URL no vale (las
  * URLs acaban en logs e historiales).
  */
+@Slf4j
 @Component
 public class JWTAuthorizationFilter extends OncePerRequestFilter {
 
@@ -64,14 +67,21 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
         DecodedJWT jwt;
         try {
             /* exp y userId obligatorios (QA SE-18). */
+            /* iat no se exige "en el pasado" (V-NUEVO-2): el token lo firma auth-service con SU reloj y
+               un reloj que se corrige hacia atras (VM de Docker, NTP) dejaba fuera, sin log, los tokens
+               recien emitidos. iat es informativo (BK-08); la caducidad (exp) si se comprueba. */
             jwt = JWT.require(Algorithm.HMAC256(secParams.getSecret()))
-                    .withClaimPresence("exp").withClaimPresence("userId").build().verify(token);
+                    .withClaimPresence("exp").withClaimPresence("userId").ignoreIssuedAt().build().verify(token);
         } catch (JWTVerificationException e) {
+            log.warn("Token rechazado en {} {}: {}", request.getMethod(), request.getRequestURI(), motivo(e));
             rechazar(response, TOKEN_INVALIDO);
             return;
         }
         /* QA SE-02: cuenta desactivada o version de sesion vieja = fuera. */
         if (!vigencia.vigente(jwt.getClaim("userId").asLong(), jwt.getClaim("ver").asInt(), token)) {
+            log.warn("Token rechazado en {} {}: sesion revocada en auth-service (usuario {}, token {})",
+                    request.getMethod(), request.getRequestURI(), jwt.getClaim("userId").asLong(),
+                    VigenciaDeSesiones.huella(token));
             rechazar(response, SESION_REVOCADA);
             return;
         }
@@ -86,6 +96,16 @@ public class JWTAuthorizationFilter extends OncePerRequestFilter {
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * El tipo de rechazo, sin el token: la clase de la excepcion y, salvo en las de formato (cuyo mensaje
+     * puede copiar trozos del token decodificado), su mensaje (firma, caducidad, claim que falta...).
+     */
+    static String motivo(JWTVerificationException e) {
+        String tipo = e.getClass().getSimpleName();
+        if (e instanceof JWTDecodeException || e.getMessage() == null) return tipo;
+        return tipo + " (" + e.getMessage() + ")";
     }
 
     private static void rechazar(HttpServletResponse response, String cuerpo) throws IOException {
