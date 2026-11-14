@@ -61,28 +61,19 @@ export const cuerpoLatido = (d: LatidoDTO): LatidoDTO => ({
 /**
  * Al cerrar la pestaña o pasar a segundo plano, axios no llega: se usa un
  * `fetch` con `keepalive` (sobrevive a la página y, a diferencia de
- * `sendBeacon`, puede llevar la cabecera Authorization). Si no hay fetch, se
- * prueba sendBeacon con el token en `?t=` como los binarios.
+ * `sendBeacon`, puede llevar la cabecera Authorization: un beacon sin token
+ * daría 401). Sin fetch no se manda nada.
  */
 function latidoAlSalir(cuerpo: LatidoDTO): void {
-  const url = `${API_URL}${RUTA_LATIDO}`
+  if (typeof fetch !== 'function') return
   const token = tokenActual()
-  const json = JSON.stringify(cuerpo)
   try {
-    if (typeof fetch === 'function') {
-      fetch(url, {
-        method: 'POST',
-        keepalive: true,
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: json,
-      }).catch((e) => console.warn('[sesiones] latido al salir', e))
-      return
-    }
-    const nav = typeof navigator !== 'undefined' ? navigator : null
-    if (nav?.sendBeacon) {
-      const conT = token ? `${url}?t=${encodeURIComponent(token)}` : url
-      nav.sendBeacon(conT, new Blob([json], { type: 'application/json' }))
-    }
+    fetch(`${API_URL}${RUTA_LATIDO}`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(cuerpo),
+    }).catch((e) => console.warn('[sesiones] latido al salir', e))
   } catch (e) {
     console.warn('[sesiones] latido al salir', e)
   }

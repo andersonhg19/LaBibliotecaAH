@@ -8,7 +8,7 @@ import AppText from '@componentes/atoms/Text'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import { useTheme } from '@contextos/ThemeContext'
 import { useToast } from '@contextos/ToastContext'
-import { type LugarEnIndice, type RegionCapitulo, estructurarIndice } from '@logica/capitulos'
+import { type LugarEnIndice, type RegionCapitulo, estructurarIndice, normalizarTitulo } from '@logica/capitulos'
 import { duracion } from '@logica/formato'
 import { idDeFrase } from '@logica/tiempos'
 import { capitulosVozService } from '@servicios/bibliotecaService'
@@ -48,15 +48,16 @@ export function esSoloHistoria(capitulos: readonly CapituloResumen[], lugares: r
   return capitulos.length > 0 && capitulos.every((c, i) => (c.enVoz !== false) === (lugares[i]?.region === 'cuerpo'))
 }
 
-/** Cómo se llama una fila sin número, para el lector de pantalla. */
-const nombreDe = (l: LugarEnIndice): string =>
-  l.numero != null
-    ? `el capítulo ${l.numero}`
-    : l.parte
-      ? 'la parte'
-      : l.region === 'despues'
-        ? 'la sección del final'
-        : 'la portadilla'
+const PORTADILLA = /^(portadilla|portada|cubierta|anteportada|title\s*page)/i
+
+/** Cómo se llama una fila sin número, para el lector de pantalla («la portadilla», «la parte»…). */
+const nombreDe = (l: LugarEnIndice, titulo: string, tituloLibro: string): string => {
+  if (l.numero != null) return `el capítulo ${l.numero}`
+  if (l.parte) return 'la parte'
+  if (l.region === 'despues') return 'la sección del final'
+  const portadilla = PORTADILLA.test(titulo.trim()) || normalizarTitulo(titulo) === normalizarTitulo(tituloLibro)
+  return l.region === 'antes' && portadilla ? 'la portadilla' : 'la sección'
+}
 
 interface Props {
   libro: EjemplarDetalleDTO
@@ -126,7 +127,7 @@ const IndiceLibro: React.FC<Props> = ({ libro, legible, onLeer, onEscuchar, onCa
 
   const fila = (c: CapituloResumen, l: LugarEnIndice) => {
     const actual = libro.progreso?.capitulo === c.indice
-    const nombre = nombreDe(l)
+    const nombre = nombreDe(l, c.titulo, libro.titulo)
     const enVoz = c.enVoz !== false
     if (l.parte) {
       return (
