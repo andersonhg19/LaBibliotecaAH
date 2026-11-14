@@ -13,7 +13,7 @@ concurrency:
 
 env:
   JAVA_VERSION: '17'
-  NODE_VERSION: '22'  # Node 20 sin soporte desde 2026-04-30 (OP-09); la linea LTS 22
+  NODE_VERSION: '22.23.5'  # Node 22 LTS fijado (OP-09); la misma version que frontend/Dockerfile y .nvmrc
   PYTHON_VERSION: '3.12'
   LANG: C.UTF-8
   LC_ALL: C.UTF-8
@@ -105,6 +105,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # Aviso (no rompe): vulnerabilidades criticas en dependencias de ejecucion (OP-10).
+      - name: npm audit (ejecucion, criticas)
+        run: npm audit --omit=dev --audit-level=critical || echo "::warning::npm audit encontro vulnerabilidades criticas en dependencias de ejecucion"
       - run: npm run lint
+      - run: npm run formato:revisar
       - run: npm run tipos
       - run: npx jest --coverage --ci

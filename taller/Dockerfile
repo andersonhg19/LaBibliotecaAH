@@ -8,7 +8,10 @@ ARG PYTHON_IMAGEN=python:3.12.16-slim-bookworm
 
 FROM ${PYTHON_IMAGEN} AS dependencias
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN python -m venv /opt/venv
+# pip del venv al dia (el 25.0.1 que trae la imagen de Python tiene avisos de pip-audit, OP-17); fijado con hash.
+RUN python -m venv /opt/venv \
+ && echo "pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70" > /tmp/pip.txt \
+ && /opt/venv/bin/pip install --require-hashes -r /tmp/pip.txt
 ENV PATH=/opt/venv/bin:$PATH
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt

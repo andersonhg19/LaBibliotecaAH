@@ -24,7 +24,10 @@ RUN --mount=type=cache,target=/descargas /opt/conv/bin/python /tmp/convertir.py 
 # ---------- dependencias ----------
 FROM ${PYTHON_IMAGEN} AS dependencias
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
-RUN python -m venv /opt/venv
+# pip del venv al dia (el 25.0.1 que trae la imagen de Python tiene avisos de pip-audit, OP-17); fijado con hash.
+RUN python -m venv /opt/venv \
+ && echo "pip==26.2.2 --hash=sha256:fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70" > /tmp/pip.txt \
+ && /opt/venv/bin/pip install --require-hashes -r /tmp/pip.txt
 COPY requirements.txt /tmp/requirements.txt
 RUN /opt/venv/bin/pip install --require-hashes -r /tmp/requirements.txt
 
