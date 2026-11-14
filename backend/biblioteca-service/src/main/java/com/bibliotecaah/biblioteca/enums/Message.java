@@ -78,6 +78,14 @@ public final class Message {
         demasiadasCarpetas,
         carpetaSoloDocumentos,
         soloDocumentosEnCarpetas,
-        carpetaNoVacia
+        carpetaNoVacia,
+        // 0.4.0: sesiones de lectura y estado de la casa.
+        sesionAjena,
+        capitulosNoDisponibles,
+        rangoDeFechasInvalido,
+        casaDiscoDesconectado,
+        casaTallerCaido,
+        casaTallerLento,
+        casaTraductorCaido
     }
 }

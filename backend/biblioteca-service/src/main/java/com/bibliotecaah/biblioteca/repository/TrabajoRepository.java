@@ -13,12 +13,21 @@ public interface TrabajoRepository {
     String VOZ_CAPITULO = "VOZ_CAPITULO";
     /** (v1.4) El taller relee solo las materias del original (relleno de generos de libros viejos). */
     String RELEER_METADATOS = "RELEER_METADATOS";
+    /** (0.4.0, contrato C2) El taller reclasifica la estructura de un libro ya convertido (v1 -> v2). */
+    String RECLASIFICAR_ESTRUCTURA = "RECLASIFICAR_ESTRUCTURA";
 
     int PRIORIDAD_CONVERTIR = 100;
     int PRIORIDAD_CAPITULO_PEDIDO = 10;
     int PRIORIDAD_CAPITULO_SIGUIENTE = 20;
     /** Detras de las conversiones nuevas: el relleno no retrasa a nadie. */
     int PRIORIDAD_RELEER = 200;
+    /** (0.4.0, C2) Como RELEER_METADATOS: detras de todo lo demas. */
+    int PRIORIDAD_RECLASIFICAR = 200;
+    /**
+     * (0.4.0, C5) "Preparar el libro entero": detras de lo que alguien escucha (10)
+     * y de las precargas (20), pero antes de las conversiones nuevas (100 van en otro hilo).
+     */
+    int PRIORIDAD_PREPARAR_LIBRO = 40;
 
     UUID encolarConversion(UUID archivoId);
 
@@ -62,4 +71,27 @@ public interface TrabajoRepository {
 
     /** Obras sin ningun genero de libros y documentos con archivo (para el informe del relleno). */
     int contarObrasSinGenero();
+
+    // ------------------------------------------------------------------ 0.4.0
+
+    /** Ids de los archivos con la conversion LISTO. */
+    java.util.List<UUID> archivosListos();
+
+    /**
+     * (C2) Encola RECLASIFICAR_ESTRUCTURA (payload {}, prioridad 200) si ese
+     * archivo no tiene ya uno vivo (PENDIENTE o EN_CURSO). true si lo encolo.
+     */
+    boolean encolarReclasificacionSiFalta(UUID archivoId);
+
+    /** (C5) capitulo -> estado en bah_lib_audio (PENDIENTE | GENERANDO | LISTO | ERROR) de ese archivo y voz. */
+    Map<Integer, String> estadosDeVoz(UUID archivoId, String vozId);
+
+    /** (C5) Capitulos de ese archivo y voz con un trabajo VOZ_CAPITULO vivo (PENDIENTE o EN_CURSO con latido). */
+    java.util.Set<Integer> capitulosEnCola(UUID archivoId, String vozId);
+
+    /** (C6) Trabajos de voz vivos en toda la casa. */
+    int colaDeVoz();
+
+    /** (C6) true si un capitulo que alguien espera (prioridad <= 10) lleva mas de {@code minutos} sin empezar. */
+    boolean vozUrgenteAtascada(int minutos);
 }

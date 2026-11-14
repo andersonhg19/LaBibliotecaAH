@@ -96,7 +96,7 @@ public abstract class PostgresDeVerdad {
     protected void limpiarTodo() throws IOException {
         jdbc.execute("TRUNCATE bah_lib_estante_item, bah_lib_estante, bah_lib_progreso, bah_lib_anotacion, "
                 + "bah_lib_comentario, bah_lib_ejemplar, bah_lib_obra, bah_lib_archivo, bah_lib_trabajo, "
-                + "bah_lib_audio, bah_lib_cambio, bah_lib_traduccion, bah_lib_carpeta CASCADE");
+                + "bah_lib_audio, bah_lib_cambio, bah_lib_traduccion, bah_lib_carpeta, bah_lib_capitulo_voz, bah_lib_sesion CASCADE");
         TRADUCTOR.reiniciar();
         borrar(DATOS);
         Files.createDirectories(DATOS);

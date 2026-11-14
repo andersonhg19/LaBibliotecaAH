@@ -63,7 +63,7 @@ public class LibroController {
 
     @Operation(summary = "Lista paginada con pestanas, filtros combinables y orden")
     @PostMapping(value = "/all", produces = "application/json")
-    public ResponseEntity<ResultDTO> all(@RequestBody(required = false) FiltroLibrosDTO filtro) {
+    public ResponseEntity<ResultDTO> all(@Valid @RequestBody(required = false) FiltroLibrosDTO filtro) {
         return ResponseEntity.ok(new ResultDTO(libros.getAll(filtro)));
     }
 

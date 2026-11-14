@@ -70,7 +70,8 @@ public class LibroServiceImpl implements LibroService {
     private final IngestaService ingesta;
     private final EstanteService estantes;
     private final EnsambladorDeEjemplares ensamblador;
-    private final LectorDeEstructura estructura;
+    /** (0.4.0, C3) Capitulos con su enVoz efectivo para este usuario. */
+    private final com.bibliotecaah.biblioteca.service.CapituloVozService capitulosEnVoz;
     private final BibliotecaMapper mapper;
     private final AlmacenDeArchivos almacen;
     private final Mensajes mensajes;
@@ -83,7 +84,7 @@ public class LibroServiceImpl implements LibroService {
     public LibroServiceImpl(EjemplarRepository ejemplares, ObraRepository obras, ArchivoRepository archivos,
                             ProgresoRepository progresos, TrabajoRepository trabajos, IngestaService ingesta,
                             EstanteService estantes, EnsambladorDeEjemplares ensamblador,
-                            LectorDeEstructura estructura, BibliotecaMapper mapper, AlmacenDeArchivos almacen,
+                            com.bibliotecaah.biblioteca.service.CapituloVozService capitulosEnVoz, BibliotecaMapper mapper, AlmacenDeArchivos almacen,
                             Mensajes mensajes, ApplicationEventPublisher eventos, Topes topes,
                             EstanteItemRepository estanteItems, TransactionTemplate tx, CarpetaRepository carpetas) {
         this.carpetas = carpetas;
@@ -98,7 +99,7 @@ public class LibroServiceImpl implements LibroService {
         this.ingesta = ingesta;
         this.estantes = estantes;
         this.ensamblador = ensamblador;
-        this.estructura = estructura;
+        this.capitulosEnVoz = capitulosEnVoz;
         this.mapper = mapper;
         this.almacen = almacen;
         this.mensajes = mensajes;
@@ -269,6 +270,12 @@ public class LibroServiceImpl implements LibroService {
     public PageDTO<EjemplarDTO> getAll(FiltroLibrosDTO filtro) {
         Long yo = SecurityUtils.usuarioActual();
         FiltroLibrosDTO f = filtro == null ? new FiltroLibrosDTO() : filtro;
+        /* Auditoria BK-07: "NaN", Infinity o fuera de 0..5 ya no pasan en silencio (como en el progreso). */
+        if (f.getCalificacionMin() != null) {
+            ValidationUtils.exigir(Double.isFinite(f.getCalificacionMin()) && f.getCalificacionMin() >= 0
+                            && f.getCalificacionMin() <= 5, Message.Msj.valorFueraDeRango, CodigoError.DATO_INVALIDO,
+                    "calificacionMin", "0", "5");
+        }
         int page = f.getPage() == null || f.getPage() < 0 ? 0 : f.getPage();
         int size = f.getSize() == null || f.getSize() < 1 ? TAMANO_POR_DEFECTO : Math.min(f.getSize(), TAMANO_MAXIMO);
 
@@ -302,7 +309,7 @@ public class LibroServiceImpl implements LibroService {
         Ejemplar e = propio(yo, ejemplarId);
         EjemplarDetalleDTO dto = mapper.aDetalleDTO(e);
         ensamblador.extras(yo, List.of(e.getId())).completar(dto);
-        dto.setCapitulos(estructura.capitulos(e.getArchivo() == null ? null : e.getArchivo().getId()));
+        dto.setCapitulos(capitulosEnVoz.capitulos(yo, e));
         dto.setProgreso(progresos.findByUsuarioIdAndEjemplarId(yo, e.getId()).map(mapper::aProgresoDTO).orElse(null));
         return dto;
     }

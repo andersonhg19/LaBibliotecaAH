@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.ClassUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Properties;
 import java.util.stream.Stream;
 
@@ -101,22 +103,32 @@ class ReglasDeArquitecturaTest {
     @DisplayName("Contrato de los controllers")
     class Contrato {
 
+        /**
+         * (0.4.0) Excepciones DOCUMENTADAS a "todo es POST": las fija el contrato compartido
+         * con la web (contratos C3-C6). Siguen devolviendo el ResultDTO.
+         */
+        private static final Set<String> NO_POST_POR_CONTRATO = Set.of(
+                "CapituloVozController.cambiar", "CapituloVozController.soloHistoria",
+                "SesionController.resumen", "VozController.preparacion", "EstadoCasaController.estado");
+
         @Test
-        @DisplayName("todo endpoint es POST y devuelve ResponseEntity<ResultDTO>; solo ArchivoController sirve binarios por GET")
+        @DisplayName("todo endpoint devuelve ResponseEntity<ResultDTO> y es POST (salvo binarios y las excepciones del contrato 0.4.0)")
         void todoDevuelveElContrato() {
             List<String> culpables = new ArrayList<>();
             List<Class<?>> controllers = clasesDe(RAIZ + ".controller", true);
-            assertThat(controllers).hasSize(10); // (v1.6) + CarpetaController
+            assertThat(controllers).hasSize(13); // (0.4.0) + CapituloVoz, Sesion y EstadoCasa
             for (Class<?> c : controllers) {
                 for (Method m : c.getDeclaredMethods()) {
                     boolean esPost = m.isAnnotationPresent(PostMapping.class);
-                    boolean esOtro = m.isAnnotationPresent(GetMapping.class) || m.isAnnotationPresent(RequestMapping.class);
+                    boolean esOtro = m.isAnnotationPresent(GetMapping.class) || m.isAnnotationPresent(RequestMapping.class)
+                            || m.isAnnotationPresent(PutMapping.class);
                     if (!esPost && !esOtro) continue;
                     Class<?> cuerpo = cuerpoDe(m);
+                    String nombre = c.getSimpleName() + "." + m.getName();
                     if (c == ArchivoController.class) {
-                        if (cuerpo != Resource.class) culpables.add(c.getSimpleName() + "." + m.getName());
-                    } else if (!esPost || cuerpo != ResultDTO.class) {
-                        culpables.add(c.getSimpleName() + "." + m.getName());
+                        if (cuerpo != Resource.class) culpables.add(nombre);
+                    } else if ((!esPost && !NO_POST_POR_CONTRATO.contains(nombre)) || cuerpo != ResultDTO.class) {
+                        culpables.add(nombre);
                     }
                 }
             }

@@ -2,6 +2,7 @@ package com.bibliotecaah.auth.security;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -22,9 +23,16 @@ import java.util.concurrent.ConcurrentHashMap;
  *     alias de la misma persona suman juntos).
  *  2. POR ORIGEN: MAX_FALLOS_ORIGEN fallos en VENTANA_ORIGEN contra cualquier
  *     cuenta. Frena el barrido de contrasenas (spraying) desde un dispositivo.
- *  3. GLOBAL: MAX_FALLOS_GLOBAL fallos en VENTANA_GLOBAL sumando todo. Ultima
- *     red contra un barrido desde muchos origenes; el umbral es alto para que el
- *     uso normal de dos personas no lo roce.
+ *  3. GLOBAL (0.4.0, auditoria BK-01): YA NO BLOQUEA. Antes, 60 fallos por
+ *     minuto sumando todo dejaban a TODOS con 429, tambien a quien tecleaba bien
+ *     su clave: cualquiera con acceso a la tailnet podia dejar a la familia sin
+ *     entrar. Ahora solo deja aviso en el log y endurece el retardo progresivo.
+ *
+ * RETARDO PROGRESIVO (BK-01): tras cada fallo, la respuesta de ESE origen se
+ * retrasa un poco mas (nada en los primeros RETARDO_DESDE fallos; luego 250 ms,
+ * 500 ms, 1 s... hasta RETARDO_MAXIMO). Un login correcto nunca espera, y los
+ * fallos de un origen no retrasan a los demas. Si el contador global esta
+ * lleno, todo fallo espera al menos RETARDO_GLOBAL.
  *
  * POR QUE CUENTA+ORIGEN Y NO SOLO CUENTA (SE-08): con solo la cuenta, quien
  * supiera tu correo te dejaba fuera indefinidamente fallando cada pocos
@@ -50,6 +58,17 @@ public class LimiteDeIntentosDeLogin {
     static final Duration VENTANA_ORIGEN = Duration.ofMinutes(10);
     static final int MAX_FALLOS_GLOBAL = 60;
     static final Duration VENTANA_GLOBAL = Duration.ofMinutes(1);
+    /** Fallos de un origen (en VENTANA_ORIGEN) que no se retrasan. */
+    static final int RETARDO_DESDE = 3;
+    static final Duration RETARDO_BASE = Duration.ofMillis(250);
+    static final Duration RETARDO_MAXIMO = Duration.ofSeconds(4);
+    static final Duration RETARDO_GLOBAL = Duration.ofSeconds(1);
+
+    /** Como se espera (en las pruebas, sin dormir de verdad). */
+    @FunctionalInterface
+    public interface Espera {
+        void esperar(Duration cuanto) throws InterruptedException;
+    }
 
     static final String SIN_ORIGEN = "desconocido";
     private static final String GLOBAL = "global";
@@ -61,14 +80,26 @@ public class LimiteDeIntentosDeLogin {
     private final Map<String, Deque<Instant>> porCuenta = new ConcurrentHashMap<>();
     private final Map<String, Deque<Instant>> porOrigen = new ConcurrentHashMap<>();
     private final Deque<Instant> global = new ArrayDeque<>();
+    private final Espera espera;
+    private static final Espera DORMIR = cuanto -> Thread.sleep(cuanto.toMillis());
 
+    /**
+     * Bean de Spring. {@code biblioteca.login.retardo=false} apaga SOLO la espera
+     * (las pruebas de integracion hacen muchos logins fallidos seguidos); los
+     * frenos 429 siguen igual.
+     */
     @Autowired
-    public LimiteDeIntentosDeLogin() {
-        this(Clock.systemUTC());
+    public LimiteDeIntentosDeLogin(@Value("${biblioteca.login.retardo:true}") boolean conRetardo) {
+        this(Clock.systemUTC(), conRetardo ? DORMIR : cuanto -> { });
     }
 
     public LimiteDeIntentosDeLogin(Clock reloj) {
+        this(reloj, DORMIR);
+    }
+
+    public LimiteDeIntentosDeLogin(Clock reloj, Espera espera) {
         this.reloj = reloj;
+        this.espera = espera;
     }
 
     // ---------------------------------------------------------------- sin origen
@@ -90,7 +121,7 @@ public class LimiteDeIntentosDeLogin {
     /** ¿Esa identidad, desde ese origen, tiene que esperar? */
     public boolean estaBloqueado(String identidad, String origen) {
         String o = origen(origen);
-        if (lleno(global, MAX_FALLOS_GLOBAL, VENTANA_GLOBAL)) return true;
+        /* BK-01: el contador global ya no bloquea a nadie (ver la cabecera). */
         if (lleno(porOrigen.get(o), MAX_FALLOS_ORIGEN, VENTANA_ORIGEN)) return true;
         String clave = clave(identidad, o);
         return clave != null && lleno(porCuenta.get(clave), MAX_FALLOS, VENTANA);
@@ -107,6 +138,43 @@ public class LimiteDeIntentosDeLogin {
         if (clave != null) {
             anotar(porCuenta.computeIfAbsent(clave, k -> new ArrayDeque<>()), VENTANA, MAX_FALLOS, clave);
         }
+        Duration retardo = retardo(o);
+        if (!retardo.isZero()) {
+            try {
+                espera.esperar(retardo);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Retardo del login interrumpido para el origen {}", o);
+            }
+        }
+    }
+
+    /**
+     * Cuanto se retrasa la respuesta tras un fallo desde ese origen (BK-01):
+     * cero los primeros RETARDO_DESDE fallos, luego se dobla desde RETARDO_BASE
+     * hasta RETARDO_MAXIMO. Con el contador global lleno, al menos RETARDO_GLOBAL.
+     */
+    Duration retardo(String origen) {
+        Deque<Instant> delOrigen = porOrigen.get(origen(origen));
+        int fallos;
+        if (delOrigen == null) {
+            fallos = 0;
+        } else {
+            synchronized (delOrigen) {
+                purgar(delOrigen, VENTANA_ORIGEN);
+                fallos = delOrigen.size();
+            }
+        }
+        Duration retardo = Duration.ZERO;
+        if (fallos > RETARDO_DESDE) {
+            int pasos = Math.min(fallos - RETARDO_DESDE - 1, 10);
+            retardo = RETARDO_BASE.multipliedBy(1L << pasos);
+            if (retardo.compareTo(RETARDO_MAXIMO) > 0) retardo = RETARDO_MAXIMO;
+        }
+        if (lleno(global, MAX_FALLOS_GLOBAL, VENTANA_GLOBAL) && retardo.compareTo(RETARDO_GLOBAL) < 0) {
+            retardo = RETARDO_GLOBAL;
+        }
+        return retardo;
     }
 
     /** Un login correcto pone a cero esa cuenta en ese origen (no los otros frenos). */

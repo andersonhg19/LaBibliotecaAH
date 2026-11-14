@@ -34,6 +34,16 @@ class LaConfiguracionDelGatewayEsLaEsperadaTest {
     @Autowired
     private GatewayProperties gateway;
 
+    @Autowired
+    private org.springframework.cloud.gateway.config.HttpClientProperties cliente;
+
+    @Test
+    @DisplayName("BK-05: el tope general de espera es de 2 minutos (las subidas tienen el suyo)")
+    void topeGeneral() {
+        assertThat(cliente.getResponseTimeout()).isEqualTo(java.time.Duration.ofMinutes(2));
+        assertThat(cliente.getConnectTimeout()).isEqualTo(10_000);
+    }
+
     @Nested
     @DisplayName("CORS (RG-01)")
     class Cors {

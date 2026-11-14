@@ -1181,7 +1181,7 @@
                 "login"
               ]
             },
-            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"anderson@biblioteca.ah\",\n  \"password\": \"Clave1234\",\n  \"usuario\": \"anderson\"\n}",
@@ -1219,7 +1219,7 @@
                     "login"
                   ]
                 },
-                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"anderson@biblioteca.ah\",\n  \"password\": \"Clave1234\",\n  \"usuario\": \"anderson\"\n}",
@@ -1269,7 +1269,7 @@
                 "login"
               ]
             },
-            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"usuario\": \"anderson\",\n  \"password\": \"{{clave}}\"\n}",
@@ -1307,7 +1307,7 @@
                     "login"
                   ]
                 },
-                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"usuario\": \"anderson\",\n  \"password\": \"{{clave}}\"\n}",
@@ -1357,7 +1357,7 @@
                 "login"
               ]
             },
-            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+            "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"usuario\": \"anderson@biblioteca.ah\",\n  \"password\": \"{{clave}}\"\n}",
@@ -1395,7 +1395,7 @@
                     "login"
                   ]
                 },
-                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+                "description": "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"usuario\": \"anderson@biblioteca.ah\",\n  \"password\": \"{{clave}}\"\n}",
@@ -6044,6 +6044,920 @@
                 }
               ],
               "body": "{\n  \"correct\": false,\n  \"message\": \"Para cumplir un deseo sube un solo archivo (llegaron 2).\",\n  \"errorCode\": 120,\n  \"object\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reclasifica la estructura (v1 -> v2) de los libros ya convertidos (0.4.0, idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/reclasificar-estructura",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "admin",
+                "libros",
+                "reclasificar-estructura"
+              ]
+            },
+            "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/admin/libros/reclasificar-estructura",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "admin",
+                    "libros",
+                    "reclasificar-estructura"
+                  ]
+                },
+                "description": "Encola RECLASIFICAR_ESTRUCTURA para cada archivo LISTO cuya estructura.json aun no es v2 y sin trabajo vivo. El taller solo anade tipo/region/numero/enVoz: indices, titulos y palabras no cambian (progreso, notas y audio intactos). Sin el disco: 503."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/voz",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "capitulos",
+                "voz"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"soloHistoria\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/voz",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "capitulos",
+                    "voz"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"soloHistoria\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Quitar 'solo la historia' (borra preferencias)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/voz",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "capitulos",
+                "voz"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"soloHistoria\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/voz",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "capitulos",
+                    "voz"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Solo la historia en voz (true) o volver al defecto en todo el libro (false)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"soloHistoria\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/:indice/voz",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "capitulos",
+                ":indice",
+                "voz"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                },
+                {
+                  "key": "indice",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enVoz\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/:indice/voz",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "capitulos",
+                    ":indice",
+                    "voz"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    },
+                    {
+                      "key": "indice",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enVoz\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Volver al defecto de la estructura",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/:indice/voz",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "ejemplares",
+                ":ejemplarId",
+                "capitulos",
+                ":indice",
+                "voz"
+              ],
+              "variable": [
+                {
+                  "key": "ejemplarId",
+                  "value": ""
+                },
+                {
+                  "key": "indice",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enVoz\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/ejemplares/:ejemplarId/capitulos/:indice/voz",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "ejemplares",
+                    ":ejemplarId",
+                    "capitulos",
+                    ":indice",
+                    "voz"
+                  ],
+                  "variable": [
+                    {
+                      "key": "ejemplarId",
+                      "value": ""
+                    },
+                    {
+                      "key": "indice",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Un capitulo en voz o no ({\"enVoz\": true|false}; null = volver a lo de la estructura)",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enVoz\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Como esta la casa: taller OK|LENTO|CAIDO, traductor OK|CAIDO, disco OK|DESCONECTADO, colaVoz y un mensaje para la persona (cache de 15 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estado-casa",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "estado-casa"
+              ]
+            },
+            "description": "Como esta la casa: taller OK|LENTO|CAIDO, traductor OK|CAIDO, disco OK|DESCONECTADO, colaVoz y un mensaje para la persona (cache de 15 s)"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/estado-casa",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "estado-casa"
+                  ]
+                },
+                "description": "Como esta la casa: taller OK|LENTO|CAIDO, traductor OK|CAIDO, disco OK|DESCONECTADO, colaVoz y un mensaje para la persona (cache de 15 s)"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Latido de una sesion de lectura o escucha (cada ~60 s y al pausar/salir)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/latido",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "sesiones",
+                "latido"
+              ]
+            },
+            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"capitulo\": 0,\n  \"dispositivo\": \"\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"LECTURA\",\n  \"posicion\": 0,\n  \"segundos\": 0,\n  \"sesionId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/latido",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "sesiones",
+                    "latido"
+                  ]
+                },
+                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"capitulo\": 0,\n  \"dispositivo\": \"\",\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"LECTURA\",\n  \"posicion\": 0,\n  \"segundos\": 0,\n  \"sesionId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Latido de escucha con sesion del cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/latido",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "sesiones",
+                "latido"
+              ]
+            },
+            "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"VOZ\",\n  \"sesionId\": \"11111111-1111-1111-1111-111111111111\",\n  \"capitulo\": 3,\n  \"posicion\": 812.4,\n  \"segundos\": 60,\n  \"dispositivo\": \"iPhone\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/latido",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "sesiones",
+                    "latido"
+                  ]
+                },
+                "description": "Crea la sesion (sin sesionId o con uno nuevo) o la alarga. segundos 0..120 desde el latido anterior; ejemplar ajeno -> 102; sesionId de otra persona u otro libro -> 102.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"modo\": \"VOZ\",\n  \"sesionId\": \"11111111-1111-1111-1111-111111111111\",\n  \"capitulo\": 3,\n  \"posicion\": 812.4,\n  \"segundos\": 60,\n  \"dispositivo\": \"iPhone\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Resumen: minutos de lectura y voz, por dia y por libro, y rachas (zona America/Bogota)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/resumen?desde=2026-11-01&hasta=2026-11-14",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "sesiones",
+                "resumen"
+              ],
+              "query": [
+                {
+                  "key": "desde",
+                  "value": "2026-11-01"
+                },
+                {
+                  "key": "hasta",
+                  "value": "2026-11-14"
+                }
+              ]
+            },
+            "description": "desde/hasta AAAA-MM-DD, opcionales (por defecto los ultimos 30 dias, como mucho 366)."
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/sesiones/resumen?desde=2026-11-01&hasta=2026-11-14",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "sesiones",
+                    "resumen"
+                  ],
+                  "query": [
+                    {
+                      "key": "desde",
+                      "value": "2026-11-01"
+                    },
+                    {
+                      "key": "hasta",
+                      "value": "2026-11-14"
+                    }
+                  ]
+                },
+                "description": "desde/hasta AAAA-MM-DD, opcionales (por defecto los ultimos 30 dias, como mucho 366)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Progreso de la preparacion del libro en una voz (0.4.0, C5): {total, listos, enCola, error}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro?ejemplarId=00000000-0000-0000-0000-000000000000&vozId=edge.es-ES-AlvaroNeural",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "voz",
+                "preparar-libro"
+              ],
+              "query": [
+                {
+                  "key": "ejemplarId",
+                  "value": "00000000-0000-0000-0000-000000000000"
+                },
+                {
+                  "key": "vozId",
+                  "value": "edge.es-ES-AlvaroNeural"
+                }
+              ]
+            },
+            "description": "Progreso de la preparacion del libro en una voz (0.4.0, C5): {total, listos, enCola, error}"
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro?ejemplarId=00000000-0000-0000-0000-000000000000&vozId=edge.es-ES-AlvaroNeural",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "voz",
+                    "preparar-libro"
+                  ],
+                  "query": [
+                    {
+                      "key": "ejemplarId",
+                      "value": "00000000-0000-0000-0000-000000000000"
+                    },
+                    {
+                      "key": "vozId",
+                      "value": "edge.es-ES-AlvaroNeural"
+                    }
+                  ]
+                },
+                "description": "Progreso de la preparacion del libro en una voz (0.4.0, C5): {total, listos, enCola, error}"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Prepara el libro entero en una voz (0.4.0, C5)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "voz",
+                "preparar-libro"
+              ]
+            },
+            "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "voz",
+                    "preparar-libro"
+                  ]
+                },
+                "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
             }
           ]
         }

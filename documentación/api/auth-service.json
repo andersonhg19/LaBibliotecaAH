@@ -737,7 +737,7 @@
     },
     "/v1/auth/login" : {
       "post" : {
-        "description" : "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).",
+        "description" : "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {

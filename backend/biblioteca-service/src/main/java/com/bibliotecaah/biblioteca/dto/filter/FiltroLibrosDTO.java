@@ -1,5 +1,6 @@
 package com.bibliotecaah.biblioteca.dto.filter;
 
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,6 +22,8 @@ public class FiltroLibrosDTO {
     public enum Orden { RECIENTES, ANTIGUOS, ULTIMO_ABIERTO, TITULO, AUTOR, ANIO, PROGRESO, CALIFICACION }
 
     private Pestana pestana;
+    /** Auditoria BK-06: como el texto de busqueda de carpetas, 200 como mucho (120 con el campo). */
+    @Size(max = 200, message = "{validacion.maximo}")
     private String texto;
     private List<String> autores;
     private List<String> generos;

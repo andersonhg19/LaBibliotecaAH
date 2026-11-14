@@ -1,5 +1,6 @@
 package com.bibliotecaah.auth.controller;
 
+import lombok.extern.slf4j.Slf4j;
 import com.bibliotecaah.auth.dto.input.AuthenticationRequest;
 import com.bibliotecaah.auth.dto.input.AuthenticationResponse;
 import com.bibliotecaah.auth.dto.input.UserRegisterDTO;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/v1/auth")
 public class AuthenticationController {
@@ -40,6 +42,12 @@ public class AuthenticationController {
                                     @Value("${biblioteca.login.proxies-confiables:2}") int proxiesConfiables) {
         this.registroPublico = registroPublico;
         this.proxiesConfiables = proxiesConfiables;
+        /* Auditoria BK-02: el alta publica abierta en produccion seria un agujero
+           (cuenta y token para cualquiera que alcance el gateway). Que se vea. */
+        if (registroPublico) {
+            log.warn("ATENCION: REGISTRO_PUBLICO=true -> cualquiera que alcance el gateway puede crearse una cuenta. "
+                    + "En produccion debe ser false (las cuentas las crea un administrador).");
+        }
         this.authenticationService = authenticationService;
         this.userService = userService;
         this.mensajes = mensajes;
@@ -48,7 +56,7 @@ public class AuthenticationController {
     @Operation(summary = "Inicia sesion con correo o alias",
             description = "Envia 'usuario' (correo o alias) y 'password'. 'email' se acepta como sinonimo "
                     + "retrocompatible de 'usuario'. Usuario inexistente y clave incorrecta dan el mismo "
-                    + "mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo, 20 por dispositivo en 10 minutos o 60 en total por minuto frenan (errorCode 429).")
+                    + "mensaje (errorCode 101); 5 fallos en 5 minutos por cuenta y dispositivo o 20 por dispositivo en 10 minutos frenan (errorCode 429); los fallos repetidos desde un dispositivo responden cada vez mas despacio.")
     @PostMapping(value = "/login", produces = "application/json")
     public ResponseEntity<ResultDTO> login(@Valid @RequestBody AuthenticationRequest request,
                                            HttpServletRequest http) {

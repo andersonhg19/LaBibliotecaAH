@@ -45,7 +45,24 @@ VARIANTES = {
         ("Reintentar un capitulo traducido en ERROR",
          {"ejemplarId": "00000000-0000-0000-0000-000000000000", "capitulo": 0, "destino": "es", "reintentar": True}),
     ],
+    # 0.4.0 (contratos C3, C4).
+    "/v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz": [
+        ("Volver al defecto de la estructura", {"enVoz": None}),
+    ],
+    "/v1/ejemplares/{ejemplarId}/capitulos/voz": [
+        ("Quitar 'solo la historia' (borra preferencias)", {"soloHistoria": False}),
+    ],
+    "/v1/sesiones/latido": [
+        ("Latido de escucha con sesion del cliente",
+         {"ejemplarId": "00000000-0000-0000-0000-000000000000", "modo": "VOZ",
+          "sesionId": "11111111-1111-1111-1111-111111111111", "capitulo": 3, "posicion": 812.4, "segundos": 60,
+          "dispositivo": "iPhone"}),
+    ],
 }
+
+# Valores de ejemplo de los parametros de query (0.4.0: GET /v1/sesiones/resumen y /v1/voz/preparar-libro).
+QUERY = {"desde": "2026-11-01", "hasta": "2026-11-14", "ejemplarId": "00000000-0000-0000-0000-000000000000",
+         "vozId": "edge.es-ES-AlvaroNeural"}
 
 
 def resolver(spec, esquema):
@@ -101,6 +118,10 @@ def peticion(spec, prefijo, ruta, metodo, op):
         req["body"] = {"mode": "formdata", "formdata": [
             {"key": "archivos", "type": "file", "src": []},
             {"key": "tipo", "value": "LIBRO", "type": "text"}]}
+    consulta = [p["name"] for p in op.get("parameters", []) if p.get("in") == "query"]
+    if consulta and metodo == "get":
+        req["url"]["query"] = [{"key": n, "value": QUERY.get(n, "")} for n in consulta]
+        req["url"]["raw"] += "?" + "&".join(f"{n}={QUERY.get(n, '')}" for n in consulta)
     if "/archivos/" in ruta or "muestra.mp3" in ruta:
         req["url"]["query"] = [{"key": "t", "value": "{{token}}"}]
         req["url"]["raw"] += "?t={{token}}"
@@ -130,7 +151,7 @@ def main():
         items = []
         for ruta, metodos in sorted(spec["paths"].items()):
             for metodo, op in metodos.items():
-                if metodo in ("get", "post", "head"):
+                if metodo in ("get", "post", "put", "head"):
                     if metodo == "head":
                         continue
                     items.append(peticion(spec, "/" + prefijo, ruta, metodo, op))
