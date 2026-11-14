@@ -14,7 +14,8 @@ import java.util.List;
  * El unico sitio que firma tokens: login, renovacion y cambio de contrasena.
  *
  * Claims: sub (correo), userId, name, roles (solo los activos) y, desde V4,
- * "ver" = version de sesion de la cuenta (QA SE-02). Siempre con exp.
+ * "ver" = version de sesion de la cuenta (QA SE-02). Siempre con exp y, desde
+ * 0.4.0 (auditoria BK-08), con iat: permite un dia invalidar "lo emitido antes de X".
  */
 @Component
 public class EmisorDeTokens {
@@ -50,6 +51,7 @@ public class EmisorDeTokens {
                 .withClaim("name", user.getName())
                 .withArrayClaim("roles", roles.toArray(new String[0]))
                 .withClaim(CLAIM_VERSION, user.getVersionSesion() == null ? 0 : user.getVersionSesion())
+                .withIssuedAt(new Date(reloj.millis()))
                 .withExpiresAt(new Date(reloj.millis() + secParams.getExpiredTime()))
                 .sign(Algorithm.HMAC256(secParams.getSecret()));
     }
