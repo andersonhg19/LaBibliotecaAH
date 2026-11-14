@@ -39,7 +39,7 @@ import { luzLampara } from '@tema/madera'
 import { web } from '@tema/web'
 import type { EjemplarDetalleDTO, VozDTO } from '@tipos'
 import { estadoElegible } from '@utils/aria'
-import { escucharLibro } from '@utils/escuchar'
+import { escucharLibro, inicioDeEscucha } from '@utils/escuchar'
 import { faltaTemporizador } from '@utils/motorAudio'
 
 type Props = NativeStackScreenProps<Rutas, 'Escuchar'>
@@ -95,11 +95,18 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const cerrarTexto = useCallback(() => setTextoAbierto(false), [])
   const cerrarCine = useCallback(() => setCineAbierto(false), [])
 
-  const { cargando, error, cargar } = useCarga(async () => {
+  /*
+   * V-NUEVO-1 (0.4.0): la tarea va memorizada por `id`. Una función nueva en cada
+   * render cambiaba `cargar` en cada render, el efecto volvía a pedir, el
+   * resultado repintaba… y así ~100 peticiones por segundo mientras el
+   * reproductor estaba abierto (también en 0.3.3).
+   */
+  const tarea = useCallback(async () => {
     const [d, vs] = await Promise.all([librosService.detalle(id), vocesService.todas()])
     setLibro(exigir(d) ?? null)
     setVoces(vs.correct ? vs.object : [])
-  })
+  }, [id])
+  const { cargando, error, cargar } = useCarga(tarea)
   useEffect(() => {
     cargar()
   }, [cargar])
@@ -116,7 +123,8 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
   const vozElegida = voces.find((vz) => vz.id === (esteLibro ? v.vozId : prefs.vozId)) ?? null
   const sonando = esteLibro && v.fase === 'reproduciendo'
   const ocupado = esteLibro && (v.fase === 'cargando' || v.fase === 'preparando')
-  const capActual = esteLibro ? v.capitulo : (libro.progreso?.capitulo ?? 0)
+  /* Antes de empezar, el capítulo que va a sonar (sin progreso, el primero con voz: V-NUEVO-6). */
+  const capActual = esteLibro ? v.capitulo : inicioDeEscucha(libro, { vozId: prefs.vozId }).capitulo
   const cap = libro.capitulos.find((c) => c.indice === capActual)
   const tituloCap = cap?.titulo ?? `Capítulo ${capActual + 1}`
   const apaisado = width > height && height < 560

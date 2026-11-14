@@ -1,6 +1,6 @@
 import { MP4BoxBuffer, createFile } from 'mp4box'
 
-import { errorCancelada, errorDeRed } from '@utils/fallosCinta'
+import { clasificarFallo, errorCancelada, errorDeRed } from '@utils/fallosCinta'
 
 /*
  * LA CINTA: UN SOLO FLUJO DE AUDIO PARA TODO EL LIBRO (iPhone, 2026-11-12).
@@ -79,6 +79,12 @@ const POR_DELANTE = 90
 const HUECO = 0.15
 /** Cuánto se guarda de lo ya oído (para un «−15 s» sin volver a añadir). */
 const POR_DETRAS = 40
+/**
+ * Una descarga que no recibe NADA en este tiempo se da por cortada (fallo de red:
+ * el motor lo dice y reintenta). Sin esto, un servidor atascado dejaba la cinta
+ * esperando para siempre, sin sonar ni avisar (V-NUEVO-4).
+ */
+export const SIN_DATOS_MS = 20_000
 
 /**
  * Trocea un .m4a mientras llega: mp4box lee el moov en cuanto aparece (faststart:
@@ -204,6 +210,9 @@ export function cintaDisponible(): boolean {
   return ios
 }
 
+/** ¿Un fetch o una lectura abortados con AbortController? */
+const esAbortada = (e: unknown) => (e as { name?: string } | null)?.name === 'AbortError'
+
 /** Espera a que el SourceBuffer termine lo que está haciendo. */
 const libre = (sb: SourceBuffer) =>
   sb.updating
@@ -226,6 +235,8 @@ export class Cinta {
   private epocaCola = 0
   /** Mientras se espera el sourceopen: soltar la cinta lo desbloquea (si no, la cola se quedaría parada). */
   private abriendo: (() => void) | null = null
+  /** Descargas en vuelo, con cómo cortarlas (V-NUEVO-4: la de un capítulo abandonado no bloquea la cola). */
+  private enVuelo = new Map<string, (e: Error) => void>()
   /** El tramo que suena (el «capítulo» para el motor). */
   actual: Tramo | null = null
   /** El navegador cerró el MediaSource por su cuenta (iOS bajo presión de memoria, RP-08). */
@@ -237,8 +248,9 @@ export class Cinta {
 
   constructor(
     private el: HTMLAudioElement,
-    private descargar: (url: string) => Promise<Descarga>,
+    private descargar: (url: string, senal?: AbortSignal) => Promise<Descarga>,
     private forzado = false,
+    private sinDatosMs = SIN_DATOS_MS,
   ) {
     // Un salto a una zona aún sin datos, o quedarse sin ellos: se rellena ya (sin esperar al próximo timeupdate).
     el.addEventListener('seeking', () => this.bomba())
@@ -293,11 +305,41 @@ export class Cinta {
   /**
    * Baja y trocea un archivo. La promesa se cumple en cuanto hay algo que sonar
    * (el moov y el primer trozo); el resto sigue llegando y se va añadiendo.
+   *
+   * V-NUEVO-4: la descarga se puede cortar (otra carga la deja sin sentido: se
+   * rechaza como CANCELADA y se aborta el fetch) y se corta sola si pasa
+   * SIN_DATOS_MS sin recibir nada (fallo de red: el motor avisa y reintenta).
    */
   private bajar(url: string): Promise<ArchivoTroceado> {
     return new Promise<ArchivoTroceado>((resolver, rechazar) => {
       const tr = new Troceador()
+      const control = typeof AbortController === 'function' ? new AbortController() : null
       let listo = false
+      let cortadaCon: Error | null = null
+      let avisarCorte: (e: Error) => void = () => {}
+      const corte = new Promise<never>((_, r) => {
+        avisarCorte = r
+      })
+      corte.catch(() => undefined)
+      let vigia: ReturnType<typeof setTimeout> | null = null
+      const cortar = (e: Error) => {
+        if (cortadaCon) return
+        cortadaCon = e
+        avisarCorte(e)
+        try {
+          control?.abort()
+        } catch {
+          /* nada */
+        }
+      }
+      const vigilar = () => {
+        if (vigia) clearTimeout(vigia)
+        vigia = setTimeout(
+          () => cortar(errorDeRed(`sin datos en ${Math.round(this.sinDatosMs / 1000)} s`)),
+          this.sinDatosMs,
+        )
+      }
+      this.enVuelo.set(url, cortar)
       const avisar = () => {
         const a = tr.archivo
         if (!a) return
@@ -308,7 +350,8 @@ export class Cinta {
       }
       tr.alCrecer = avisar
       const leer = async () => {
-        const d = await this.descargar(url)
+        vigilar()
+        const d = await Promise.race([this.descargar(url, control?.signal), corte])
         if (!('flujo' in d)) {
           this.alProgresar?.(url, 1)
           tr.anadir(d, true)
@@ -318,11 +361,12 @@ export class Cinta {
         const lector = d.flujo.getReader()
         let recibido = 0
         for (;;) {
+          vigilar()
           let r: { done: boolean; value?: Uint8Array }
           try {
-            r = await lector.read()
+            r = await Promise.race([lector.read(), corte])
           } catch (e) {
-            throw errorDeRed(e)
+            throw cortadaCon ?? (esAbortada(e) ? errorCancelada() : errorDeRed(e))
           }
           if (r.done) break
           const v = r.value
@@ -335,13 +379,29 @@ export class Cinta {
         this.alProgresar?.(url, 1)
         tr.terminar()
       }
-      leer().catch((e: unknown) => {
-        if (!listo) return rechazar(e)
-        // Ya sonaba y la descarga se cortó a medias: lo que falta no llegará; se olvida para volver a bajarlo.
-        this.cache.delete(url)
-        this.alFallarDescarga?.(url, e)
-      })
+      leer()
+        .catch((e0: unknown) => {
+          const e = cortadaCon ?? e0
+          if (!listo) return rechazar(e)
+          // Ya sonaba y la descarga se cortó a medias: lo que falta no llegará; se olvida para volver a bajarlo.
+          this.cache.delete(url)
+          if (clasificarFallo(e) !== 'cancelada') this.alFallarDescarga?.(url, e)
+        })
+        .finally(() => {
+          if (vigia) clearTimeout(vigia)
+          if (this.enVuelo.get(url) === cortar) this.enVuelo.delete(url)
+        })
     })
+  }
+
+  /** Corta las descargas en vuelo que ya no hacen falta (otro capítulo elegido mientras bajaba el anterior). */
+  private cancelarDescargasMenos(url: string) {
+    for (const [u, cortar] of [...this.enVuelo]) {
+      if (u === url) continue
+      this.enVuelo.delete(u)
+      this.cache.delete(u)
+      cortar(errorCancelada())
+    }
   }
 
   /** Engancha el <audio> a un MediaSource nuevo (una sola vez por sesión, salvo que se suelte). */
@@ -415,6 +475,8 @@ export class Cinta {
   cargar(url: string, tArchivo: number): Promise<Tramo> {
     const epoca = ++this.epoca
     this.epocaCola++
+    // Lo que se bajaba para otra cosa ya no va: no debe tener la cola esperando (V-NUEVO-4).
+    this.cancelarDescargasMenos(url)
     const archivo = this.archivo(url)
     return this.turno(async () => {
       const vigente = () => {
@@ -638,11 +700,13 @@ export function crearCinta(el: HTMLAudioElement): Cinta | null {
   } catch {
     /* nada */
   }
-  const descargar = async (url: string): Promise<Descarga> => {
+  const descargar = async (url: string, senal?: AbortSignal): Promise<Descarga> => {
     let r: Response
     try {
-      r = await fetch(url)
+      r = await fetch(url, senal ? { signal: senal } : undefined)
     } catch (e) {
+      // Cortada a propósito (otra carga): no es un fallo.
+      if (esAbortada(e)) throw errorCancelada()
       // Sin red (o la red se cortó): no es culpa de la cinta, se reintentará.
       throw errorDeRed(e)
     }

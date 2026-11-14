@@ -103,9 +103,14 @@ export interface LugarEnIndice {
   parte: boolean
 }
 
-/** ¿Trae el libro la estructura del taller (C1 v2)? Todos los capítulos con `numero` (aunque sea null). */
+/**
+ * ¿Trae el libro la estructura del taller (C1 v2)? Se decide por la REGIÓN: un
+ * v2 la trae siempre; un v1 la trae a null (o no la trae). No por `numero`: la
+ * API manda `"numero": null` también en los v1, y así nunca se usaba el respaldo
+ * (C12: el índice salía sin números ni grupos hasta reclasificar).
+ */
 export const tieneEstructura = (capitulos: readonly CapituloNumerable[]): boolean =>
-  capitulos.length > 0 && capitulos.every((c) => c.numero !== undefined)
+  capitulos.length > 0 && capitulos.every((c) => c.region != null)
 
 /**
  * Dónde va cada capítulo del índice (en el orden que vienen): su número, su

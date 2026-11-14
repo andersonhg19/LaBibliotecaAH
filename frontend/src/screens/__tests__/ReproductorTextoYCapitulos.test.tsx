@@ -182,6 +182,19 @@ describe('Ver texto mientras se escucha', () => {
     await waitFor(() => expect(r.getByTestId('panel-frase-c001-s00001')).toBeTruthy())
     silencio.mockRestore()
   })
+
+  it('D10 si el texto no llega, se vuelve a intentar SOLO (sin tocar Reintentar) y aparece al volver', async () => {
+    respuestaFrases = async () => ({ ok: false, status: 503, json: async () => ({}) })
+    const silencio = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const r = abrir()
+    await waitFor(() => expect(r.getByTestId('boton-ver-texto')).toBeTruthy())
+    fireEvent.press(r.getByTestId('boton-ver-texto'))
+    await waitFor(() => expect(r.getByTestId('reintentar-texto')).toBeTruthy())
+    respuestaFrases = async () => ({ ok: true, status: 200, json: async () => FRASES })
+    await waitFor(() => expect(r.getByTestId('panel-frase-c001-s00001')).toBeTruthy(), { timeout: 6000 })
+    expect(r.queryByTestId('reintentar-texto')).toBeNull()
+    silencio.mockRestore()
+  })
 })
 
 describe('Los capítulos, plegados', () => {

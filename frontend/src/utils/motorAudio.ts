@@ -247,7 +247,9 @@ const MAX_FALLOS_PRECARGA = 3
 /** RP-04: fallos de la plataforma seguidos antes de apagar la cinta (y avisarlo). */
 const MAX_FALLOS_CINTA = 2
 /** RP-18: intentos de leer tiempos.json (con espera creciente y al volver la red). */
-const MAX_INTENTOS_TIEMPOS = 6
+/** tiempos.json: intentos solos (luego, solo al volver la red); la espera crece 2, 4, 8 s y se queda en 10 s (D10). */
+const MAX_INTENTOS_TIEMPOS = 10
+const ESPERA_MAX_TIEMPOS_MS = 10_000
 /** C4: cada cuánto se manda el latido de la sesión mientras suena, y el máximo que acepta el servidor. */
 const LATIDO_MS = 60_000
 const LATIDO_MAX_SEG = 120
@@ -638,9 +640,13 @@ export class MotorAudio {
       finDelLibro: false,
       carga: null,
     })
+    // La pantalla de bloqueo dice ya el capítulo pedido, no el que se deja (V-NUEVO-4).
+    this.sesionMedios()
     // Al llegar solo (fin del anterior) no se pausa: en la cinta el <audio> sigue «sonando» mientras llega el capítulo.
     if (!automatico) this.el?.pause()
-    this.finAvisado = null
+    // El final del tramo que sonaba ya está atendido: mientras llega el capítulo nuevo (o si falla), la cinta parada
+    // al final del anterior NO debe pasar de capítulo otra vez (V-NUEVO-5: se saltaba «Segundo» sin decir nada).
+    this.finAvisado = this.cinta?.actual ?? null
     const minutos = l.capitulos.find((c) => c.indice === capitulo)?.minutos
     let primera = true
     const desde = this.deps.ahora()
@@ -756,7 +762,7 @@ export class MotorAudio {
     if (!ya && (ahora < tp.proximo || tp.intentos >= MAX_INTENTOS_TIEMPOS)) return
     tp.enVuelo = true
     tp.intentos++
-    tp.proximo = ahora + Math.min(30_000, 2_000 * 2 ** tp.intentos)
+    tp.proximo = ahora + Math.min(ESPERA_MAX_TIEMPOS_MS, 1_000 * 2 ** tp.intentos)
     const fallo = () => {
       tp.enVuelo = false
     }
@@ -817,6 +823,8 @@ export class MotorAudio {
     const l = this.estado.libro
     if (!l || !this.urls.u1 || this.enPartes() || this.estado.temporizador?.tipo === 'capitulo') return
     if (this.paradoAlFinal || this.estado.finDelLibro) return
+    // Parado por un fallo: no se prepara el siguiente (V-NUEVO-5: con la cinta acababa sonando sin decir nada).
+    if (this.estado.fase === 'error') return
     const dur = this.estado.duracion
     // En segundos reales: a 5x, 45 s del libro serían 9 s (poco para bajar el capítulo con datos móviles).
     if (!(dur > 0) || dur - this.posicion() > PRECARGA_SEG * Math.max(1, this.estado.velocidad)) return
@@ -1136,7 +1144,8 @@ export class MotorAudio {
     const turno = this.turno
     this.cargasCinta++
     this.srcCargando = src
-    this.finAvisado = null
+    // El tramo nuevo es otro objeto (su final se vigila); el que suena ahora ya no cuenta como fin (V-NUEVO-5).
+    this.finAvisado = c.actual
     c.cargar(src, tArchivo)
       .then(() => {
         this.cargasCinta--
@@ -1177,6 +1186,12 @@ export class MotorAudio {
         this.cargar(capitulo, pos1x, reproducir, null, false, true)
         return
       }
+      // V-NUEVO-5: como sin cinta, se PARA y se dice. Si no, la cinta seguía con lo que tenía detrás (el capítulo
+      // anterior) y el motor acababa saltando al siguiente sin avisar.
+      this.quiereSonar = false
+      this.precarga = null
+      this.olvidarSiguientesEnCinta()
+      this.el?.pause()
       this.fallar('audio', TEXTOS_VOZ.audioFallo)
       return
     }

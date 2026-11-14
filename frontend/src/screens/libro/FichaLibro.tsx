@@ -907,11 +907,12 @@ const styles = StyleSheet.create({
   fila: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   centrado: { justifyContent: 'center' },
   estados: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  segmentado: { flexDirection: 'row', borderWidth: 1, borderRadius: 12, padding: 2, gap: 2 },
+  /* E8 (320 px): si las cuatro palabras no caben en una fila, pasan a dos; nunca se cortan con «…». */
+  segmentado: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderRadius: 12, padding: 2, gap: 2 },
   /* Cada estado ocupa lo que mide su palabra (QA UX-28: «Abandonado» se cortaba en 87 px). */
   segmento: {
     flexGrow: 1,
-    flexShrink: 1,
+    flexShrink: 0,
     flexBasis: 'auto',
     minHeight: 44,
     alignItems: 'center',

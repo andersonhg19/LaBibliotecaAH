@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
 
 import {
   PosicionCapitulo,
@@ -167,8 +167,10 @@ export const FilaCapitulo: React.FC<PropsFila> = ({
 }) => {
   const { titulo, detalle } = textoIndicador(pos, minutos, fraccionLibro)
   const avance = pos ? pos.avance : fraccionLibro
+  /* E8: en 320 px «… % del capítulo · quedan N min» se cortaba; ahí basta el porcentaje (el título ya es el capítulo). */
+  const estrecho = useWindowDimensions().width < 360
   const linea = [
-    pos ? `${porcentajeCapitulo(pos.avance)} % del capítulo` : detalle,
+    pos ? `${porcentajeCapitulo(pos.avance)} %${estrecho ? '' : ' del capítulo'}` : detalle,
     !compacto && pagina && paginas ? `p. ${pagina} de ${paginas}` : null,
     pos ? textoQuedan(minutos) : null,
   ]

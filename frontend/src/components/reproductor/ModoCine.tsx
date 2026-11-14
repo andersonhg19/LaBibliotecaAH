@@ -116,14 +116,23 @@ const ModoCine: React.FC<{
   useEffect(() => {
     if (!visible || Platform.OS !== 'web' || typeof window === 'undefined') return
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === ' ') acciones.current.onAlternar()
-      else if (e.key === 'ArrowLeft') acciones.current.onFraseAnterior()
-      else if (e.key === 'ArrowRight') acciones.current.onFraseSiguiente()
-      else return
+      const accion = accionDeTecla(e.key, e.target)
+      if (!accion) return
+      acciones.current[accion]()
       e.preventDefault()
     }
     window.addEventListener('keydown', tecla)
     return () => window.removeEventListener('keydown', tecla)
+  }, [visible])
+
+  /* F8 / V-NUEVO-8: al entrar, el foco va al ▶/⏸ (no a «Salir»): el primer Espacio pausa, no cierra. */
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'web' || typeof document === 'undefined') return
+    const t = setTimeout(() => {
+      const boton = document.querySelector<HTMLElement>('[data-testid="cine-play"]')
+      boton?.focus({ preventScroll: true })
+    }, 80)
+    return () => clearTimeout(t)
   }, [visible])
 
   const halo = useRef<HTMLElement | null>(null)
@@ -210,6 +219,23 @@ const ModoCine: React.FC<{
       </View>
     </Modal>
   )
+}
+
+/**
+ * Qué hace una tecla en el modo cine. El Espacio con el foco en un botón lo
+ * atiende ESE botón (si no, se alternaría dos veces: aquí y en el botón; o
+ * pausaría y además cerraría con el foco en «Salir»).
+ */
+export function accionDeTecla(
+  tecla: string,
+  destino: EventTarget | null,
+): 'onAlternar' | 'onFraseAnterior' | 'onFraseSiguiente' | null {
+  if (tecla === 'ArrowLeft') return 'onFraseAnterior'
+  if (tecla === 'ArrowRight') return 'onFraseSiguiente'
+  if (tecla !== ' ') return null
+  const el = destino as { closest?: (s: string) => unknown } | null
+  const enControl = typeof el?.closest === 'function' && !!el.closest('button,[role="button"],a,input,textarea,select')
+  return enControl ? null : 'onAlternar'
 }
 
 const styles = StyleSheet.create({

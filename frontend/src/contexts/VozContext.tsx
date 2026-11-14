@@ -9,6 +9,7 @@ import type { PartesCapitulo, TiemposCapitulo } from '@tipos'
 import { crearCinta } from '@utils/cinta'
 import { MotorAudio, uuid } from '@utils/motorAudio'
 import { esteDispositivo, guardarProgresoLocal } from '@utils/progresoLocal'
+import { unaSolaVoz } from '@utils/unaSolaVoz'
 
 /*
  * La voz de la sesión: UN motor y UN <audio> para toda la app (ver
@@ -69,6 +70,22 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
     if (document.visibilityState !== 'hidden') return
     motor.guardar(true)
     motor.latir(false, true)
+  })
+}
+
+/*
+ * V-NUEVO-3: una sola voz por navegador. Cuando esta pestaña empieza a sonar,
+ * las demás de este navegador se pausan (y al revés).
+ */
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  const voz = unaSolaVoz(() => {
+    if (motor.obtener().libro) motor.pausar()
+  })
+  let faseAntes = motor.obtener().fase
+  motor.suscribir(() => {
+    const fase = motor.obtener().fase
+    if (fase === 'reproduciendo' && faseAntes !== 'reproduciendo') voz.avisar()
+    faseAntes = fase
   })
 }
 

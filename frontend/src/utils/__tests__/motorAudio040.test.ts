@@ -352,7 +352,7 @@ describe('Resaltado que se recupera (RP-18, D10)', () => {
     await esperar()
     expect(cargarTiempos).toHaveBeenCalledTimes(1)
     el.currentTime = 12
-    el.emitir('timeupdate') // aún no toca (espera de 4 s)
+    el.emitir('timeupdate') // aún no toca (espera de 2 s)
     await esperar()
     expect(cargarTiempos).toHaveBeenCalledTimes(1)
     avanzarReloj(5_000)
@@ -363,6 +363,26 @@ describe('Resaltado que se recupera (RP-18, D10)', () => {
     volverLaRed()
     await esperar()
     expect(cargarTiempos).toHaveBeenCalledTimes(3)
+    el.emitir('timeupdate')
+    expect(motor.obtener().fraseId).toBe('c000-s00001')
+  })
+  it('D10 tres fallos seguidos y la red vuelve sola (sin evento online): resalta antes de 15 s', async () => {
+    let fallos = 3
+    const cargarTiempos = jest.fn(async () => {
+      if (fallos-- > 0) throw new Error('Failed to fetch')
+      return TIEMPOS
+    })
+    const { motor, el, avanzarReloj } = montar({ cargarTiempos })
+    motor.abrir(libro(), { capitulo: 0, vozId: 'v', velocidad: 1 })
+    await esperar()
+    el.currentTime = 12
+    // Sonando: un timeupdate cada segundo de reloj, como el navegador.
+    for (let s = 0; s < 15; s++) {
+      avanzarReloj(1_000)
+      el.emitir('timeupdate')
+      await esperar()
+    }
+    expect(cargarTiempos).toHaveBeenCalledTimes(4)
     el.emitir('timeupdate')
     expect(motor.obtener().fraseId).toBe('c000-s00001')
   })
