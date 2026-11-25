@@ -596,10 +596,7 @@ function depsNavegador(): DepsSinConexion {
     },
     // Lo que el reproductor pide al abrir, para que el service worker lo tenga sin red.
     calentar: async (id) =>
-      Promise.allSettled([
-        api.post(`${B}/progreso/get/${encodeURIComponent(id)}`),
-        api.post(`${B}/voces/all`),
-      ]),
+      Promise.allSettled([api.post(`${B}/progreso/get/${encodeURIComponent(id)}`), api.post(`${B}/voces/all`)]),
     url: (ruta) => urlBinaria(ruta),
     urlFrases: urlFrasesCapitulo,
     urlPortada,
@@ -640,7 +637,9 @@ export function usarGestorSinConexion(g2: GestorSinConexion | null) {
 /** ¿Este navegador puede guardar libros sin conexión? (service worker + Cache Storage). */
 export function sinConexionDisponible(): boolean {
   try {
-    return !!g().__bahSW && typeof g().caches?.open === 'function' && !!g().navigator && 'serviceWorker' in g().navigator!
+    return (
+      !!g().__bahSW && typeof g().caches?.open === 'function' && !!g().navigator && 'serviceWorker' in g().navigator!
+    )
   } catch {
     return false
   }

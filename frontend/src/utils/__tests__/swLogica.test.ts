@@ -27,7 +27,6 @@ interface SwLogica {
   guardable(r: { status: number; type: string } | null): boolean
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const L = require('../../../public/sw-logica.js') as SwLogica
 
 const WEB = 'https://casa.ejemplo:7050'

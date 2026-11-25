@@ -6,14 +6,7 @@
  */
 import type { CapituloResumen, EstadoAudioDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import type { DatosDiario } from '@utils/diario'
-import {
-  ATASCO_MS,
-  DependenciasMotor,
-  LatidoVoz,
-  MAX_RECUPERACIONES,
-  MotorAudio,
-  TEXTOS_VOZ,
-} from '@utils/motorAudio'
+import { ATASCO_MS, DependenciasMotor, LatidoVoz, MAX_RECUPERACIONES, MotorAudio, TEXTOS_VOZ } from '@utils/motorAudio'
 
 class AudioFalso {
   src = ''

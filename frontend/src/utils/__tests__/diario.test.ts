@@ -42,7 +42,13 @@ function entorno(o: Partial<EntornoDiario> = {}) {
       alSalir.push(l)
       return respuesta === 'ok'
     },
-    contexto: () => ({ standalone: true, visible: true, red: true, ua: 'iPhone iOS 18.1 Safari 18.1', version: '0.5.0' }),
+    contexto: () => ({
+      standalone: true,
+      visible: true,
+      red: true,
+      ua: 'iPhone iOS 18.1 Safari 18.1',
+      version: '0.5.0',
+    }),
     programar: (fn, ms) => {
       const p = { fn, ms, vivo: true }
       programados.push(p)

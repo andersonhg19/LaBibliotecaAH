@@ -1,5 +1,6 @@
 import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 
+import { enviarLatidoLectura } from '@hooks/useLatidoLectura'
 import api, {
   colaSinRed,
   fijarTokenEnMemoria,
@@ -8,7 +9,6 @@ import api, {
   registrarCierreDeSesion,
   vaciarColaSinRed,
 } from '@servicios/api'
-import { enviarLatidoLectura } from '@hooks/useLatidoLectura'
 
 /*
  * COLA SIN RED (0.5.0, contrato C12): el progreso y los latidos que no llegan por falta de

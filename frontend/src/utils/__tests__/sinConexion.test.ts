@@ -146,7 +146,12 @@ describe('C12 · copia de un libro en «Leyendo»', () => {
     expect(tiempos).toEqual(['002', '003', '000', '001'])
     const cache = m.cachesFalsas.get('bah-libro-e1')!
     const base = `${API}/v1/archivos/a1/audio/${VOZ}/cap-002`
-    for (const k of [`${base}.m4a`, `${base}-2x.m4a`, `${base}.tiempos.json`, `${API}/v1/archivos/a1/frases/cap-002.json`])
+    for (const k of [
+      `${base}.m4a`,
+      `${base}-2x.m4a`,
+      `${base}.tiempos.json`,
+      `${API}/v1/archivos/a1/frases/cap-002.json`,
+    ])
       expect(cache.datos.has(k)).toBe(true)
     expect(cache.datos.has(`${API}/v1/archivos/a1/portada.jpg`)).toBe(true)
     expect(cache.datos.has(`${API}/v1/archivos/a1/libro.epub`)).toBe(true)

@@ -1,4 +1,4 @@
-import { apiParaLaPagina, PUERTO_API_NOMBRE_PROPIO } from '@config/entorno'
+import { PUERTO_API_NOMBRE_PROPIO, apiParaLaPagina } from '@config/entorno'
 
 const CASA = 'https://casa.ejemplo.ts.net:7051'
 
