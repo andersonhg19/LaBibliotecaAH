@@ -117,7 +117,7 @@ class ReglasDeArquitecturaTest {
         void todoDevuelveElContrato() {
             List<String> culpables = new ArrayList<>();
             List<Class<?>> controllers = clasesDe(RAIZ + ".controller", true);
-            assertThat(controllers).hasSize(14); // (0.4.0) + CapituloVoz, Sesion, EstadoCasa y Pronunciacion (B17)
+            assertThat(controllers).hasSize(15); // (0.4.0) + CapituloVoz, Sesion, EstadoCasa y Pronunciacion (B17); (0.5.0) + Diario
             for (Class<?> c : controllers) {
                 for (Method m : c.getDeclaredMethods()) {
                     boolean esPost = m.isAnnotationPresent(PostMapping.class);
