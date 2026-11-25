@@ -1430,7 +1430,10 @@ export class MotorAudio {
         return u
       }
     }
-    if (el.src !== absoluto(src) && el.src !== src) {
+    // Un <audio> que ya falló con esta misma URL (error.code 4, sin fuente) no la vuelve a pedir solo:
+    // hay que recargarla, o «Reintentar» se queda mudo hasta recargar la página (QA 0.5.0, fallo A).
+    const enError = !!el.error || el.networkState === 3 /* NETWORK_NO_SOURCE */
+    if (enError || (el.src !== absoluto(src) && el.src !== src)) {
       this.posPendiente = pos1x
       this.cambioFuenteEn = this.deps.ahora()
       el.src = src
@@ -1630,15 +1633,20 @@ export class MotorAudio {
         return this.alTerminar()
       }
     }
-    a.intentos++
-    const detalle = `${a.intentos}/${MAX_RECUPERACIONES} ${(quieta / 1000).toFixed(0)} s sin avanzar ${this.fotoAudio()}`
-    this.anotar('atasco', detalle)
-    if (a.intentos > MAX_RECUPERACIONES) {
+    // MAX_RECUPERACIONES recuperaciones; si después sigue quieta, se para y se dice (QA 0.5.0: el diario
+    // anotaba un «4/3» que parecía un intento de más).
+    if (a.intentos >= MAX_RECUPERACIONES) {
       a.intentos = 0
+      this.anotar('atasco', `sin remedio tras ${MAX_RECUPERACIONES} recuperaciones ${this.fotoAudio()}`)
       this.fallar('audio', TEXTOS_VOZ.atascada, `atasco sin remedio ${this.fotoAudio()}`)
       this.el?.pause()
       return
     }
+    a.intentos++
+    this.anotar(
+      'atasco',
+      `${a.intentos}/${MAX_RECUPERACIONES} ${(quieta / 1000).toFixed(0)} s sin avanzar ${this.fotoAudio()}`,
+    )
     this.recuperarAtasco(pos)
   }
 

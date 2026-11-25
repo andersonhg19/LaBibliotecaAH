@@ -29,6 +29,9 @@ class AudioFalso {
   setAttribute() {}
   load() {
     this.cargas++
+    // Como el navegador: load() olvida el error anterior y vuelve a pedir la fuente.
+    this.error = null
+    this.networkState = 1
     this.emitir('loadedmetadata')
   }
   emitir(t: string) {
@@ -452,6 +455,23 @@ describe('C13 · cambio de capítulo por todas las vías deja sonando el capítu
     pendientes.find((p) => p.cap === 1)?.r(listo(1))
     await esperar()
     sonandoCap(m, 2)
+  })
+
+  it('QA 0.5.0 (fallo A): tras un error de carga del audio, «Reintentar» vuelve a pedir la MISMA URL y suena', async () => {
+    const m = montar()
+    await sonando(m, 12)
+    const src = m.el.src
+    m.el.error = { code: 4, message: 'MEDIA_ERR_SRC_NOT_SUPPORTED' }
+    m.el.networkState = 3
+    m.el.emitir('error')
+    expect(m.motor.obtener().tipoError).toBe('audio')
+    const cargas = m.el.cargas
+    m.motor.reproducir()
+    await esperar()
+    expect(m.el.src).toBe(src)
+    expect(m.el.cargas).toBeGreaterThan(cargas)
+    expect(m.el.error).toBeNull()
+    expect(m.motor.obtener().fase).toBe('reproduciendo')
   })
 
   it('con el audio roto (error de audio), «siguiente» va al siguiente en vez de repetir el que falla', async () => {
