@@ -7096,6 +7096,330 @@
           ]
         },
         {
+          "name": "Guarda un lote de 1 a 50 eventos del reproductor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/diario",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "diario"
+              ]
+            },
+            "description": "Usuario = el del token. tipo [a-z0-9-] de hasta 40; detalle hasta 500; contexto objeto plano de hasta 2 KB con ua de hasta 200; fuera de limites -> 120 y no se guarda nada. ejemplarId ajeno o inexistente se guarda como null. Como mucho 600 eventos por usuario y hora: los de mas se descartan en silencio y object.guardados dice cuantos se guardaron.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventos\": [\n    {\n      \"capitulo\": 3,\n      \"contexto\": {\n        \"cinta\": true,\n        \"red\": true,\n        \"standalone\": true,\n        \"ua\": \"Mozilla/5.0 (iPhone...)\",\n        \"version\": \"0.5.0\",\n        \"visible\": false\n      },\n      \"cuando\": \"2026-11-25T21:03:11.120Z\",\n      \"detalle\": \"currentTime sin avanzar 8 s\",\n      \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n      \"posicion\": 812.4,\n      \"tipo\": \"atasco\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/diario",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "diario"
+                  ]
+                },
+                "description": "Usuario = el del token. tipo [a-z0-9-] de hasta 40; detalle hasta 500; contexto objeto plano de hasta 2 KB con ua de hasta 200; fuera de limites -> 120 y no se guarda nada. ejemplarId ajeno o inexistente se guarda como null. Como mucho 600 eventos por usuario y hora: los de mas se descartan en silencio y object.guardados dice cuantos se guardaron.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"eventos\": [\n    {\n      \"capitulo\": 3,\n      \"contexto\": {\n        \"cinta\": true,\n        \"red\": true,\n        \"standalone\": true,\n        \"ua\": \"Mozilla/5.0 (iPhone...)\",\n        \"version\": \"0.5.0\",\n        \"visible\": false\n      },\n      \"cuando\": \"2026-11-25T21:03:11.120Z\",\n      \"detalle\": \"currentTime sin avanzar 8 s\",\n      \"ejemplarId\": \"3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f\",\n      \"posicion\": 812.4,\n      \"tipo\": \"atasco\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Lote minimo (solo cuando y tipo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/diario",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "diario"
+              ]
+            },
+            "description": "Usuario = el del token. tipo [a-z0-9-] de hasta 40; detalle hasta 500; contexto objeto plano de hasta 2 KB con ua de hasta 200; fuera de limites -> 120 y no se guarda nada. ejemplarId ajeno o inexistente se guarda como null. Como mucho 600 eventos por usuario y hora: los de mas se descartan en silencio y object.guardados dice cuantos se guardaron.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventos\": [\n    {\n      \"cuando\": \"2026-11-25T21:03:11.120Z\",\n      \"tipo\": \"pausa-sistema\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/diario",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "diario"
+                  ]
+                },
+                "description": "Usuario = el del token. tipo [a-z0-9-] de hasta 40; detalle hasta 500; contexto objeto plano de hasta 2 KB con ua de hasta 200; fuera de limites -> 120 y no se guarda nada. ejemplarId ajeno o inexistente se guarda como null. Como mucho 600 eventos por usuario y hora: los de mas se descartan en silencio y object.guardados dice cuantos se guardaron.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"eventos\": [\n    {\n      \"cuando\": \"2026-11-25T21:03:11.120Z\",\n      \"tipo\": \"pausa-sistema\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "(0.5.0) Apunta un libro solo registro (sin archivo): titulo, autores, estado (LEIDO por defecto), fecha de fin, calificacion y nota",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/registro",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "registro"
+              ]
+            },
+            "description": "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo registro\"). fechaFin solo con LEIDO y no futura (120 si no).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"autores\": [\n    \"Gabriel García Márquez\"\n  ],\n  \"calificacion\": 4.5,\n  \"estado\": \"LEIDO\",\n  \"fechaFin\": \"2024-03-15T00:00:00Z\",\n  \"nota\": \"Lo leí en el colegio\",\n  \"titulo\": \"Cien años de soledad\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/registro",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "registro"
+                  ]
+                },
+                "description": "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo registro\"). fechaFin solo con LEIDO y no futura (120 si no).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"autores\": [\n    \"Gabriel García Márquez\"\n  ],\n  \"calificacion\": 4.5,\n  \"estado\": \"LEIDO\",\n  \"fechaFin\": \"2024-03-15T00:00:00Z\",\n  \"nota\": \"Lo leí en el colegio\",\n  \"titulo\": \"Cien años de soledad\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Solo registro: por leer, sin fecha",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/registro",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "libros",
+                "registro"
+              ]
+            },
+            "description": "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo registro\"). fechaFin solo con LEIDO y no futura (120 si no).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"titulo\": \"Rayuela\",\n  \"autores\": [\n    \"Julio Cortázar\"\n  ],\n  \"estado\": \"POR_LEER\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/libros/registro",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "libros",
+                    "registro"
+                  ]
+                },
+                "description": "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo registro\"). fechaFin solo con LEIDO y no futura (120 si no).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"titulo\": \"Rayuela\",\n  \"autores\": [\n    \"Julio Cortázar\"\n  ],\n  \"estado\": \"POR_LEER\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
           "name": "Prepara el libro entero en una voz (0.4.0, C5)",
           "request": {
             "method": "POST",
@@ -7121,7 +7445,7 @@
             "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+              "raw": "{\n  \"desdeCapitulo\": 7,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7156,7 +7480,89 @@
                 "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+                  "raw": "{\n  \"desdeCapitulo\": 7,\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"correct\": true,\n  \"message\": \"OK\",\n  \"errorCode\": 0,\n  \"object\": {}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Preparar desde el capitulo 7 (luego los anteriores)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "BIBLIOTECA-SERVICE",
+                "biblioteca",
+                "v1",
+                "voz",
+                "preparar-libro"
+              ]
+            },
+            "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"edge.es-ES-AlvaroNeural\",\n  \"desdeCapitulo\": 7\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{gateway}}/BIBLIOTECA-SERVICE/biblioteca/v1/voz/preparar-libro",
+                  "host": [
+                    "{{gateway}}"
+                  ],
+                  "path": [
+                    "BIBLIOTECA-SERVICE",
+                    "biblioteca",
+                    "v1",
+                    "voz",
+                    "preparar-libro"
+                  ]
+                },
+                "description": "Encola con prioridad baja (40, detras de lo que se escucha) todos los capitulos con enVoz=true sin audio LISTO; no reencola lo que esta en cola ni lo que quedo en ERROR. Idempotente. Devuelve {total, listos, enCola, error, encolados}.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ejemplarId\": \"00000000-0000-0000-0000-000000000000\",\n  \"vozId\": \"edge.es-ES-AlvaroNeural\",\n  \"desdeCapitulo\": 7\n}",
                   "options": {
                     "raw": {
                       "language": "json"

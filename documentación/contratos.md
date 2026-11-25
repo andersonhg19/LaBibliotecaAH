@@ -1,9 +1,61 @@
 # Contratos entre componentes — La Biblioteca AH
 
 > Fuente de verdad técnica compartida por `backend/`, `taller/` y `frontend/`.
-> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.8 — 2026-11-14 (La Biblioteca AH 0.4.0).**
+> Cualquier cambio aquí se anota en `seguimiento/bitacora.md`. **Versión 1.9 — 2026-11-25 (La Biblioteca AH 0.5.0).**
 
 ## Cambios
+
+### v1.9 — 2026-11-25 (0.5.0: diario del reproductor, «Leyendo» manda, libros solo registro; todo aditivo)
+Contratos C9, C10.1, C10.2 y C11 de `contratos-0.5.0.md`. Flyway **V8** (solo una tabla nueva y sus índices):
+`bah_lib_diario(id uuid, usuario_id bigint, ejemplar_id uuid null, cuando timestamptz, tipo varchar(40), capitulo int
+null, posicion double null, detalle varchar(500) null, contexto jsonb null, creado_en timestamptz default now())` con
+índices `(usuario_id, cuando)` y `(creado_en)`. Como el resto de tablas del usuario, **sin RLS**: el aislamiento es la
+columna `usuario_id`, que pone el servicio con el usuario del token. `ejemplar_id` sin clave foránea a propósito
+(telemetría: un libro borrado no arrastra ni bloquea su diario, que se va solo a los 30 días).
+- **C9 `POST /v1/diario`** (autenticado, cualquier rol; el gateway lo enruta por el localizador de Eureka como el resto
+  de `/BIBLIOTECA-SERVICE/biblioteca/**`, sin cambios en gateway-service). Cuerpo
+  `{"eventos": [{cuando, tipo, ejemplarId?, capitulo?, posicion?, detalle?, contexto?}]}` → `{guardados: n}`.
+  Límites (fuera de ellos **120** y no se guarda **nada** del lote): 1..50 eventos (`datosInvalidos` «eventos debe traer
+  entre 1 y 50 elementos»); `cuando` y `tipo` obligatorios; `tipo` ≤ 40 de `[a-z0-9-]`; `capitulo` 0..99 999;
+  `posicion` 0..10 000 000; `detalle` ≤ 500; `contexto` objeto **plano** (valores texto, número, booleano o null) de
+  ≤ 2048 bytes en JSON con `ua` ≤ 200 (`diarioContextoInvalido`, con la posición del evento en el lote). Un
+  `ejemplarId` ajeno o inexistente se guarda como `null` (no es error). Tope **600 eventos por usuario y hora**
+  (`biblioteca.diario.eventos-por-hora`, en memoria): lo que no cabe se descarta en silencio, respuesta `correct=true`
+  con `guardados` = los guardados de verdad (puede ser 0). Cada evento deja en el log
+  `INFO diario usuario=… tipo=… cap=… pos=… detalle=…` (saltos de línea del detalle cambiados por espacios). Retención:
+  `TareaDiario` borra cada día (`biblioteca.tareas.diario-ms`) lo **creado** (`creado_en`, hora del servidor) hace más
+  de 30 días (`biblioteca.diario.dias`). Nota: «400» en `contratos-0.5.0.md` se lee con la convención de la casa:
+  **HTTP 200** con `ResultDTO{correct:false, errorCode:120}`; solo la falta de sesión es HTTP 401.
+- **C10.1 Auto-paso a LEYENDO** (`/v1/progreso/save`): un `POR_LEER` pasa a `LEYENDO` solo si el progreso **avanza**:
+  sin progreso previo, si `capitulo > 0` o `porcentaje > 0`; con progreso previo, si el capítulo cambia o el
+  `porcentaje` sube más de 0,001. Guardar el mismo punto (abrir la ficha o el lector) ya no lo mete en «Leyendo».
+  `LEIDO` y `ABANDONADO` nunca cambian solos. El progreso se guarda igual en todos los casos.
+- **C10.2 `PrepararLibroDTO.desdeCapitulo`** (Integer opcional, 0..99 999; negativo o no entero → 120): se encola de
+  ese capítulo al final y después los anteriores (del primero en adelante); sin él, desde el `capitulo` del progreso del
+  usuario (0 si no hay). Los capítulos de ese libro y voz que ya esperaban con prioridad 40 (de una preparación
+  anterior) se **recolocan** en el orden nuevo; los `LISTO`/`ERROR` no cuentan y lo pedido para escuchar (prioridad
+  10/20) sigue delante. **Orden en la cola** (verificado en `taller/app/cola/repositorio.py`, `SQL_TOMAR`): el taller
+  toma `ORDER BY prioridad, creado`. Como `creado` era `DEFAULT now()` —la hora de **inicio de la transacción** en
+  PostgreSQL— todos los trabajos encolados en una misma petición empataban y salían en un orden cualquiera. Ahora
+  biblioteca-service escribe `creado = now() + orden ms` (1 ms por posición) al encolar y al recolocar: a igual
+  prioridad el orden de encolado se respeta, sin tocar el taller ni el esquema. (Que `creado` quede hasta unos cientos
+  de ms en el futuro no afecta a nada: el vigía de la cola urgente mira `prioridad <= 10` y minutos.)
+- **C11 Libros «solo registro»**: `POST /v1/libros/registro` `{titulo, autores?, estado?, fechaFin?, calificacion?,
+  nota?}` → `EjemplarDTO`. Modelo: el mismo que el deseo (ejemplar sin archivo), pero **`tipo = LIBRO`**: sale en
+  TODO, LEYENDO, POR_LEER, LEIDOS y FAVORITOS, en la búsqueda, en las facetas (autores, años…; no en `formatos`, que es
+  del archivo) y en sesiones/estadísticas; un filtro por `formatos` lo excluye. `estado` por defecto `LEIDO` (también
+  `POR_LEER`, `LEYENDO`, `ABANDONADO`); con `LEIDO` cuenta una lectura y `fechaFin` es la enviada o **null** (no se
+  inventa «hoy» para algo leído hace años); `fechaFin` solo con `LEIDO` y no más de 1 día en el futuro (120
+  `fechaFinInvalida`). `calificacion` como en `/save` (0,5..5 en medias). Obra `fuenteMetadatos = MANUAL`.
+  `EjemplarDTO.sinArchivo: boolean` (true en deseos y libros solo registro). Todo lo que necesita el archivo responde
+  **120 `libroSoloRegistro`** («Este libro no tiene archivo: es solo registro.»), nunca 500: `/audio/estado`,
+  `/voz/preparar-libro` (POST y GET), capítulos en voz (PUT ambos), pronunciación (GET y PUT) y `/traducir/capitulo`;
+  un deseo sigue dando `libroSinArchivo`. Lector, portada, original, frases y audio van por `archivoId`, que no existe
+  (la web no los pide: `sinArchivo`). Ficha, edición (`/save`, también `favorito`), progreso, latidos, estantes y
+  borrado funcionan; borrarlo lo **borra de verdad** (no hay archivo con el que reencontrarlo, como un deseo). No
+  cumple deseos (`/subir?deseoId=` de un registro → 120 `noEsUnDeseo`). **Fuera de alcance:** subir después el archivo
+  a ese mismo ejemplar (habría que fusionar estado, fechas, calificación, progreso y estantes con el ejemplar que
+  crea la ingesta); hoy se sube aparte y se borra el registro.
 
 ### v1.8 — 2026-11-14 (0.4.0 ronda 3: diccionario de pronunciación por libro, B17; todo aditivo)
 Flyway **V7** (solo una tabla nueva): `bah_lib_pronunciacion(archivo_id, de varchar(80), a varchar(120), usuario_id,
@@ -501,6 +553,8 @@ CREATE TABLE bah_lib_trabajo (
 );
 CREATE INDEX ix_bah_lib_trabajo_cola ON bah_lib_trabajo (estado, prioridad, creado);
 ```
+- (v1.9) A igual prioridad, el orden es `creado`: biblioteca-service escribe `creado = now() + n ms` en los trabajos
+  de «preparar el libro» para que el orden de encolado se respete dentro de una misma transacción (ver v1.9, C10.2).
 - payload CONVERTIR, RELEER_METADATOS y RECLASIFICAR_ESTRUCTURA (v1.7, prioridad 200): `{}`. (v1.7) VOZ_CAPITULO de
   «preparar el libro» va con prioridad 40. payload VOZ_CAPITULO: `{"vozId": "edge.es-ES-AlvaroNeural", "capitulo": 3}`.
 - El **taller** toma trabajos con
@@ -555,6 +609,8 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 |---|---|---|
 | POST `/v1/libros/subir` (multipart: `archivos[]`, `tipo`=LIBRO\|DOCUMENTO, v1.3.2 `deseoId?`: «Ya lo tengo», un solo archivo; el ejemplar hereda nota, etiquetas y estantes del deseo, que se borra; v1.6 `carpetaId?`: los documentos que llegan entran en esa carpeta) | — | `[EjemplarDTO]` (duplicado por sha256 → reutiliza el archivo) |
 | POST `/v1/libros/deseo` | `{titulo, autor?, isbn?, nota?}` | `EjemplarDTO` (tipo DESEO, sin archivo) |
+| POST `/v1/libros/registro` (v1.9, C11) | `{titulo, autores?, estado? (LEIDO), fechaFin?, calificacion?, nota?}` | `EjemplarDTO` (tipo LIBRO, `sinArchivo: true`) |
+| POST `/v1/diario` (v1.9, C9) | `{eventos: [{cuando, tipo, ejemplarId?, capitulo?, posicion?, detalle?, contexto?}]}` (1..50) | `{guardados}` (tope 600/usuario/hora; lo de más se descarta en silencio) |
 | POST `/v1/libros/all` | `FiltroLibrosDTO` | `PageDTO<EjemplarDTO>` |
 | POST `/v1/libros/get/{ejemplarId}` | — | `EjemplarDetalleDTO` (incluye estructura resumida y progreso) |
 | POST `/v1/libros/save` | `{id, titulo?, autores?, anio?, editorial?, sinopsis?, generos?, etiquetas?, estado?, calificacion?, favorito?, tipo?}` (v1.2: ausente = no tocar; `null` = vaciar) | `EjemplarDTO` |
@@ -563,7 +619,7 @@ no pueden mandar cabeceras); aceptan `?t={jwt}` además de `Authorization`, y so
 | POST `/v1/admin/libros/reclasificar-estructura` (v1.7, rol ADMIN) | — | `{archivosEncolados, yaReclasificados, yaEnCola, sinEstructura}` (encola RECLASIFICAR_ESTRUCTURA para las v1 y las v2 con `clasificador` < `BIBLIOTECA_CLASIFICADOR_MINIMO`; idempotente; 503 sin `/datos`) |
 | PUT `/v1/ejemplares/{ejemplarId}/capitulos/{indice}/voz` (v1.7) | `{enVoz: true\|false\|null}` | `CapituloDTO` (null = volver al defecto) |
 | PUT `/v1/ejemplares/{ejemplarId}/capitulos/voz` (v1.7) | `{soloHistoria: boolean}` | `[CapituloDTO]` |
-| POST `/v1/voz/preparar-libro` (v1.7) | `{ejemplarId, vozId}` | `{total, listos, enCola, error, encolados}` (prioridad 40; idempotente) |
+| POST `/v1/voz/preparar-libro` (v1.7) | `{ejemplarId, vozId, desdeCapitulo?}` (v1.9: desde ese capítulo al final y luego los anteriores; por defecto el del progreso) | `{total, listos, enCola, error, encolados}` (prioridad 40; idempotente; v1.9 recoloca lo que ya esperaba) |
 | GET `/v1/voz/preparar-libro?ejemplarId=&vozId=` (v1.7) | — | `{total, listos, enCola, error}` |
 | GET `/v1/ejemplares/{ejemplarId}/pronunciacion` (v1.8, B17) | — | `{entradas: [{de, a}], regenerando}` |
 | PUT `/v1/ejemplares/{ejemplarId}/pronunciacion` (v1.8, B17) | `[{de, a}]` (lista completa, ≤ 200) | `{entradas, regenerando}`; regenera los capítulos LISTO con alguna palabra cambiada (prioridad 30) |
@@ -610,7 +666,8 @@ EjemplarDTO {
                        'XLSX'|'XLS'|'ODS'|'CSV'), estadoConversion|null, tienePortada: boolean,
   minutosEstimados|null, porcentaje: number (0..100), fechaLlegada (ISO), ultimaApertura|null, fechaFin|null,
   nNotas: number, fuenteMetadatos: 'NOMBRE_ARCHIVO'|'ARCHIVO'|'MANUAL'|'OPEN_LIBRARY'|'IA',
-  nota|null (v1.2, la del deseo), yaLoTenias?: boolean (v1.2, solo en la respuesta de /subir)
+  nota|null (v1.2, la del deseo; v1.9 también la del libro solo registro), yaLoTenias?: boolean (v1.2, solo en la respuesta de /subir),
+  sinArchivo: boolean (v1.9: deseo o libro solo registro; sin lector, voz, portada ni preparación)
 }
 EjemplarDetalleDTO extends EjemplarDTO { capitulos: CapituloDTO[], progreso: ProgresoDTO|null }
 CapituloDTO { indice, titulo, minutos, tipo?, region?, numero?, enVoz, enVozPorDefecto, minutosVoz? }  // v1.7: en v1 sin tipo/region/numero/minutosVoz; en v2 numero siempre (int|null)
@@ -637,6 +694,14 @@ CarpetaContenidoDTO {                                                // v1.6
 }
 CarpetaBorradaDTO { documentosMovidos, carpetasMovidas, documentosRetirados, carpetasBorradas }  // v1.6
 VozDTO { id, nombre, pais, genero, motor, porDefecto }
+PrepararLibroDTO { ejemplarId, vozId, desdeCapitulo?: number (v1.9, >= 0) }
+RegistroDTO { titulo, autores?: string[], estado?: 'LEIDO'|'POR_LEER'|'LEYENDO'|'ABANDONADO' (LEIDO),   // v1.9
+              fechaFin?: ISO (solo con LEIDO, no futura), calificacion?: 0.5..5, nota? }
+DiarioDTO { eventos: EventoDiarioDTO[] (1..50) }                                                         // v1.9
+EventoDiarioDTO { cuando: ISO, tipo: string ([a-z0-9-], <= 40), ejemplarId?: uuid|null, capitulo?: int|null,
+                  posicion?: number|null, detalle?: string|null (<= 500),
+                  contexto?: {[clave]: string|number|boolean|null} (plano, <= 2 KB, ua <= 200) }
+DiarioGuardadoDTO { guardados: number }                                                                   // v1.9
 PageDTO<T> { page, size, totalPage, totalElements, list: T[] }
 TraduccionDTO { traduccion: string, origenDetectado: 'en'|'es'|null }            // v1.3
 CapituloTraducidoDTO {                                                            // v1.3
@@ -673,6 +738,8 @@ CapituloTraducidoDTO {                                                          
 | Subida: archivos por petición · por archivo · por petición · libre en `/datos` | `BIBLIOTECA_MAX_ARCHIVOS_POR_SUBIDA` (20) · `BIBLIOTECA_MAX_ARCHIVO` (300MB) · `BIBLIOTECA_MAX_SUBIDA` (1GB) · `BIBLIOTECA_ESPACIO_MINIMO_MB` (1024) → 413 / 507 |
 | (v1.7) `FiltroLibrosDTO.texto` · `calificacionMin` | 200 · 0–5 (finito) |
 | (v1.7) Latido: `segundos` · `posicion` · `dispositivo` · `capitulo` · periodo del resumen | 0–120 · 0–10 000 000 (finito) · 40 · 0–99 999 · 366 días |
+| (v1.9) Diario: eventos por lote · `tipo` · `detalle` · `contexto` · `contexto.ua` · `capitulo` · `posicion` · por usuario y hora | 1–50 · 40 `[a-z0-9-]` · 500 · 2 048 bytes, plano · 200 · 0–99 999 · 0–10 000 000 · 600 (el resto se descarta) |
+| (v1.9) `RegistroDTO.titulo` · `autores` · `nota` · `PrepararLibroDTO.desdeCapitulo` | 500 · 20 de 300 · 2 000 · 0–99 999 |
 | (v1.6) Carpetas: nombre · por usuario · niveles · documentos por `mover-documentos` · texto de búsqueda | 100 · `BIBLIOTECA_MAX_CARPETAS` (500) · 10 · 200 · 200 |
 | (v1.6) Hojas de cálculo (taller; se recorta con aviso, no falla) | 50 hojas · 5 000 filas y 200 columnas por hoja · 250 000 celdas con valor · 5 000 caracteres por celda; XLS ≤ 64 MB; los ZIP con los topes de siempre |
 
