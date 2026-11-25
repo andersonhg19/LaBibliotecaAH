@@ -18,6 +18,7 @@ import { useAuth } from '@contextos/AuthContext'
 import { useTheme } from '@contextos/ThemeContext'
 import type { Rutas } from '@navegacion/linking'
 import { Escudo } from '@pantallas/auth/LoginScreen'
+import ApuntarLeido from '@pantallas/biblioteca/ApuntarLeido'
 import Catalogo, { PedidoCatalogo } from '@pantallas/biblioteca/Catalogo'
 import Colecciones from '@pantallas/biblioteca/Colecciones'
 import Estanteria from '@pantallas/biblioteca/Estanteria'
@@ -109,6 +110,7 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
   const [version, setVersion] = useState(0)
   const [subir, setSubir] = useState(false)
   const [deseo, setDeseo] = useState(false)
+  const [apuntar, setApuntar] = useState(false)
   const [colecciones, setColecciones] = useState(false)
   const [menu, setMenu] = useState(false)
   const [seleccion, setSeleccion] = useState<string | null>(null)
@@ -339,6 +341,7 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
     },
     { icono: 'lomos', nombre: 'Tus colecciones', accion: () => setColecciones(true), testID: 'abrir-colecciones' },
     { icono: 'deseo', nombre: 'Añadir a deseos', accion: () => setDeseo(true), testID: 'nuevo-deseo' },
+    { icono: 'lapiz', nombre: 'Apuntar un libro que ya leí', accion: () => setApuntar(true), testID: 'apuntar' },
     {
       icono: modo === 'lomo' ? 'rejilla' : 'lomos',
       nombre: modo === 'lomo' ? 'Ver portadas en la estantería' : 'Ver lomos en la estantería',
@@ -424,8 +427,17 @@ const BibliotecaScreen: React.FC<Props> = ({ navigation }) => {
           </Pressable>
         ))}
       </Hoja>
-      <SubirLibros visible={subir} onCerrar={() => setSubir(false)} onSubidos={recargar} />
+      <SubirLibros
+        visible={subir}
+        onCerrar={() => setSubir(false)}
+        onSubidos={recargar}
+        onApuntar={() => {
+          setSubir(false)
+          setApuntar(true)
+        }}
+      />
       <NuevoDeseo visible={deseo} onCerrar={() => setDeseo(false)} onCreado={recargar} />
+      <ApuntarLeido visible={apuntar} onCerrar={() => setApuntar(false)} onCreado={recargar} />
       <Colecciones visible={colecciones} onCerrar={() => setColecciones(false)} onCambio={recargar} />
     </Sala>
   )

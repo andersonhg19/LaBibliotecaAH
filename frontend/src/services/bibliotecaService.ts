@@ -22,6 +22,7 @@ import type {
   PreparacionLibroDTO,
   ProgresoDTO,
   PronunciacionDTO,
+  RegistroLibroDTO,
   ResultDTO,
   TipoEjemplar,
   TraduccionCapituloDTO,
@@ -72,6 +73,8 @@ export const librosService = {
     return r.data
   },
   deseo: (d: { titulo: string; autor?: string; isbn?: string; nota?: string }) => post<EjemplarDTO>('/libros/deseo', d),
+  /** 0.5.0 (C11): apuntar un libro sin archivo («solo registro»); devuelve el ejemplar con `sinArchivo: true`. */
+  registro: (d: RegistroLibroDTO) => post<EjemplarDTO>('/libros/registro', d),
   todos: (f: FiltroLibrosDTO) => post<PageDTO<EjemplarDTO>>('/libros/all', f),
   detalle: (id: string) => post<EjemplarDetalleDTO>(`/libros/get/${encodeURIComponent(id)}`),
   guardar: (d: GuardarEjemplarDTO) => post<EjemplarDTO>('/libros/save', d),
@@ -168,9 +171,16 @@ export const capitulosVozService = {
   },
 }
 
-/** 0.4.0 · «Preparar el libro entero» (contrato C5): encola en baja prioridad lo que falta. */
+/**
+ * 0.4.0 · «Preparar el libro entero» (contrato C5): encola en baja prioridad lo que falta.
+ * 0.5.0 (C10.2): con `desdeCapitulo` se encola primero de ahí al final y luego lo anterior.
+ */
 export const preparacionService = {
-  preparar: (ejemplarId: string, vozId: string) => post<boolean>('/voz/preparar-libro', { ejemplarId, vozId }),
+  preparar: (ejemplarId: string, vozId: string, desdeCapitulo?: number) =>
+    post<boolean>(
+      '/voz/preparar-libro',
+      desdeCapitulo != null && desdeCapitulo >= 0 ? { ejemplarId, vozId, desdeCapitulo } : { ejemplarId, vozId },
+    ),
   estado: async (ejemplarId: string, vozId: string): Promise<ResultDTO<PreparacionLibroDTO>> => {
     const r = await api.get<ResultDTO<PreparacionLibroDTO>>(`${B}/voz/preparar-libro`, {
       params: { ejemplarId, vozId },

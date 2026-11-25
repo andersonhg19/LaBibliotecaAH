@@ -17,6 +17,7 @@ import Portada from '@componentes/estanteria/Portada'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import LamparaCasa from '@componentes/molecules/LamparaCasa'
+import MarcaSinConexion from '@componentes/molecules/MarcaSinConexion'
 import PrepararLibro from '@componentes/molecules/PrepararLibro'
 import Pronunciacion from '@componentes/molecules/Pronunciacion'
 import { elevarAvisos } from '@componentes/organisms/ToastContainer'
@@ -37,6 +38,7 @@ import {
   seEstaPreparando,
   sePuedeLeer,
 } from '@logica/formato'
+import { alEntrarEnLeyendo, capituloDeProgreso, esSoloRegistro, sincronizarLeyendo, tieneVoz } from '@logica/leyendo'
 import type { Rutas } from '@navegacion/linking'
 import SubirLibros from '@pantallas/biblioteca/SubirLibros'
 import IndiceLibro from '@pantallas/libro/IndiceLibro'
@@ -167,6 +169,12 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
       if (!seAplico(cambio, r.object)) showToast('warning', MENSAJES.noSeAplico)
       else if (cambio.estado === 'LEIDO' && antes.estado !== 'LEIDO') terminado(antes)
       else if (aviso) showToast('success', aviso)
+      /* C10.3: al entrar en «Leyendo», la voz entera desde donde vas y la copia del dispositivo (en segundo
+         plano); tras cualquier cambio de estado, las copias se ajustan a la lista (la del que sale se borra). */
+      if (cambio.estado && cambio.estado !== antes.estado && seAplico(cambio, r.object)) {
+        if (cambio.estado === 'LEYENDO') alEntrarEnLeyendo(antes, prefs.vozId, capituloDeProgreso(antes.progreso))
+        sincronizarLeyendo()
+      }
       onCambio?.()
     } catch (e) {
       setLibro(antes)
@@ -202,8 +210,14 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
   /* v1.6: una hoja de cálculo no se lee ni se escucha: se abre en el visor de hojas. */
   const esHoja = esHojaDeCalculo(libro.formatoOriginal)
   const esDeseo = libro.tipo === 'DESEO'
+  /* C11: un libro apuntado sin archivo no se lee, no se escucha ni tiene índice: es para la lista de lecturas. */
+  const registro = esSoloRegistro(libro)
+  const vistaPestana: Pestana = registro && (pestana === 'capitulos' || pestana === 'notas') ? 'diario' : pestana
   const leer = (frase?: string) => navigation.navigate('Leer', { id: libro.id, ...(frase ? { frase } : {}) })
   const escuchar = (desdeFrase?: string) => {
+    /* C10.3: empezar a escuchar un libro «Por leer» lo mete en «Leyendo» en cuanto avanza: se va preparando
+       la voz entera desde donde vas. No se espera a nada: el capítulo pedido va por la cola urgente. */
+    if (libro.estado === 'POR_LEER') alEntrarEnLeyendo(libro, prefs.vozId, capituloDeProgreso(libro.progreso))
     escucharLibro(libro, { vozId: prefs.vozId, velocidad: prefs.velocidad, desdeFrase: desdeFrase ?? null })
     navigation.navigate('Escuchar', { id: libro.id })
   }
@@ -338,13 +352,32 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               })}
             </View>
           ) : null}
-          {libro.porcentaje > 0 ? (
+          {libro.porcentaje > 0 && !registro ? (
             <View style={styles.avance}>
               <Barra porcentaje={libro.porcentaje} alto={6} etiqueta="Tu avance" />
               <Text style={[styles.avanceTexto, { color: colors.textSecondary }]}>
                 Vas por el {Math.round(libro.porcentaje)} %
                 {libro.ultimaApertura ? ` · abierto ${fechaRelativa(libro.ultimaApertura)}` : ''}
               </Text>
+            </View>
+          ) : null}
+          {/* C12: la marca discreta de la copia para escuchar sin conexión (solo en «Leyendo»). */}
+          {libro.estado === 'LEYENDO' && tieneVoz(libro) ? (
+            <MarcaSinConexion ejemplarId={libro.id} style={portadaAncha ? undefined : styles.textoCentrado} />
+          ) : null}
+          {registro ? (
+            <View
+              style={[styles.registro, { borderColor: colors.border, backgroundColor: colors.card }]}
+              testID="solo-registro"
+            >
+              <Text style={[styles.registroRotulo, { color: colors.primary }]}>Solo registro</Text>
+              <Text style={[styles.registroTexto, { color: colors.textSecondary }]}>{MENSAJES.soloRegistro}</Text>
+              {libro.fechaFin && libro.estado === 'LEIDO' ? (
+                <Text style={[styles.registroTexto, { color: colors.text }]}>
+                  Lo terminaste el {fechaCorta(libro.fechaFin)}.
+                </Text>
+              ) : null}
+              {libro.nota ? <Text style={[styles.notaDeseoTexto, { color: colors.text }]}>{libro.nota}</Text> : null}
             </View>
           ) : null}
           {esDeseo ? (
@@ -392,7 +425,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               />
             </View>
           ) : null}
-          {!esDeseo && !esHoja && !conBarra ? (
+          {!esDeseo && !esHoja && !registro && !conBarra ? (
             <View style={styles.botones}>
               <Button
                 title={libro.porcentaje > 0 ? 'Seguir' : 'Leer'}
@@ -416,7 +449,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
               />
             </View>
           ) : null}
-          {motivoNoLegible && !esDeseo ? (
+          {motivoNoLegible && !esDeseo && !registro ? (
             <Text style={[styles.aviso, { color: colors.warning }]}>⏳ {motivoNoLegible}</Text>
           ) : null}
         </View>
@@ -446,23 +479,32 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
             ['diario', 'Diario'],
             ['datos', 'Datos'],
           ] as [Pestana, string][]
-        ).map(([k, n]) => (
-          <Pressable
-            key={k}
-            onPress={() => setPestana(k)}
-            {...estadoElegible('tab', pestana === k)}
-            accessibilityLabel={n}
-            testID={`ficha-pestana-${k}`}
-            style={[styles.pestana, pestana === k && { borderBottomColor: colors.primary }, web({ cursor: 'pointer' })]}
-          >
-            <Text style={[styles.pestanaTexto, { color: pestana === k ? colors.primary : colors.textSecondary }]}>
-              {n}
-            </Text>
-          </Pressable>
-        ))}
+        )
+          /* Sin archivo no hay índice ni notas del texto: solo el diario y los datos. */
+          .filter(([k]) => !registro || k === 'diario' || k === 'datos')
+          .map(([k, n]) => (
+            <Pressable
+              key={k}
+              onPress={() => setPestana(k)}
+              {...estadoElegible('tab', vistaPestana === k)}
+              accessibilityLabel={n}
+              testID={`ficha-pestana-${k}`}
+              style={[
+                styles.pestana,
+                vistaPestana === k && { borderBottomColor: colors.primary },
+                web({ cursor: 'pointer' }),
+              ]}
+            >
+              <Text
+                style={[styles.pestanaTexto, { color: vistaPestana === k ? colors.primary : colors.textSecondary }]}
+              >
+                {n}
+              </Text>
+            </Pressable>
+          ))}
       </View>
 
-      {pestana === 'capitulos' ? (
+      {vistaPestana === 'capitulos' ? (
         <View style={styles.lista}>
           {libro.capitulos.length === 0 ? (
             <AppText variant="caption">
@@ -498,7 +540,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
           {!esHoja && !esDeseo && legible ? <Pronunciacion ejemplarId={libro.id} /> : null}
         </View>
       ) : null}
-      {pestana === 'notas' ? (
+      {vistaPestana === 'notas' ? (
         <NotasDelLibro
           ejemplarId={libro.id}
           onIr={(a) =>
@@ -510,8 +552,8 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
           }
         />
       ) : null}
-      {pestana === 'diario' ? <Diario ejemplarId={libro.id} /> : null}
-      {pestana === 'datos' ? (
+      {vistaPestana === 'diario' ? <Diario ejemplarId={libro.id} /> : null}
+      {vistaPestana === 'datos' ? (
         <DatosLibro
           libro={libro}
           guardando={guardando}
@@ -557,7 +599,7 @@ const FichaLibro: React.FC<Props> = ({ ejemplarId, embebida, onCambio, onCerrar 
 
   if (embebida) return Contenido
   const barra =
-    conBarra && !esDeseo && !esHoja ? (
+    conBarra && !esDeseo && !esHoja && !registro ? (
       <View
         style={[
           styles.barraAcciones,
@@ -944,6 +986,10 @@ const styles = StyleSheet.create({
   notaDeseoRotulo: { fontFamily: fuentes.uiMedia, fontSize: fontSize.xs },
   notaDeseoTexto: { fontFamily: fuentes.tituloCursiva, fontSize: fontSize.md },
   aviso: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
+  textoCentrado: { textAlign: 'center' },
+  registro: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 4, marginTop: 4 },
+  registroRotulo: { fontFamily: fuentes.uiSemi, fontSize: fontSize.sm },
+  registroTexto: { fontFamily: fuentes.ui, fontSize: fontSize.xs, lineHeight: 20 },
   sinopsis: { fontFamily: fuentes.lectura, fontSize: fontSize.md, lineHeight: 28 },
   etiqueta: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   etiquetaTexto: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
