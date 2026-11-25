@@ -33,6 +33,11 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
 
     @Override
     public boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad) {
+        return encolarVozSiFalta(archivoId, vozId, capitulo, prioridad, 0);
+    }
+
+    @Override
+    public boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad, int orden) {
         /* Vivo = PENDIENTE, o EN_CURSO con latido en los ultimos 10 min. Un
            EN_CURSO o un GENERANDO sin latido es un trabajo que murio con el
            taller (QA DA-01): no cuenta y el capitulo se vuelve a encolar. Un
@@ -46,12 +51,32 @@ public class TrabajoRepositoryImpl implements TrabajoRepository {
                 Integer.class, VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, vozId, capitulo);
         if (vivos != null && vivos > 0) return false;
         /* (B17) el payload lleva el diccionario de pronunciacion del libro, si tiene */
-        jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad) "
+        jdbc.update("INSERT INTO bah_lib_trabajo (id, tipo, archivo_id, payload, prioridad, creado) "
                         + "VALUES (?, ?, ?, jsonb_build_object('vozId', ?::text, 'capitulo', ?::int) || "
-                        + PRONUNCIACION_DEL_ARCHIVO + ", ?)",
-                UUID.randomUUID(), VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, prioridad);
+                        + PRONUNCIACION_DEL_ARCHIVO + ", ?, " + CREADO_EN_ORDEN + ")",
+                UUID.randomUUID(), VOZ_CAPITULO, archivoId, vozId, capitulo, archivoId, prioridad, desfase(orden));
         log.info("Encolada voz {} capitulo {} del archivo {} (prioridad {})", vozId, capitulo, archivoId, prioridad);
         return true;
+    }
+
+    /**
+     * (0.5.0, C10.2) creado = hora de la transaccion + orden milisegundos. now() es la hora de INICIO
+     * de la transaccion: todo lo que se encola en una misma peticion tendria el mismo creado y el
+     * taller (ORDER BY prioridad, creado) los tomaria en un orden cualquiera. Con el desfase, a igual
+     * prioridad sale primero el de menor orden.
+     */
+    private static final String CREADO_EN_ORDEN = "now() + make_interval(secs => ?)";
+
+    private static double desfase(int orden) {
+        return orden / 1000.0;
+    }
+
+    @Override
+    public int ordenarEnCola(UUID archivoId, String vozId, int capitulo, int prioridad, int orden) {
+        return jdbc.update("UPDATE bah_lib_trabajo SET creado = " + CREADO_EN_ORDEN + " WHERE tipo = ? "
+                        + "AND estado = 'PENDIENTE' AND archivo_id = ? AND payload->>'vozId' = ? "
+                        + "AND (payload->>'capitulo')::int = ? AND prioridad = ?",
+                desfase(orden), VOZ_CAPITULO, archivoId, vozId, capitulo, prioridad);
     }
 
     @Override
