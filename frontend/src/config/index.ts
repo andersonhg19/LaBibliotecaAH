@@ -1,6 +1,8 @@
-import { entorno } from '@config/entorno'
+import { apiParaLaPagina, entorno } from '@config/entorno'
 
-export const API_URL: string = entorno.EXPO_PUBLIC_API_URL
+const pagina = typeof window !== 'undefined' && window.location ? window.location : null
+
+export const API_URL: string = apiParaLaPagina(entorno.EXPO_PUBLIC_API_URL, pagina)
 export const MODO_DEMO: boolean = entorno.EXPO_PUBLIC_MOCK
 
 /** Prefijos del gateway (contratos §9). */

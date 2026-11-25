@@ -41,3 +41,28 @@ export const entorno: Entorno = validarEntorno({
   EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
   EXPO_PUBLIC_MOCK: process.env.EXPO_PUBLIC_MOCK,
 })
+
+/**
+ * Puerto de la API cuando la web se abre por su NOMBRE PROPIO en la tailnet (0.5.0).
+ *
+ * La Biblioteca se sirve en dos sitios a la vez: el de siempre (`casa…:7050`, API en
+ * `:7051`) y su nombre propio (`biblioteca…`, web en 443 y API en 8443), que la separa
+ * de las otras apps del mismo PC (el iPhone confundía la Biblioteca con Oh Churus al
+ * tocar la carátula en el centro de control). La web lleva UNA sola API_URL incrustada,
+ * así que, si la página se abrió por un nombre distinto del de esa URL y ese nombre
+ * empieza por `biblioteca.`, la API es la del mismo nombre en este puerto.
+ */
+export const PUERTO_API_NOMBRE_PROPIO = 8443
+
+/** La API que corresponde a la página abierta (exportada para las pruebas). */
+export function apiParaLaPagina(configurada: string, pagina?: { protocol: string; hostname: string } | null): string {
+  if (!pagina || pagina.protocol !== 'https:') return configurada
+  let hostApi: string
+  try {
+    hostApi = new URL(configurada).hostname
+  } catch {
+    return configurada
+  }
+  if (pagina.hostname === hostApi || !pagina.hostname.startsWith('biblioteca.')) return configurada
+  return `https://${pagina.hostname}:${PUERTO_API_NOMBRE_PROPIO}`
+}
