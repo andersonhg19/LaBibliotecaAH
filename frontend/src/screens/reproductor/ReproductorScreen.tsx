@@ -170,6 +170,48 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
     </View>
   )
 
+  // El aviso de la voz. Un ERROR con «Reintentar» va SOBRE la barra de controles, siempre a la vista: dentro del
+  // scroll, en un iPhone 390×844 quedaba debajo de la barra y tocar «Reintentar» movía el deslizador (QA 0.5.0).
+  const avisoVista = (sobreLaBarra: boolean) =>
+    aviso ? (
+      <View
+        style={[
+          styles.estado,
+          { borderColor: aviso.tono === 'error' ? colors.danger : 'rgba(201,162,39,0.55)' },
+          sobreLaBarra ? { backgroundColor: colors.surface } : null,
+          web({ backgroundImage: 'linear-gradient(180deg, rgba(243,233,210,0.06), rgba(0,0,0,0.12))' }),
+        ]}
+        accessibilityLiveRegion="polite"
+        testID="aviso-voz"
+      >
+        <View style={styles.estadoFila}>
+          {aviso.tono === 'espera' ? <ActivityIndicator color={SALA_ESCUCHA.laton} /> : null}
+          <Text style={[styles.mensaje, { color: aviso.tono === 'error' ? colors.danger : colors.text }]}>
+            {aviso.tono === 'error' ? '⚠ ' : ''}
+            {aviso.texto}
+          </Text>
+        </View>
+        {aviso.reintentar ? (
+          <Button
+            title="Reintentar"
+            icono="volver"
+            size="small"
+            onPress={() => motor.reintentar()}
+            testID="reintentar-voz"
+          />
+        ) : null}
+        {v.vozPendiente ? (
+          <Button
+            title={`Seguir con ${v.nombreVoz}`}
+            size="small"
+            variant="ghost"
+            onPress={() => motor.setVoz(v.vozId, v.nombreVoz)}
+          />
+        ) : null}
+      </View>
+    ) : null
+  const errorSobreBarra = aviso?.tono === 'error'
+
   const barra = (
     <View
       style={[
@@ -187,6 +229,7 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
     >
       {esteLibro ? (
         <View style={styles.sobreBarra} pointerEvents="box-none">
+          {errorSobreBarra ? avisoVista(true) : null}
           <TarjetaCapitulo v={v} capitulos={libro.capitulos} onVolverAEmpezar={() => motor.volverAEmpezar()} />
         </View>
       ) : null}
@@ -325,42 +368,7 @@ const ReproductorScreen: React.FC<Props> = ({ route, navigation }) => {
               </Text>
             ) : null}
 
-            {aviso ? (
-              <View
-                style={[
-                  styles.estado,
-                  { borderColor: aviso.tono === 'error' ? colors.danger : 'rgba(201,162,39,0.55)' },
-                  web({ backgroundImage: 'linear-gradient(180deg, rgba(243,233,210,0.06), rgba(0,0,0,0.12))' }),
-                ]}
-                accessibilityLiveRegion="polite"
-                testID="aviso-voz"
-              >
-                <View style={styles.estadoFila}>
-                  {aviso.tono === 'espera' ? <ActivityIndicator color={SALA_ESCUCHA.laton} /> : null}
-                  <Text style={[styles.mensaje, { color: aviso.tono === 'error' ? colors.danger : colors.text }]}>
-                    {aviso.tono === 'error' ? '⚠ ' : ''}
-                    {aviso.texto}
-                  </Text>
-                </View>
-                {aviso.reintentar ? (
-                  <Button
-                    title="Reintentar"
-                    icono="volver"
-                    size="small"
-                    onPress={() => motor.reintentar()}
-                    testID="reintentar-voz"
-                  />
-                ) : null}
-                {v.vozPendiente ? (
-                  <Button
-                    title={`Seguir con ${v.nombreVoz}`}
-                    size="small"
-                    variant="ghost"
-                    onPress={() => motor.setVoz(v.vozId, v.nombreVoz)}
-                  />
-                ) : null}
-              </View>
-            ) : null}
+            {!errorSobreBarra ? avisoVista(false) : null}
 
             {!esteLibro ? (
               <Button title="Escuchar este libro" icono="auriculares" onPress={empezar} size="large" />
@@ -599,7 +607,7 @@ const styles = StyleSheet.create({
   },
   barra: { borderTopWidth: 1, paddingTop: 4, paddingBottom: 8, paddingHorizontal: 8 },
   barraDentro: { maxWidth: 640, width: '100%', alignSelf: 'center' },
-  sobreBarra: { position: 'absolute', left: 8, right: 8, bottom: '100%', marginBottom: 8, zIndex: 5 },
+  sobreBarra: { position: 'absolute', left: 8, right: 8, bottom: '100%', marginBottom: 8, zIndex: 5, gap: 8 },
   rielQuieto: { height: 44, justifyContent: 'center' },
   riel: { height: 6, borderRadius: 3 },
   avance: { gap: 0 },

@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native'
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native'
 
 import type { PropsLector, Ubicacion } from '@componentes/lector/tipos'
 import MiniReproductor from '@componentes/reproductor/MiniReproductor'
@@ -336,6 +336,25 @@ describe('UX-11 y QA LV-02 en el reproductor', () => {
     fireEvent.press(r.getByTestId('reintentar-voz'))
     expect(mockMotor.reintentar).toHaveBeenCalled()
     expect(r.getByTestId('boton-play').props.accessibilityLabel).toBe('Reintentar')
+  })
+
+  it('QA 0.5.0: el error con «Reintentar» va sobre la barra de controles (no escondido en el scroll del iPhone)', async () => {
+    mockEstadoVoz = sonandoEste({
+      fase: 'error',
+      tipoError: 'audio',
+      mensaje: 'No se pudo cargar el audio de este capítulo.',
+    })
+    const r = abrir()
+    await waitFor(() => expect(r.getByTestId('reintentar-voz')).toBeTruthy())
+    expect(r.getAllByTestId('aviso-voz')).toHaveLength(1)
+    expect(within(r.getByTestId('barra-controles')).getByTestId('reintentar-voz')).toBeTruthy()
+  })
+
+  it('un aviso que no es error (esperando la voz) se queda en el cuerpo, no tapa la barra', async () => {
+    mockEstadoVoz = sonandoEste({ fase: 'preparando', mensaje: null })
+    const r = abrir()
+    await waitFor(() => expect(r.getByTestId('barra-controles')).toBeTruthy())
+    expect(within(r.getByTestId('barra-controles')).queryByTestId('aviso-voz')).toBeNull()
   })
 
   it('QA LV-P3: si suena OTRO libro, los controles de este no lo tocan', async () => {
