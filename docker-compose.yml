@@ -189,8 +189,36 @@ services:
     mem_limit: 256m
     networks: [biblioteca-ah]
 
+  # Nombre propio en la tailnet (0.5.0): https://<NOMBRE_PROPIO>.<tailnet>.ts.net (web, 443) y :8443 (API).
+  # Separa la Biblioteca de las otras apps del mismo PC (el iPhone la confundia con Oh Churus en el centro de
+  # control). Solo con `--profile nombre-propio` (QA y desarrollo no lo levantan). La primera vez no hay clave:
+  # `docker logs` muestra un enlace de login que Anderson abre UNA vez; el estado queda en el volumen.
+  # Modo userspace: sin NET_ADMIN ni /dev/net/tun. Nunca Funnel (solo tailnet).
+  nombre-propio:
+    image: tailscale/tailscale:${TAILSCALE_VERSION:-v1.104.7}
+    profiles: ["nombre-propio"]
+    hostname: ${NOMBRE_PROPIO:-biblioteca}
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TS_HOSTNAME: ${NOMBRE_PROPIO:-biblioteca}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_AUTH_ONCE: "true"
+    volumes:
+      - bah-tailscale-estado:/var/lib/tailscale
+      - ./ops/nombre-propio:/config:ro
+    mem_limit: 128m
+    cpus: 0.25
+    networks: [biblioteca-ah]
+    depends_on:
+      frontend: {condition: service_started}
+      gateway-service: {condition: service_started}
+
 volumes:
   bah-postgres-data:
+  bah-tailscale-estado:
 
 networks:
   biblioteca-ah:

@@ -172,6 +172,26 @@ Limitaciones:
   tampoco va por SSH. Si falta una, el `BUILD` de esa imagen sale con `rc` distinto de 0.
 - Sin BuildKit no hay caché de montaje: la construcción es más lenta que por la sesión.
 
+## Nombre propio en la tailnet (desde la 0.5.0)
+
+La Biblioteca se sirve tambien en **https://biblioteca.<tailnet>.ts.net** (web, 443) y **:8443** (API), con un nodo de
+Tailscale propio en el contenedor `nombre-propio` (perfil `nombre-propio` del compose; QA no lo levanta). Motivo: en el
+PC de casa viven varias apps en `casa.<tailnet>.ts.net` separadas solo por puerto, y el iPhone confundia la Biblioteca
+con Oh Churus al tocar la caratula en el centro de control. La URL de siempre (`:7050`/`:7051`) sigue funcionando: la
+web elige la API segun el nombre por el que se abrio (`apiParaLaPagina` en `frontend/src/config/entorno.ts`).
+
+- Modo userspace (sin `NET_ADMIN` ni `/dev/net/tun`), `ops/nombre-propio/serve.json` (443 -> `frontend:3100`,
+  8443 -> `gateway-service:8920`), sin Funnel. Estado en el volumen `biblioteca-ah_bah-tailscale-estado`.
+- Primera vez (hecha el 2026-11-25): `docker compose ... --profile nombre-propio up -d nombre-propio`; sin clave,
+  `docker logs biblioteca-ah-nombre-propio-1` muestra un enlace `https://login.tailscale.com/a/...` que Anderson abre
+  una vez con su cuenta. Despues el nodo no caduca mientras el volumen exista (desactivar la caducidad de la clave del
+  nodo `biblioteca` en la consola de Tailscale para no tener que repetirlo cada 180 dias).
+- `.env` de produccion: `CORS_ALLOWED_ORIGINS` con los dos origenes
+  (`https://casa.<tailnet>.ts.net:7050,https://biblioteca.<tailnet>.ts.net`).
+- Despues de cada `up -d` de la version nueva: `... --profile nombre-propio up -d` (o incluir el perfil siempre en `$C`).
+- En el iPhone: borrar el icono viejo de la pantalla de inicio y anadir el nuevo desde Safari en
+  `https://biblioteca.<tailnet>.ts.net` (otro origen: hay que volver a entrar; el progreso esta en el servidor).
+
 ## Volver atrás
 
 **Regla de las migraciones (expand/contract):** toda migración Flyway es **aditiva** y la versión N-1 tiene que seguir
