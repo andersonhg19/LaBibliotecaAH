@@ -263,9 +263,15 @@ class Mejoras050Test extends PostgresDeVerdad {
             id = subirLibro(ANDERSON, "leyendo.epub").get("id").asText();
         }
 
+        /* Como la web y el lector: cada guardado lleva su hora y va despues del anterior. Sin ella manda el
+           reloj del servidor, y dos guardados seguidos podian empatar o desordenarse (prueba intermitente). */
+        private Instant hora = Instant.now().minus(1, ChronoUnit.HOURS);
+
         private void progreso(Object... kv) throws Exception {
             Map<String, Object> p = mapa(kv);
             p.put("ejemplarId", id);
+            hora = hora.plusSeconds(1);
+            p.putIfAbsent("actualizadoEn", hora.toString());
             bien(pedir(ANDERSON, "/v1/progreso/save", p));
         }
 
