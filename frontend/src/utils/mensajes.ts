@@ -59,6 +59,19 @@ export const MENSAJES = {
   rangoAniosInvertido: '«Desde» es posterior a «Hasta»: no hay años en ese rango.',
   preparandoLibro: 'Preparando el libro…',
   conversionFallo: 'No se pudo preparar este archivo. Prueba a subirlo de nuevo o en otro formato.',
+  // 0.5.0 · «Leyendo» manda (C10) y libros «solo registro» (C11)
+  quitadoDeLeyendo: (titulo: string, estado: string) => `«${titulo}» pasó a ${estado}.`,
+  vueltaALeyendo: (titulo: string) => `«${titulo}» vuelve a «Leyendo».`,
+  quitarDeLeyendoAviso:
+    'Tu avance y tus notas se quedan. La copia para escuchar sin conexión se borra de este dispositivo.',
+  registroGuardado: 'Apuntado en tu biblioteca',
+  soloRegistro:
+    'Solo registro: este libro está apuntado en tu lista de lecturas, sin archivo. No se lee ni se escucha aquí.',
+  sinConexionNoDisponible:
+    'Para escuchar sin conexión, añade la app a la pantalla de inicio (en el iPhone: Compartir → «Añadir a pantalla de inicio») y ábrela desde ahí.',
+  sinConexionVacio: 'Cuando pongas un libro en «Leyendo», su voz se guardará aquí para escucharlo sin conexión.',
+  sinConexionBorrada: 'Copia borrada de este dispositivo',
+  sinConexionVuelve: 'Un libro que sigue en «Leyendo» se vuelve a guardar solo; para que no, quítalo de «Leyendo».',
   // lector
   lectorFallo: 'No se pudo abrir el libro.',
   lectorSinArchivo: 'Este libro todavía no tiene archivo para leer.',

@@ -179,6 +179,23 @@ export interface EjemplarDTO {
   yaLoTenias?: boolean
   /** v1.6: carpeta del archivador donde está el documento (null = raíz; los libros siempre null). */
   carpetaId?: string | null
+  /**
+   * 0.5.0 (contrato C11): libro «solo registro», apuntado sin archivo (para la lista de lo leído).
+   * No se lee, no se escucha ni se prepara voz. Ausente en servidores anteriores = false.
+   */
+  sinArchivo?: boolean
+}
+
+/** 0.5.0 (C11): `POST /v1/libros/registro`, apuntar un libro que ya leíste sin subir el archivo. */
+export interface RegistroLibroDTO {
+  titulo: string
+  autores: string[]
+  /** Por defecto LEIDO; también POR_LEER, LEYENDO o ABANDONADO. */
+  estado: EstadoLectura
+  /** Cuándo lo terminaste (instante ISO, 00:00 UTC del día elegido); solo con LEIDO; null = no se sabe. */
+  fechaFin: string | null
+  calificacion: number | null
+  nota: string | null
 }
 
 export interface CapituloResumen {

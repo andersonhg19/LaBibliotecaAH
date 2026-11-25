@@ -13,6 +13,7 @@ import Mueble, { Modulo } from '@componentes/estanteria/Mueble'
 import { ModoEstante } from '@componentes/estanteria/tiposLibro'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
+import { useQuitarDeLeyendo } from '@componentes/molecules/QuitarDeLeyendo'
 import { useAuth } from '@contextos/AuthContext'
 import { useToast } from '@contextos/ToastContext'
 import { exigir, useCarga } from '@hooks/useCarga'
@@ -26,6 +27,7 @@ import {
   leerPreferenciasEstanteria,
 } from '@logica/agrupar'
 import { EstadoFiltros, aFiltroDTO, contarFiltros } from '@logica/filtros'
+import { sincronizarLeyendo } from '@logica/leyendo'
 import { movimientoDeOrden } from '@logica/orden'
 import { estantesService, librosService } from '@servicios/bibliotecaService'
 import type { EjemplarDTO, EstanteDTO, Orden, Pestana } from '@tipos'
@@ -190,8 +192,14 @@ const Estanteria: React.FC<Props> = ({
     conLibros.sort((a, b) => (a.estante.tipo === 'FAVORITOS' ? -1 : b.estante.tipo === 'FAVORITOS' ? 1 : 0))
     /* Filtrando por colecciones: cada balda enseña solo los libros que pasan el filtro. */
     const pasan = todos ? new Set(todos.map((l) => l.id)) : null
+    const paginaLeyendo = exigir(leyendo)
+    const enAtril = (paginaLeyendo?.list ?? []).filter((l) => l.tipo === 'LIBRO')
+    /* C10.3: al cargar «Leyendo» (al abrir la app y tras cada cambio) se ajustan las copias sin conexión, en
+       segundo plano. Si la página no trae todos, se pide la lista entera: lo que falte en ella se borraría. */
+    const completa = paginaLeyendo != null && (paginaLeyendo.totalElements ?? 0) <= paginaLeyendo.list.length
+    sincronizarLeyendo(completa ? paginaLeyendo.list : undefined)
     setDatos({
-      leyendo: (exigir(leyendo)?.list ?? []).filter((l) => l.tipo === 'LIBRO'),
+      leyendo: enAtril,
       recientes: recientes ? recientes.libros : (todos ?? []).slice(0, EN_RECIENTES),
       totalRecientes: recientes ? recientes.total : (todos?.length ?? null),
       estantes: pasan ? conLibros.map((e) => ({ ...e, libros: e.libros.filter((l) => pasan.has(l.id)) })) : conLibros,
@@ -219,6 +227,8 @@ const Estanteria: React.FC<Props> = ({
     )
   }, [])
   usePreparacion(datos?.recientes ?? [], reemplazar)
+  /* C10.4: «⋯» en cada libro del atril → hoja para quitarlo de «Leyendo» (con «Deshacer»). */
+  const quitar = useQuitarDeLeyendo(cargar)
 
   const reordenar = async (estanteId: string, desde: number, hasta: number) => {
     /* Un movimiento a la vez (BI-28): dos toques seguidos no mandan dos órdenes cruzadas. */
@@ -397,10 +407,13 @@ const Estanteria: React.FC<Props> = ({
   return (
     <View testID="estanteria">
       {barra}
+      {quitar.aviso}
+      {quitar.hoja}
       <Mueble testID="mueble" grande={columnas > 1} apaisado={apaisado}>
         <Atril
           libros={datos.leyendo}
           onAbrir={onAbrir}
+          onOpciones={quitar.abrir}
           onElegir={() => onVerCatalogo?.('POR_LEER', 'RECIENTES')}
           anchoPortada={apaisado ? 88 : columnas > 1 ? 140 : 104}
           onSeguir={columnas > 1 && !apaisado ? onSeguir : undefined}

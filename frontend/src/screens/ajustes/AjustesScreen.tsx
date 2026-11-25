@@ -10,6 +10,7 @@ import Icono from '@componentes/atoms/Icono'
 import AppText from '@componentes/atoms/Text'
 import Encabezado from '@componentes/molecules/Encabezado'
 import Sala from '@componentes/molecules/Sala'
+import SinConexionAjustes from '@componentes/molecules/SinConexionAjustes'
 import { MODO_DEMO } from '@config'
 import { useAuth } from '@contextos/AuthContext'
 import { usePreferencias } from '@contextos/PreferenciasContext'
@@ -155,6 +156,11 @@ const AjustesScreen: React.FC<Props> = ({ navigation }) => {
               />
             ))}
           </View>
+        </Seccion>
+
+        {/* 0.5.0 (C12): lo guardado en este dispositivo para escuchar sin red. */}
+        <Seccion titulo="Sin conexión">
+          <SinConexionAjustes />
         </Seccion>
 
         {esAdmin ? (

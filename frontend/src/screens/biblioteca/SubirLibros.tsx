@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import Barra from '@componentes/atoms/Barra'
 import Button from '@componentes/atoms/Button'
@@ -39,6 +39,8 @@ interface Props {
   carpeta?: { id: string; nombre: string } | null
   /** v1.6: desde el archivador solo se traen documentos (sin elegir libro/documento). */
   soloDocumentos?: boolean
+  /** 0.5.0 (C11): «Apuntar un libro que ya leí» (sin archivo). Solo desde el «+» de la biblioteca. */
+  onApuntar?: () => void
 }
 
 const tamano = (b: number) =>
@@ -86,6 +88,7 @@ const SubirLibros: React.FC<Props> = ({
   deseo,
   carpeta,
   soloDocumentos,
+  onApuntar,
 }) => {
   const { colors } = useTheme()
   const { showToast } = useToast()
@@ -266,6 +269,28 @@ const SubirLibros: React.FC<Props> = ({
         />
       ) : null}
       {terminados ? <Button title="Listo" onPress={cerrar} /> : null}
+      {/* C11: lo secundario, discreto, al pie: apuntar un libro leído sin archivo. */}
+      {onApuntar && !deseo && !carpeta && !soloDocumentos && !filas.length ? (
+        <Pressable
+          onPress={() => {
+            setFilas([])
+            onApuntar()
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Apuntar un libro que ya leí, sin archivo"
+          testID="ir-apuntar"
+          style={({ pressed }) => [styles.apuntar, { borderTopColor: colors.border }, pressed && { opacity: 0.7 }]}
+        >
+          <Icono nombre="lapiz" color={colors.primary} tamano={20} />
+          <View style={styles.flex}>
+            <Text style={[styles.apuntarTitulo, { color: colors.primary }]}>Apuntar un libro que ya leí</Text>
+            <Text style={[styles.estado, { color: colors.textSecondary }]}>
+              Sin archivo: solo para tu lista de lecturas.
+            </Text>
+          </View>
+          <Icono nombre="right" color={colors.textMuted} />
+        </Pressable>
+      ) : null}
     </Hoja>
   )
 }
@@ -277,6 +302,17 @@ const styles = StyleSheet.create({
   nombre: { flex: 1, fontFamily: fuentes.uiMedia, fontSize: fontSize.sm },
   peso: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
   estado: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
+  flex: { flex: 1 },
+  apuntar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 56,
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  apuntarTitulo: { fontFamily: fuentes.uiSemi, fontSize: fontSize.sm },
 })
 
 export default SubirLibros

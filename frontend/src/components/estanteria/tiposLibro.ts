@@ -1,3 +1,4 @@
+import { esSoloRegistro } from '@logica/formato'
 import type { Postura } from '@logica/lomos'
 import type { EjemplarDTO } from '@tipos'
 
@@ -33,8 +34,10 @@ export const etiquetaLibro = (l: EjemplarDTO) => {
   const estado =
     l.tipo === 'DESEO'
       ? ' (deseo)'
-      : l.porcentaje > 0 && l.porcentaje < 100
-        ? `, vas por el ${Math.round(l.porcentaje)} %`
-        : ''
+      : esSoloRegistro(l)
+        ? ' (solo registro)'
+        : l.porcentaje > 0 && l.porcentaje < 100
+          ? `, vas por el ${Math.round(l.porcentaje)} %`
+          : ''
   return `${l.titulo}${autor}${estado}`
 }

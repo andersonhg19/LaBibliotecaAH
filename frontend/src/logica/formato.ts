@@ -105,6 +105,13 @@ export function fechaRelativa(iso: string | null | undefined, ahora: Date = new 
 export const seEstaPreparando = (l: Pick<EjemplarDTO, 'estadoConversion' | 'archivoId'>) =>
   !!l.archivoId && (l.estadoConversion === 'PENDIENTE' || l.estadoConversion === 'PROCESANDO')
 
+/**
+ * 0.5.0 (C11): ¿libro apuntado sin archivo («solo registro»)? El servidor pone `sinArchivo` también en los
+ * deseos: solo es registro si además es un LIBRO.
+ */
+export const esSoloRegistro = (l: Pick<EjemplarDTO, 'sinArchivo' | 'tipo'>): boolean =>
+  !!l.sinArchivo && l.tipo === 'LIBRO'
+
 /** Si se puede abrir en el lector. */
 export const sePuedeLeer = (l: Pick<EjemplarDTO, 'estadoConversion' | 'archivoId' | 'tipo'>) =>
   l.tipo !== 'DESEO' && !!l.archivoId && l.estadoConversion === 'LISTO'

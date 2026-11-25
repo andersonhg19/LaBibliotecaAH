@@ -18,6 +18,8 @@ import EmptyState from '@componentes/molecules/EmptyState'
 import { BotonIcono } from '@componentes/molecules/Encabezado'
 import EstadoError from '@componentes/molecules/EstadoError'
 import Hoja from '@componentes/molecules/Hoja'
+import MarcaSinConexion from '@componentes/molecules/MarcaSinConexion'
+import { useQuitarDeLeyendo } from '@componentes/molecules/QuitarDeLeyendo'
 import SeccionFacetas from '@componentes/molecules/SeccionFacetas'
 import { useAuth } from '@contextos/AuthContext'
 import { useTheme } from '@contextos/ThemeContext'
@@ -37,6 +39,7 @@ import {
   limpiarFiltros,
 } from '@logica/filtros'
 import { autoresTexto, cuentaDePestana, duracion, nombreEstado, plural } from '@logica/formato'
+import { esSoloRegistro, tieneVoz } from '@logica/leyendo'
 import { HUECO_FLOTANTE, esApaisado } from '@pantallas/biblioteca/flotante'
 import { librosService } from '@servicios/bibliotecaService'
 import { fontSize, fuentes } from '@tema'
@@ -186,6 +189,24 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
 
   const reemplazar = useCallback((l: EjemplarDTO) => setLibros((prev) => prev.map((x) => (x.id === l.id ? l : x))), [])
   usePreparacion(libros, reemplazar)
+  /* C10.4: en la pestaña Leyendo, cada libro lleva un «⋯» para quitarlo de ahí sin entrar en la ficha. */
+  const recargarLista = useCallback(() => pedir(0), [pedir])
+  const quitar = useQuitarDeLeyendo(recargarLista)
+  const enLeyendo = (l: EjemplarDTO) => l.tipo === 'LIBRO' && l.estado === 'LEYENDO'
+  /* Lo de «Leyendo» de cada libro: la marca sin conexión y el «⋯» (fuera del botón de la ficha: nada anidado). */
+  const pieLeyendo = (item: EjemplarDTO) =>
+    enLeyendo(item) ? (
+      <View style={styles.pieLeyendo}>
+        {tieneVoz(item) ? <MarcaSinConexion ejemplarId={item.id} style={styles.flex} /> : <View style={styles.flex} />}
+        <BotonIcono
+          icono="more"
+          etiqueta={`Quitar «${item.titulo}» de Leyendo`}
+          onPress={() => quitar.abrir(item)}
+          tamano={20}
+          testID={`catalogo-opciones-${item.id}`}
+        />
+      </View>
+    ) : null
 
   const columnas = rejilla ? Math.max(2, Math.min(8, Math.floor((width - 24) / 128))) : 1
   const anchoPortada = rejilla ? Math.floor((Math.min(width, 1400) - 24) / columnas) - 24 : 56
@@ -372,62 +393,75 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
 
   const renderLibro = ({ item }: { item: EjemplarDTO }) =>
     rejilla ? (
-      <Pressable
-        onPress={() => onAbrir(item)}
-        accessibilityRole="button"
-        accessibilityLabel={etiquetaLibro(item)}
-        testID={`catalogo-${item.id}`}
-        style={({ pressed }) => [
-          styles.celda,
-          { width: anchoPortada + 24 },
-          pressed && { opacity: 0.8 },
-          web({ cursor: 'pointer' }),
-        ]}
-      >
-        <Portada libro={item} ancho={anchoPortada} />
-        <Text numberOfLines={2} style={[styles.celdaTitulo, { color: colors.text }]}>
-          {item.titulo}
-        </Text>
-        <Text numberOfLines={1} style={[styles.celdaAutor, { color: colors.textSecondary }]}>
-          {autoresTexto(item.autores)}
-        </Text>
-        {item.porcentaje > 0 && item.porcentaje < 100 ? (
-          <Barra porcentaje={item.porcentaje} etiqueta={`Progreso de ${item.titulo}`} />
-        ) : null}
-      </Pressable>
-    ) : (
-      <Pressable
-        onPress={() => onAbrir(item)}
-        accessibilityRole="button"
-        accessibilityLabel={etiquetaLibro(item)}
-        testID={`catalogo-${item.id}`}
-        style={({ pressed }) => [
-          styles.ficha,
-          { borderColor: colors.border, backgroundColor: colors.card },
-          pressed && { opacity: 0.85 },
-          web({ cursor: 'pointer' }),
-        ]}
-      >
-        <Portada libro={item} ancho={56} sombra={false} />
-        <View style={styles.flex}>
-          <Text numberOfLines={2} style={[styles.fichaTitulo, { color: colors.text }]}>
+      <View style={{ width: anchoPortada + 24 }}>
+        <Pressable
+          onPress={() => onAbrir(item)}
+          accessibilityRole="button"
+          accessibilityLabel={etiquetaLibro(item)}
+          testID={`catalogo-${item.id}`}
+          style={({ pressed }) => [
+            styles.celda,
+            { width: anchoPortada + 24 },
+            pressed && { opacity: 0.8 },
+            web({ cursor: 'pointer' }),
+          ]}
+        >
+          <Portada libro={item} ancho={anchoPortada} />
+          <Text numberOfLines={2} style={[styles.celdaTitulo, { color: colors.text }]}>
             {item.titulo}
           </Text>
           <Text numberOfLines={1} style={[styles.celdaAutor, { color: colors.textSecondary }]}>
             {autoresTexto(item.autores)}
-            {item.anio ? ` · ${item.anio}` : ''}
           </Text>
-          <Text style={[styles.fichaMeta, { color: colors.textMuted }]}>
-            {item.tipo === 'LIBRO' ? nombreEstado(item.estado) : item.tipo === 'DESEO' ? 'Deseo' : 'Documento'}
-            {item.formatoOriginal ? ` · ${item.formatoOriginal}` : ''}
-            {item.minutosEstimados ? ` · ${duracion(item.minutosEstimados)}` : ''}
-            {item.favorito ? ' · ♥ favorito' : ''}
-            {item.nNotas ? ` · ${plural(item.nNotas, 'nota')}` : ''}
-          </Text>
-          {item.porcentaje > 0 ? <Barra porcentaje={item.porcentaje} etiqueta={`Progreso de ${item.titulo}`} /> : null}
-        </View>
-        <Icono nombre="right" color={colors.textMuted} />
-      </Pressable>
+          {item.porcentaje > 0 && item.porcentaje < 100 ? (
+            <Barra porcentaje={item.porcentaje} etiqueta={`Progreso de ${item.titulo}`} />
+          ) : null}
+        </Pressable>
+        {enLeyendo(item) ? <View style={styles.pieRejilla}>{pieLeyendo(item)}</View> : null}
+      </View>
+    ) : (
+      <View style={[styles.fichaFila, { borderColor: colors.border, backgroundColor: colors.card }]}>
+        <Pressable
+          onPress={() => onAbrir(item)}
+          accessibilityRole="button"
+          accessibilityLabel={etiquetaLibro(item)}
+          testID={`catalogo-${item.id}`}
+          style={({ pressed }) => [styles.ficha, pressed && { opacity: 0.85 }, web({ cursor: 'pointer' })]}
+        >
+          <Portada libro={item} ancho={56} sombra={false} />
+          <View style={styles.flex}>
+            <Text numberOfLines={2} style={[styles.fichaTitulo, { color: colors.text }]}>
+              {item.titulo}
+            </Text>
+            <Text numberOfLines={1} style={[styles.celdaAutor, { color: colors.textSecondary }]}>
+              {autoresTexto(item.autores)}
+              {item.anio ? ` · ${item.anio}` : ''}
+            </Text>
+            <Text style={[styles.fichaMeta, { color: colors.textMuted }]}>
+              {item.tipo === 'LIBRO' ? nombreEstado(item.estado) : item.tipo === 'DESEO' ? 'Deseo' : 'Documento'}
+              {esSoloRegistro(item) ? ' · solo registro' : ''}
+              {item.formatoOriginal ? ` · ${item.formatoOriginal}` : ''}
+              {item.minutosEstimados ? ` · ${duracion(item.minutosEstimados)}` : ''}
+              {item.favorito ? ' · ♥ favorito' : ''}
+              {item.nNotas ? ` · ${plural(item.nNotas, 'nota')}` : ''}
+            </Text>
+            {item.porcentaje > 0 ? (
+              <Barra porcentaje={item.porcentaje} etiqueta={`Progreso de ${item.titulo}`} />
+            ) : null}
+            {enLeyendo(item) && tieneVoz(item) ? <MarcaSinConexion ejemplarId={item.id} /> : null}
+          </View>
+          {enLeyendo(item) ? null : <Icono nombre="right" color={colors.textMuted} />}
+        </Pressable>
+        {enLeyendo(item) ? (
+          <BotonIcono
+            icono="more"
+            etiqueta={`Quitar «${item.titulo}» de Leyendo`}
+            onPress={() => quitar.abrir(item)}
+            tamano={20}
+            testID={`catalogo-opciones-${item.id}`}
+          />
+        ) : null}
+      </View>
     )
 
   return (
@@ -441,7 +475,16 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
         renderItem={renderLibro}
         columnWrapperStyle={columnas > 1 ? styles.filaRejilla : undefined}
         contentContainerStyle={styles.contenido}
-        ListHeaderComponent={controles}
+        ListHeaderComponent={
+          quitar.aviso ? (
+            <>
+              {controles}
+              {quitar.aviso}
+            </>
+          ) : (
+            controles
+          )
+        }
         ListEmptyComponent={
           cargando ? (
             <Esqueleto variante="portadas" ancho={width} />
@@ -485,6 +528,7 @@ const Catalogo: React.FC<Props> = ({ cabecera, onAbrir, version, pedido }) => {
         }}
       />
 
+      {quitar.hoja}
       <Hoja visible={hoja === 'orden'} titulo="Ordenar por" onCerrar={() => setHoja(null)}>
         {ORDENES.map((o) => (
           <Chip
@@ -619,17 +663,19 @@ const styles = StyleSheet.create({
   celda: { padding: 12, gap: 6, alignItems: 'flex-start', minHeight: 44 },
   celdaTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.md, lineHeight: 20 },
   celdaAutor: { fontFamily: fuentes.ui, fontSize: fontSize.xs },
-  ficha: {
+  /* La tarjeta de la lista; dentro, el botón de la ficha y (en Leyendo) el «⋯» a su lado. */
+  fichaFila: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     marginHorizontal: 16,
     marginVertical: 5,
-    padding: 10,
+    paddingRight: 4,
     borderRadius: 10,
     borderWidth: 1,
-    minHeight: 44,
   },
+  ficha: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, minHeight: 44 },
+  pieRejilla: { paddingHorizontal: 12, marginTop: -6 },
+  pieLeyendo: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   fichaTitulo: { fontFamily: fuentes.tituloNegrita, fontSize: fontSize.md },
   fichaMeta: { fontFamily: fuentes.ui, fontSize: fontSize.xs, marginVertical: 3 },
   anios: { flexDirection: 'row', gap: 10 },

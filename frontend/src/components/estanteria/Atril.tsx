@@ -6,8 +6,11 @@ import Barra from '@componentes/atoms/Barra'
 import Button from '@componentes/atoms/Button'
 import Placa from '@componentes/atoms/Placa'
 import LibroEnEstante from '@componentes/estanteria/LibroEnEstante'
+import { BotonIcono } from '@componentes/molecules/Encabezado'
+import MarcaSinConexion from '@componentes/molecules/MarcaSinConexion'
 import { useTheme } from '@contextos/ThemeContext'
 import { plural, tiempoRestante } from '@logica/formato'
+import { esSoloRegistro, tieneVoz } from '@logica/leyendo'
 import { fontSize, fuentes } from '@tema'
 import { paleta } from '@tema/colors'
 import { fibraPapel, tablaEstante } from '@tema/madera'
@@ -25,6 +28,8 @@ interface Props {
   onSeguir?: (l: EjemplarDTO) => void
   /** «+N»: los que no caben junto a la tarjeta, en la pestaña Leyendo. */
   onVerTodos?: () => void
+  /** 0.5.0 (C10.4): el «⋯» discreto de cada libro, para quitarlo de «Leyendo» sin entrar en la ficha. */
+  onOpciones?: (l: EjemplarDTO) => void
 }
 
 /*
@@ -61,7 +66,15 @@ export function repartoAtril(ancho: number, n: number, anchoPortada: number) {
   return { visibles, resto, libros, tarjeta, anchoLibros }
 }
 
-const Atril: React.FC<Props> = ({ libros, onAbrir, onElegir, anchoPortada = 112, onSeguir, onVerTodos }) => {
+const Atril: React.FC<Props> = ({
+  libros,
+  onAbrir,
+  onElegir,
+  anchoPortada = 112,
+  onSeguir,
+  onVerTodos,
+  onOpciones,
+}) => {
   const { colors, isDark } = useTheme()
   const [ancho, setAncho] = useState(0)
   /* En el PC (con tarjeta) solo van los que caben; el resto, en «+N». En el teléfono, la fila se desliza. */
@@ -131,13 +144,46 @@ const Atril: React.FC<Props> = ({ libros, onAbrir, onElegir, anchoPortada = 112,
                     ]}
                   />
                 </View>
-                <Text
-                  style={[styles.cifra, { color: tinta }, !isDark && styles.sobrePapel]}
-                  accessibilityLabel={`${l.titulo}: vas por el ${Math.round(p)} %${queda ? `, ${queda}` : ''}`}
-                >
-                  <Text style={styles.cifraFuerte}>{Math.round(p)} %</Text>
-                  {queda ? `\n${queda}` : ''}
-                </Text>
+                <View style={styles.pie}>
+                  <View style={styles.pieTextos}>
+                    <Text
+                      style={[styles.cifra, { color: tinta }, !isDark && styles.sobrePapel]}
+                      accessibilityLabel={
+                        esSoloRegistro(l)
+                          ? `${l.titulo}: solo registro`
+                          : `${l.titulo}: vas por el ${Math.round(p)} %${queda ? `, ${queda}` : ''}`
+                      }
+                    >
+                      {esSoloRegistro(l) ? (
+                        'Solo registro'
+                      ) : (
+                        <>
+                          <Text style={styles.cifraFuerte}>{Math.round(p)} %</Text>
+                          {queda ? `\n${queda}` : ''}
+                        </>
+                      )}
+                    </Text>
+                    {tieneVoz(l) ? (
+                      <MarcaSinConexion
+                        ejemplarId={l.id}
+                        color={tinta}
+                        style={[styles.marca, !isDark && styles.sobrePapel]}
+                      />
+                    ) : null}
+                  </View>
+                  {onOpciones ? (
+                    <View style={[styles.opciones, !isDark && styles.sobrePapel]}>
+                      <BotonIcono
+                        icono="more"
+                        etiqueta={`Quitar «${l.titulo}» de Leyendo`}
+                        onPress={() => onOpciones(l)}
+                        color={tinta}
+                        tamano={20}
+                        testID={`atril-opciones-${l.id}`}
+                      />
+                    </View>
+                  ) : null}
+                </View>
               </View>
             )
           })}
@@ -221,7 +267,10 @@ const SigueLeyendo: React.FC<{
         Vas por el {p} %{queda ? ` · ${queda}` : ''}
       </Text>
       <View style={styles.tarjetaBotones}>
-        <Button title="Seguir leyendo" icono="libroAbierto" size="small" onPress={() => onSeguir(libro)} />
+        {/* Un libro «solo registro» no se lee aquí (C11): solo su ficha. */}
+        {esSoloRegistro(libro) ? null : (
+          <Button title="Seguir leyendo" icono="libroAbierto" size="small" onPress={() => onSeguir(libro)} />
+        )}
         <Button title="Ficha" size="small" variant="secondary" onPress={() => onAbrir(libro)} />
       </View>
     </View>
@@ -265,10 +314,14 @@ const styles = StyleSheet.create({
   puesto: { alignItems: 'center', paddingBottom: 6 },
   inclinado: { alignItems: 'center' },
   cinta: { position: 'absolute', bottom: -12, right: '28%', width: 11 },
+  /* El pie de cada libro: la cifra (y la marca sin conexión) y, al lado, el «⋯», que no tapa la portada. */
+  pie: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginTop: 22, gap: 2 },
+  pieTextos: { alignItems: 'center', flexShrink: 1, gap: 4 },
+  marca: { textAlign: 'center' },
+  opciones: { borderRadius: 22, marginTop: -10 },
   cifra: {
     fontFamily: fuentes.uiMedia,
     fontSize: fontSize.xs,
-    marginTop: 22,
     textAlign: 'center',
     fontVariant: ['lining-nums', 'tabular-nums'],
   },
