@@ -19,8 +19,24 @@
 //   frame-ancestors 'none'     nadie puede enmarcar la biblioteca (clickjacking).
 import fs from 'node:fs'
 
+/**
+ * (0.5.0) La API del NOMBRE PROPIO: la web también se abre como `biblioteca.<resto>` y entonces
+ * habla con `https://biblioteca.<resto>:8443` (config/entorno.ts, apiParaLaPagina). Se deriva del
+ * host de la API configurada cambiando su primera etiqueta; con un host de menos de 3 etiquetas
+ * (localhost, IP) no hay nombre propio.
+ */
+export function origenNombrePropio(api) {
+  const u = new URL(api)
+  const partes = u.hostname.split('.')
+  if (u.protocol !== 'https:' || partes.length < 3 || /^\d+$/.test(partes[partes.length - 1])) return null
+  return `https://biblioteca.${partes.slice(1).join('.')}:8443`
+}
+
 export function politica(api) {
-  const origen = api ? new URL(api).origin : "https: http://localhost:* http://127.0.0.1:*"
+  const propio = api ? origenNombrePropio(api) : null
+  const origen = api
+    ? [new URL(api).origin, propio].filter(Boolean).join(' ')
+    : "https: http://localhost:* http://127.0.0.1:*"
   return [
     "default-src 'self'",
     "script-src 'self' 'unsafe-eval'",
