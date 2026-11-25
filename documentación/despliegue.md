@@ -149,6 +149,22 @@ conservan para cuando se vuelva a la 0.4.0). La `estructura.json` v2 que deja la
 0.3.3 (solo usa `capitulos[]`, cuyos campos se conservan). Con el compose viejo Eureka vuelve a publicarse en 8860.
 Solo si la 0.4.0 estropeó datos: camino B con el respaldo anotado en el paso 3 de esta lista.
 
+### Despliegue de la 0.5.0 (orden)
+
+Trae la **V8** (`bah_lib_diario`, solo aditiva), el service worker de la web y el nombre propio en la tailnet.
+
+1. Pasos 0a, 0b y 1 de «Versión nueva» (CI en verde del SHA, TAG nuevo, respaldo con `RESUMEN: ... espejo OK`).
+2. `.env`: `Copy-Item .env .env.antes-0.5.0`, `TAG=0.5.0` y `CORS_ALLOWED_ORIGINS` con los dos orígenes
+   (`https://casa.<tailnet>.ts.net:7050,https://biblioteca.<tailnet>.ts.net`).
+3. Construir (paso 2) y levantar con el perfil: `$C --profile nombre-propio up -d --no-build`. En el log de
+   biblioteca-service, `Migrating schema "public" to version "8 - diario del reproductor"` y `Started`.
+4. Humo (paso 4) + `curl -s -o NUL -w %{http_code} http://127.0.0.1:3100/sw.js` → 200, y `docker logs
+   biblioteca-ah-nombre-propio-1` sin enlace de login (ya autorizado).
+5. **Vuelta atrás** (camino A): `.env.antes-0.5.0` y `up -d --no-build`. La V8 es una tabla nueva que la 0.4.0 no
+   usa. El service worker de la 0.5.0 queda instalado en los navegadores: la 0.4.0 no lo registra, pero el viejo sigue
+   sirviendo la caché de la app hasta que se borre; para quitarlo, `localStorage['bah.sw']='0'` en la consola o
+   borrar los datos del sitio.
+
 ### Construir por SSH (cuando la tarea de sesión no corre)
 
 Por SSH `docker build` falla por las credenciales de Docker Desktop (`credsStore`) y porque BuildKit no arranca. Se

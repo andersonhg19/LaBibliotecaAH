@@ -437,3 +437,47 @@ Pendientes menores: orden por autor con apellidos compuestos (usar `file-as` del
   `main`) y la construcción por SSH (`ops/construir-ssh.ps1`) cuando la tarea de sesión no corre.
 - Pendiente: D16 en el iPhone físico, AirPlay (RP-13), escucha continua en Ajustes (RP-15), Expo SDK 57/58, zod 4,
   entonación de exclamaciones, hogar compartido e IA (decisión de Anderson).
+
+## 2026-11-25 — Desplegada la 0.4.0
+- Producción estaba aún en 0.3.3 (la 0.4.0 llevaba 11 días validada sin desplegar) y Anderson seguía viendo cortes de
+  voz y cambios de capítulo que no entraban. CI en verde de `ff5e36e`, `main` adelantada (fast-forward), respaldo
+  `2026-11-25_1319` con espejo, build por la sesión (las 8 imágenes), `up -d --no-build`: V6 y V7 aplicadas, todo
+  healthy. Reclasificación pedida como ADMIN (37 libros encolados). Vigía instalado (`OK: biblioteca-ah sano…`).
+  `main` protegida (5 checks, `enforce_admins`).
+- Los logs del servidor de los 10 días anteriores no tenían ni un error de audio: los cortes pasan en el iPhone y no
+  quedaban en ningún sitio. De ahí el diario del reproductor de la 0.5.0.
+
+## 2026-11-25 — 0.5.0: Leyendo manda, sin conexión, diario y reproductor blindado
+Pedido de Anderson: se corta el sonido y no sigue; quitar libros de «en proceso»; al marcar un libro como que lo va a
+leer, tener todas sus pistas (y borrarlas al terminarlo o quitarlo), sin esperar a que estén todas para empezar;
+algún tipo de offline; apuntar libros ya leídos sin preparar audio; pausas raras, capítulos que no entran, reanudar
+que no suena; y la carátula del centro de control del iPhone que abría Oh Churus. Decisión: al salir de «Leyendo» se
+borra la copia del DISPOSITIVO; el audio del servidor se queda. Contratos C9–C13 en `documentación/contratos-0.5.0.md`.
+- **backend** (V8): `POST /v1/diario` (tabla `bah_lib_diario`, 600/usuario/hora, 30 días, línea INFO por evento);
+  POR_LEER → LEYENDO solo con avance real; `preparar-libro` con `desdeCapitulo` y orden garantizado en la cola
+  (`creado = now() + n ms`: con `DEFAULT now()` todos empataban); `POST /v1/libros/registro` (libros solo registro,
+  `sinArchivo`), con 120 «solo registro» en voz, preparar, pronunciación y traducir. Contratos v1.9.
+- **voz**: diario en el cliente (cola local, lotes, keepalive); vigilante de atascos (8 s, 3 recuperaciones, luego
+  «Reintentar»), pausa del sistema frente a la del usuario (se reanuda sola solo la del sistema), cambio de capítulo
+  robusto por todas las vías, `setPositionState`, artwork del propio origen. **Sin conexión**: `public/sw.js`
+  (cachés `bah-app-*`, `bah-api` por usuario, `bah-libro-<id>` sin token en la clave, 206 para Range, estado LISTO
+  sin red), `utils/sinConexion.ts` (prepara desde donde vas y baja de uno en uno m4a, -2x, tiempos, frases, portada y
+  EPUB; borra lo que sale de «Leyendo»), cola sin red de progreso y latidos, la sesión no se cierra por falta de red.
+- **web-ui**: «⋯ Quitar de En proceso» en el atril y el catálogo (Por leer / Abandonado / Leído, con Deshacer), al pasar
+  a Leyendo se prepara y se guarda sin conexión, marca «Sin conexión ✓ / Guardando n/N», Ajustes › Sin conexión, y
+  «Apuntar un libro que ya leí».
+- **ops**: nombre propio en la tailnet (`biblioteca.<tailnet>`, contenedor `nombre-propio`, perfil del compose) para
+  separar la Biblioteca de las otras apps del PC; la web elige la API según el nombre por el que se abrió y la CSP
+  permite las dos. Manifest con `id`.
+- Integración: jest 876/876 (+ la regresión del fallo A), `mvn clean verify` en verde, lint y prettier. Una prueba
+  nueva del backend era intermitente (progreso sin hora: dependía del reloj del servidor) y se arregló dándole hora.
+- **Validación independiente en QA** (Chrome por CDP, iPhone 390 y PC 1440): API C9/C10/C11 y regresión 0.4.0 ✅;
+  quitar de Leyendo, apuntar, SW y Ajustes ✅; **sin conexión de punta a punta ✅** (modo avión: abrir, escuchar,
+  cambiar capítulo, 2x; al volver la red llegan progreso y diario sin cerrar sesión; al quitar el libro se borra la
+  copia). ❌ **Fallo A (Alta)**: tras un error de carga del audio, «Reintentar» no volvía a sonar hasta recargar
+  (un `<audio>` en error no vuelve a pedir su fuente si solo se cambia `currentTime`) — arreglado forzando `load()`.
+  Fallo B (Baja): el diario anotaba «4/3» en el atasco sin remedio — arreglado. Pendiente menor: dos progresos a la
+  vez del mismo libro nuevo dan un conflicto de clave que se resuelve solo.
+- Solo en iPhone real: cuota y `persist()` de iOS, la cinta MSE sin conexión, pausas reales (llamada, Siri) y la
+  carátula del centro de control con el nombre propio.
+
