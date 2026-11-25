@@ -242,6 +242,23 @@
         ],
         "type" : "object"
       },
+      "DiarioDTO" : {
+        "description" : "Lote de eventos del diario del reproductor (1..50)",
+        "properties" : {
+          "eventos" : {
+            "items" : {
+              "$ref" : "#/components/schemas/EventoDiarioDTO"
+            },
+            "maxItems" : 50,
+            "minItems" : 1,
+            "type" : "array"
+          }
+        },
+        "required" : [
+          "eventos"
+        ],
+        "type" : "object"
+      },
       "EstanteEjemplarDTO" : {
         "properties" : {
           "antesDe" : {
@@ -281,6 +298,68 @@
         },
         "required" : [
           "nombre"
+        ],
+        "type" : "object"
+      },
+      "EventoDiarioDTO" : {
+        "description" : "Un evento del reproductor (atasco, pausa del sistema, error de audio...)",
+        "properties" : {
+          "capitulo" : {
+            "example" : 3,
+            "format" : "int32",
+            "maximum" : 99999,
+            "minimum" : 0,
+            "type" : "integer"
+          },
+          "contexto" : {
+            "additionalProperties" : { },
+            "example" : {
+              "cinta" : true,
+              "red" : true,
+              "standalone" : true,
+              "ua" : "Mozilla/5.0 (iPhone...)",
+              "version" : "0.5.0",
+              "visible" : false
+            },
+            "type" : "object"
+          },
+          "cuando" : {
+            "example" : "2026-11-25T21:03:11.120Z",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "detalle" : {
+            "example" : "currentTime sin avanzar 8 s",
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "ejemplarId" : {
+            "example" : "3f1c2a7e-8a4b-4c1e-9d55-2b1f0c3d4e5f",
+            "format" : "uuid",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "posicion" : {
+            "example" : 812.4,
+            "format" : "double",
+            "maximum" : 10000000,
+            "minimum" : 0,
+            "type" : "number"
+          },
+          "tipo" : {
+            "example" : "atasco",
+            "maxLength" : 40,
+            "minLength" : 0,
+            "pattern" : "^[a-z0-9-]+$",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "cuando",
+          "tipo"
         ],
         "type" : "object"
       },
@@ -544,6 +623,16 @@
       },
       "PrepararLibroDTO" : {
         "properties" : {
+          "desdeCapitulo" : {
+            "example" : 7,
+            "format" : "int32",
+            "maximum" : 99999,
+            "minimum" : 0,
+            "type" : [
+              "integer",
+              "null"
+            ]
+          },
           "ejemplarId" : {
             "format" : "uuid",
             "type" : "string"
@@ -640,6 +729,72 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "RegistroDTO" : {
+        "description" : "Libro solo registro (sin archivo)",
+        "properties" : {
+          "autores" : {
+            "example" : [
+              "Gabriel García Márquez"
+            ],
+            "items" : {
+              "maxLength" : 300,
+              "minLength" : 0,
+              "type" : "string"
+            },
+            "maxItems" : 20,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "calificacion" : {
+            "example" : 4.5,
+            "format" : "double",
+            "type" : [
+              "number",
+              "null"
+            ]
+          },
+          "estado" : {
+            "enum" : [
+              "POR_LEER",
+              "LEYENDO",
+              "LEIDO",
+              "ABANDONADO"
+            ],
+            "example" : "LEIDO",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "fechaFin" : {
+            "example" : "2024-03-15T00:00:00Z",
+            "format" : "date-time",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "nota" : {
+            "example" : "Lo leí en el colegio",
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "titulo" : {
+            "example" : "Cien años de soledad",
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "titulo"
+        ],
         "type" : "object"
       },
       "ResultDTO" : {
@@ -1726,6 +1881,38 @@
         ]
       }
     },
+    "/v1/diario" : {
+      "post" : {
+        "description" : "Usuario = el del token. tipo [a-z0-9-] de hasta 40; detalle hasta 500; contexto objeto plano de hasta 2 KB con ua de hasta 200; fuera de limites -> 120 y no se guarda nada. ejemplarId ajeno o inexistente se guarda como null. Como mucho 600 eventos por usuario y hora: los de mas se descartan en silencio y object.guardados dice cuantos se guardaron.",
+        "operationId" : "guardar_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DiarioDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "Guarda un lote de 1 a 50 eventos del reproductor",
+        "tags" : [
+          "Diario del reproductor"
+        ]
+      }
+    },
     "/v1/ejemplares/{ejemplarId}/capitulos/voz" : {
       "put" : {
         "operationId" : "soloHistoria",
@@ -2311,6 +2498,38 @@
         ]
       }
     },
+    "/v1/libros/registro" : {
+      "post" : {
+        "description" : "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo registro\"). fechaFin solo con LEIDO y no futura (120 si no).",
+        "operationId" : "registro",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegistroDTO"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ResultDTO"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "summary" : "(0.5.0) Apunta un libro solo registro (sin archivo): titulo, autores, estado (LEIDO por defecto), fecha de fin, calificacion y nota",
+        "tags" : [
+          "Libros"
+        ]
+      }
+    },
     "/v1/libros/save" : {
       "post" : {
         "operationId" : "save_1",
@@ -2823,6 +3042,10 @@
     {
       "description" : "Diario de lectura de cada libro",
       "name" : "Comentarios"
+    },
+    {
+      "description" : "Eventos del reproductor de la web (atascos, pausas, errores)",
+      "name" : "Diario del reproductor"
     },
     {
       "description" : "Taller, traductor, disco y cola de voz",

@@ -48,7 +48,7 @@ public class EjemplarDTO {
     private FuenteMetadatos fuenteMetadatos;
     /** (v1.6) Carpeta del archivador donde esta el documento; null = raiz (y siempre en libros y deseos). */
     private UUID carpetaId;
-    /** Nota del deseo ("regalo de cumpleanos"); null en libros y documentos (QA BI-15). */
+    /** Nota del deseo ("regalo de cumpleanos") o del libro solo registro (0.5.0, C11); null si no tiene. */
     private String nota;
     /**
      * Solo en la respuesta de /libros/subir: true si ese archivo ya estaba en tu
@@ -56,6 +56,17 @@ public class EjemplarDTO {
      */
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     private Boolean yaLoTenias;
+
+    /**
+     * (0.5.0, C11) true si el ejemplar no tiene archivo: un deseo o un libro "solo registro". Sin archivo no
+     * hay lector, voz, portada ni preparacion: la web no ofrece Escuchar/Leer.
+     */
+    @JsonProperty("sinArchivo")
+    @io.swagger.v3.oas.annotations.media.Schema(description = "true = deseo o libro solo registro (sin archivo)",
+            accessMode = io.swagger.v3.oas.annotations.media.Schema.AccessMode.READ_ONLY)
+    public boolean isSinArchivo() {
+        return archivoId == null;
+    }
 
     /* Lombok generaria getNNotas(), que Jackson publica como "nnotas". */
     @JsonProperty("nNotas")

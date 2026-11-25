@@ -1,6 +1,9 @@
 package com.bibliotecaah.biblioteca.util;
 
+import com.bibliotecaah.biblioteca.entity.Archivo;
+import com.bibliotecaah.biblioteca.entity.Ejemplar;
 import com.bibliotecaah.biblioteca.enums.Message;
+import com.bibliotecaah.biblioteca.enums.TipoEjemplar;
 import com.bibliotecaah.biblioteca.exception.ValidationException;
 
 import java.math.BigDecimal;
@@ -38,5 +41,16 @@ public final class ValidationUtils {
     public static String vozId(String valor) {
         exigir(idSeguro(valor), Message.Msj.vozInvalida, CodigoError.DATO_INVALIDO, valor);
         return valor;
+    }
+
+    /**
+     * (0.5.0, C11) El archivo del ejemplar, o 120 con un mensaje claro si no tiene: un deseo ("Este libro no
+     * tiene archivo.") o un libro solo registro ("... es solo registro."). Todo sitio que necesita el archivo
+     * (voz, preparar, capitulos en voz, pronunciacion, traduccion) pasa por aqui: nunca un 500.
+     */
+    public static Archivo archivoDe(Ejemplar e) {
+        if (e.getArchivo() != null) return e.getArchivo();
+        throw new ValidationException(e.getTipo() == TipoEjemplar.DESEO ? Message.Msj.libroSinArchivo
+                : Message.Msj.libroSoloRegistro, CodigoError.DATO_INVALIDO);
     }
 }

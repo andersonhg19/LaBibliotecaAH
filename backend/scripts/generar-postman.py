@@ -58,6 +58,18 @@ VARIANTES = {
           "sesionId": "11111111-1111-1111-1111-111111111111", "capitulo": 3, "posicion": 812.4, "segundos": 60,
           "dispositivo": "iPhone"}),
     ],
+    # 0.5.0 (contratos C9, C10.2, C11).
+    "/v1/diario": [
+        ("Lote minimo (solo cuando y tipo)", {"eventos": [{"cuando": "2026-11-25T21:03:11.120Z", "tipo": "pausa-sistema"}]}),
+    ],
+    "/v1/voz/preparar-libro": [
+        ("Preparar desde el capitulo 7 (luego los anteriores)",
+         {"ejemplarId": "00000000-0000-0000-0000-000000000000", "vozId": "edge.es-ES-AlvaroNeural",
+          "desdeCapitulo": 7}),
+    ],
+    "/v1/libros/registro": [
+        ("Solo registro: por leer, sin fecha", {"titulo": "Rayuela", "autores": ["Julio Cortázar"], "estado": "POR_LEER"}),
+    ],
 }
 
 # Valores de ejemplo de los parametros de query (0.4.0: GET /v1/sesiones/resumen y /v1/voz/preparar-libro).

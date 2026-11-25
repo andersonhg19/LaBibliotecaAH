@@ -95,7 +95,7 @@ public class CapituloVozServiceImpl implements CapituloVozService {
 
     /** El ejemplar debe tener archivo con capitulos; si no, 120 (sin archivo o sin capitulos legibles). */
     private List<CapituloDTO> conCapitulos(Ejemplar e) {
-        ValidationUtils.exigir(e.getArchivo() != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
+        ValidationUtils.archivoDe(e);
         List<CapituloDTO> lista = capitulos(e.getUsuarioId(), e);
         ValidationUtils.exigir(!lista.isEmpty(), Message.Msj.capitulosNoDisponibles, CodigoError.DATO_INVALIDO);
         return lista;

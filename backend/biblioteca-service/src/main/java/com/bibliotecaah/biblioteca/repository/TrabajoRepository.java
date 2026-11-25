@@ -56,6 +56,19 @@ public interface TrabajoRepository {
      */
     boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad);
 
+    /**
+     * (0.5.0, C10.2) Como {@link #encolarVozSiFalta(UUID, String, int, int)}, con {@code creado} = hora de
+     * la transaccion + {@code orden} ms: a igual prioridad el taller (ORDER BY prioridad, creado) toma
+     * antes el de menor orden, aunque se encolen todos en la misma transaccion.
+     */
+    boolean encolarVozSiFalta(UUID archivoId, String vozId, int capitulo, int prioridad, int orden);
+
+    /**
+     * (0.5.0, C10.2) Recoloca en la cola un trabajo de voz PENDIENTE de ese capitulo con esa prioridad
+     * (creado = hora de la transaccion + orden ms). Devuelve cuantos cambio (0 o 1).
+     */
+    int ordenarEnCola(UUID archivoId, String vozId, int capitulo, int prioridad, int orden);
+
     /** Un capitulo en ERROR vuelve a PENDIENTE y se encola (peticion explicita, QA DA-02). */
     void reintentarVoz(UUID archivoId, String vozId, int capitulo, int prioridad);
 

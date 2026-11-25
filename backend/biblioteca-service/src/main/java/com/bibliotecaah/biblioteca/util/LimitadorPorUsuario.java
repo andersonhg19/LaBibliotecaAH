@@ -45,4 +45,21 @@ public class LimitadorPorUsuario {
             return true;
         }
     }
+
+    /**
+     * (0.5.0, C9) Apunta lo que quepa de {@code cantidad} en la ventana, aunque no quepa todo.
+     * @return cuanto apunto (0..cantidad)
+     */
+    public long consumirHasta(Long usuario, long cantidad) {
+        Instant ahora = reloj.instant();
+        Instant desde = ahora.minus(ventana);
+        Deque<Consumo> cola = consumos.computeIfAbsent(usuario, u -> new ArrayDeque<>());
+        synchronized (cola) {
+            while (!cola.isEmpty() && !cola.peekFirst().cuando().isAfter(desde)) cola.pollFirst();
+            long usado = cola.stream().mapToLong(Consumo::cantidad).sum();
+            long cabe = Math.max(0, Math.min(cantidad, capacidad - usado));
+            if (cabe > 0) cola.addLast(new Consumo(ahora, cabe));
+            return cabe;
+        }
+    }
 }

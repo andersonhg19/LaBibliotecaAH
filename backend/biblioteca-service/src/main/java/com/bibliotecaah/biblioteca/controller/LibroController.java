@@ -61,6 +61,16 @@ public class LibroController {
         return ResponseEntity.ok(new ResultDTO(libros.deseo(dto)));
     }
 
+    @Operation(summary = "(0.5.0) Apunta un libro solo registro (sin archivo): titulo, autores, estado (LEIDO por "
+            + "defecto), fecha de fin, calificacion y nota",
+            description = "Ejemplar tipo LIBRO con sinArchivo=true: sale en las pestanas de libros, facetas y "
+                    + "estadisticas; voz, preparar, capitulos, pronunciacion y traduccion responden 120 (\"es solo "
+                    + "registro\"). fechaFin solo con LEIDO y no futura (120 si no).")
+    @PostMapping(value = "/registro", produces = "application/json")
+    public ResponseEntity<ResultDTO> registro(@Valid @RequestBody com.bibliotecaah.biblioteca.dto.input.RegistroDTO dto) {
+        return ResponseEntity.ok(new ResultDTO(libros.registro(dto)));
+    }
+
     @Operation(summary = "Lista paginada con pestanas, filtros combinables y orden")
     @PostMapping(value = "/all", produces = "application/json")
     public ResponseEntity<ResultDTO> all(@Valid @RequestBody(required = false) FiltroLibrosDTO filtro) {

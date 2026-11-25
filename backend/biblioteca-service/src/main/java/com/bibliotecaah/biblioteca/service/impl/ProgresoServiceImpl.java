@@ -29,7 +29,8 @@ import java.util.UUID;
  * Donde va cada quien. Gana el actualizadoEn MAS RECIENTE (lo pone el
  * dispositivo): si el iPhone manda tarde un progreso viejo, no pisa lo que el PC
  * guardo despues. Al guardar se marca la ultima apertura y un POR_LEER pasa a
- * LEYENDO. No se registra en la tabla de cambios: llega cada pocos segundos.
+ * LEYENDO solo si el progreso avanza de verdad (0.5.0, C10.1). No se registra en
+ * la tabla de cambios: llega cada pocos segundos.
  */
 @Service
 @Transactional
@@ -80,7 +81,10 @@ public class ProgresoServiceImpl implements ProgresoService {
             return new ResultDTO(true, mensajes.texto(Message.Msj.progresoMasReciente), CodigoError.OK,
                     mapper.aProgresoDTO(p));
         }
-        if (p == null) {
+        boolean nuevo = p == null;
+        Integer capituloAntes = nuevo ? null : p.getCapitulo();
+        Double porcentajeAntes = nuevo ? null : p.getPorcentaje();
+        if (nuevo) {
             p = Progreso.builder().id(UUID.randomUUID()).usuarioId(yo).ejemplarId(ejemplar.getId()).build();
         }
         mapper.copiarProgreso(dto, p);
@@ -91,11 +95,29 @@ public class ProgresoServiceImpl implements ProgresoService {
         progresos.save(p);
 
         ejemplar.setUltimaApertura(ahora);
-        if (ejemplar.getEstado() == EstadoLectura.POR_LEER) {
+        if (ejemplar.getEstado() == EstadoLectura.POR_LEER
+                && avanza(nuevo, capituloAntes, porcentajeAntes, p.getCapitulo(), p.getPorcentaje())) {
             LibroServiceImpl.cambiarEstado(ejemplar, EstadoLectura.LEYENDO);
         }
         ejemplares.save(ejemplar);
         return new ResultDTO(mapper.aProgresoDTO(p));
+    }
+
+    /** Lo minimo que debe subir el porcentaje para contar como avance (ruido de redondeo del cliente). */
+    static final double AVANCE_MINIMO = 0.001;
+
+    /**
+     * (0.5.0, C10.1) Un POR_LEER solo pasa a LEYENDO si el progreso AVANZA de verdad: abrir la ficha o
+     * el lector sin moverse (que guarda el mismo punto, o 0/0) no lo mete en "Leyendo". Sin progreso
+     * previo, avanza si el capitulo o el porcentaje pasan de 0; con progreso, si cambia el capitulo o
+     * el porcentaje sube mas de {@link #AVANCE_MINIMO}.
+     */
+    static boolean avanza(boolean sinProgresoPrevio, Integer capituloAntes, Double porcentajeAntes,
+                          int capitulo, double porcentaje) {
+        if (sinProgresoPrevio) return capitulo > 0 || porcentaje > 0;
+        int antesCap = capituloAntes == null ? 0 : capituloAntes;
+        double antesPct = porcentajeAntes == null ? 0 : porcentajeAntes;
+        return capitulo != antesCap || porcentaje > antesPct + AVANCE_MINIMO;
     }
 
     /**
