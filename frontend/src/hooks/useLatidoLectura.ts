@@ -93,6 +93,22 @@ const esWeb = Platform.OS === 'web' && typeof window !== 'undefined' && typeof d
 const visible = () => !esWeb || document.visibilityState !== 'hidden'
 
 /**
+ * C12: sin red, el latido «al salir» (fetch keepalive) se perdería; por la vía normal, la cola sin red de api.ts lo
+ * guarda y lo manda al volver la red.
+ */
+export function enviarLatidoLectura(
+  d: LatidoDTO & { alSalir?: boolean },
+  enLinea: () => boolean = () => typeof navigator === 'undefined' || navigator.onLine !== false,
+  enviar: (d: LatidoDTO & { alSalir?: boolean }) => unknown = enviarLatido,
+): unknown {
+  if (d.alSalir && !enLinea()) {
+    const { alSalir: _fuera, ...resto } = d
+    return enviar(resto)
+  }
+  return enviar(d)
+}
+
+/**
  * Conecta el latido al lector abierto. `posicion` se lee en cada latido (un
  * getter estable: la ref del lector), así el hook no se reinicia al pasar
  * página. Devuelve `actividad()` para avisar de lo que la página no ve (el
@@ -110,7 +126,7 @@ export function useLatidoLectura(
     if (!ejemplarId) return
     const l = new Latidor({
       ejemplarId,
-      enviar: enviarLatido,
+      enviar: (d) => enviarLatidoLectura(d),
       ahora: () => Date.now(),
       posicion: () => pos.current(),
       dispositivo: esteDispositivo(),

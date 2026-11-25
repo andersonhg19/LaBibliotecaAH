@@ -3,7 +3,7 @@ import React, { ReactNode, createContext, useCallback, useContext, useEffect, us
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import { motor } from '@contextos/VozContext'
-import { TOKEN_KEY, fijarTokenEnMemoria, registrarCierreDeSesion } from '@servicios/api'
+import { TOKEN_KEY, fijarTokenEnMemoria, olvidarColaSinRed, registrarCierreDeSesion } from '@servicios/api'
 import { authService } from '@servicios/authService'
 
 const USER_KEY = '@biblioteca_ah_usuario'
@@ -194,9 +194,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     renovar()
     const t = setInterval(renovar, RENOVAR_CADA_MS)
+    // C12: tras un rato sin red (modo avión), al volver se renueva ya: el token pudo quedarse viejo mientras tanto.
+    const w = typeof window !== 'undefined' && typeof window.addEventListener === 'function' ? window : null
+    w?.addEventListener('online', renovar)
     return () => {
       vivo = false
       clearInterval(t)
+      w?.removeEventListener('online', renovar)
     }
   }, [conSesion, loading, fijarToken])
 
@@ -212,6 +216,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = useCallback(async () => {
     // Con el token aún válido: lo último que sonó se guarda en el servidor y la voz se calla.
     motor.detener()
+    // C12: lo que esperaba a la red (progreso, latidos) era de esta cuenta: no debe salir con el token de otra.
+    olvidarColaSinRed()
     await Promise.all([AsyncStorage.removeItem(TOKEN_KEY), AsyncStorage.removeItem(USER_KEY)])
     fijarToken(null)
     setUser(null)
