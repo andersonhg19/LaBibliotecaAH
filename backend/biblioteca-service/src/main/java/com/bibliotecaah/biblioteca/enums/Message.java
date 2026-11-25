@@ -91,6 +91,10 @@ public final class Message {
         // B17: diccionario de pronunciacion por libro.
         demasiadasPronunciaciones,
         pronunciacionInvalida,
-        pronunciacionDuplicada
+        pronunciacionDuplicada,
+        // 0.5.0: diario del reproductor (C9) y libros solo registro (C11).
+        diarioContextoInvalido,
+        libroSoloRegistro,
+        fechaFinInvalida
     }
 }
