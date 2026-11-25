@@ -96,6 +96,175 @@ interface ConfigBah {
   _bahConfirmacion?: boolean
   /** Ya se repitió tras confirmar la sesión: no se repite otra vez. */
   _bahReintento?: boolean
+  /** (C12) Sale de la cola sin red: si vuelve a fallar no se encola otra vez. */
+  _bahCola?: boolean
+}
+
+/*
+ * COLA SIN RED (0.5.0, contrato C12). El progreso y los latidos que no llegan por
+ * falta de red (modo avión, túnel) se guardan en el dispositivo y se mandan solos
+ * al volver la red (evento `online`, al arrancar y en cuanto otra petición sale
+ * bien), en orden y de uno en uno:
+ *   · progreso: solo el ÚLTIMO de cada libro; si entre tanto se guardó otro más
+ *     nuevo, el de la cola se tira (nunca se pisa un progreso con uno viejo);
+ *   · latidos: todos (el servidor junta por `sesionId`); solo con fallo de red
+ *     claro (un timeout pudo llegar al servidor y se contaría dos veces).
+ * El diario lleva su propia cola (utils/diario). Un fallo de red NUNCA cierra la
+ * sesión: solo un 401 confirmado por auth-service (V-NUEVO-2).
+ */
+export const CLAVE_COLA_SIN_RED = 'bah.cola-sin-red'
+const COLA_SIN_RED_MAX = 200
+const ESPERA_AL_VOLVER_MS = 3000
+
+export interface PeticionEnCola {
+  url: string
+  /** El cuerpo JSON tal cual se mandó. */
+  datos: string
+  /** Progreso de un libro: solo vale el último de cada clave. */
+  clave: string | null
+  en: number
+}
+
+const RUTA_PROGRESO = /\/progreso\/save$/
+const RUTA_LATIDO = /\/sesiones\/latido$/
+
+let colaEnMemoria: PeticionEnCola[] | null = null
+
+const almacenCola = (): Pick<Storage, 'getItem' | 'setItem'> | null => {
+  try {
+    return (globalThis as { localStorage?: Storage }).localStorage ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Lo que espera en la cola sin red. */
+export function colaSinRed(): PeticionEnCola[] {
+  if (colaEnMemoria) return colaEnMemoria
+  try {
+    const g = almacenCola()?.getItem(CLAVE_COLA_SIN_RED)
+    const l = g ? (JSON.parse(g) as unknown) : null
+    colaEnMemoria = Array.isArray(l) ? l.filter((x) => x && typeof x.url === 'string') : []
+  } catch {
+    colaEnMemoria = []
+  }
+  return colaEnMemoria
+}
+
+const fijarCola = (l: PeticionEnCola[]) => {
+  colaEnMemoria = l.slice(-COLA_SIN_RED_MAX)
+  try {
+    almacenCola()?.setItem(CLAVE_COLA_SIN_RED, JSON.stringify(colaEnMemoria))
+  } catch {
+    /* sin almacenamiento: queda en memoria */
+  }
+}
+
+/** Para las pruebas: vacía la cola. */
+export const olvidarColaSinRed = () => fijarCola([])
+
+const rutaDe = (config: { url?: string } | undefined) => String(config?.url ?? '').split('?')[0]
+
+const cuerpoDe = (config: { data?: unknown } | undefined): string | null => {
+  const d = config?.data
+  if (d == null) return null
+  return typeof d === 'string' ? d : JSON.stringify(d)
+}
+
+const claveProgreso = (datos: string | null): string | null => {
+  try {
+    const id = datos ? (JSON.parse(datos) as { ejemplarId?: unknown }).ejemplarId : null
+    return typeof id === 'string' ? `progreso:${id}` : null
+  } catch {
+    return null
+  }
+}
+
+function alFallarLaRed(error: unknown, config: (InternalAxiosRequestConfig & ConfigBah) | undefined) {
+  try {
+    if (!config || config._bahCola || axios.isCancel(error)) return
+    if (String(config.method ?? '').toLowerCase() !== 'post') return
+    const ruta = rutaDe(config)
+    const datos = cuerpoDe(config)
+    if (datos == null) return
+    const codigo = (error as { code?: string } | null)?.code
+    if (RUTA_PROGRESO.test(ruta)) {
+      const clave = claveProgreso(datos)
+      fijarCola([
+        ...colaSinRed().filter((p) => !clave || p.clave !== clave),
+        { url: ruta, datos, clave, en: Date.now() },
+      ])
+    } else if (RUTA_LATIDO.test(ruta) && codigo !== 'ECONNABORTED' && codigo !== 'ETIMEDOUT') {
+      fijarCola([...colaSinRed(), { url: ruta, datos, clave: null, en: Date.now() }])
+    }
+  } catch {
+    /* la cola nunca rompe una petición */
+  }
+}
+
+function alResponder(config: (InternalAxiosRequestConfig & ConfigBah) | undefined) {
+  try {
+    if (!colaSinRed().length) return
+    // Un progreso más nuevo ya llegó: el de la cola de ese libro sobra (y no debe pisarlo luego).
+    if (config && !config._bahCola && RUTA_PROGRESO.test(rutaDe(config))) {
+      const clave = claveProgreso(cuerpoDe(config))
+      if (clave) fijarCola(colaSinRed().filter((p) => p.clave !== clave))
+    }
+    // Hay red: lo pendiente, ya.
+    if (!config?._bahCola && colaSinRed().length) programarVaciado(0)
+  } catch {
+    /* nada */
+  }
+}
+
+let vaciando: Promise<void> | null = null
+let vaciadoProgramado: ReturnType<typeof setTimeout> | null = null
+
+function programarVaciado(ms: number) {
+  if (vaciadoProgramado || vaciando) return
+  vaciadoProgramado = setTimeout(() => {
+    vaciadoProgramado = null
+    void vaciarColaSinRed()
+  }, ms)
+}
+
+/** Manda lo que esperaba en la cola, en orden. Sin red se para y lo deja para la próxima. */
+export function vaciarColaSinRed(): Promise<void> {
+  if (vaciando) return vaciando
+  vaciando = (async () => {
+    try {
+      for (;;) {
+        const p = colaSinRed()[0]
+        if (!p) break
+        try {
+          await api.request({
+            method: 'post',
+            url: p.url,
+            data: p.datos,
+            _bahCola: true,
+          } as AxiosRequestConfig & ConfigBah)
+        } catch (e) {
+          // Sigue sin red: se deja todo para la próxima vez.
+          if (!(e as { response?: unknown } | null)?.response) break
+          // El servidor respondió con un error: reintentarlo daría lo mismo.
+        }
+        fijarCola(colaSinRed().filter((x) => x !== p))
+      }
+    } finally {
+      vaciando = null
+    }
+  })()
+  return vaciando
+}
+
+if (
+  typeof window !== 'undefined' &&
+  typeof window.addEventListener === 'function' &&
+  typeof document !== 'undefined' &&
+  !(globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.JEST_WORKER_ID
+) {
+  window.addEventListener('online', () => programarVaciado(ESPERA_AL_VOLVER_MS))
+  if (colaSinRed().length) programarVaciado(5000)
 }
 
 const confirmarSesion = (): Promise<Confirmacion> => {
@@ -136,11 +305,17 @@ api.interceptors.response.use(
     if (d && typeof d === 'object' && d.correct === false && typeof d.message === 'string') {
       d.message = enEspanol(d.message)
     }
+    alResponder(response?.config as (InternalAxiosRequestConfig & ConfigBah) | undefined)
     return response
   },
   async (error) => {
     const status = error?.response?.status
     const config = error?.config as (InternalAxiosRequestConfig & ConfigBah) | undefined
+    // C12: sin red no hay 401 que valga (nunca se cierra la sesión por esto); lo que no debe perderse, a la cola.
+    if (!error?.response) {
+      alFallarLaRed(error, config)
+      return Promise.reject(error)
+    }
     if (!alCaducarLaSesion || esDeEntrada(config) || config?._bahConfirmacion) return Promise.reject(error)
     if (status === 403 && !llevabaToken(config)) {
       cerrarSesion('SIN_SESION')

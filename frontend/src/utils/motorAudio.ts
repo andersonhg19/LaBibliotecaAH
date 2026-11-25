@@ -2,6 +2,7 @@ import { buscarFrase, buscarPalabra, capituloDeFrase, indiceDeFrase, inicioFrase
 import { normalizarVelocidad, planDeVelocidad, resaltaPalabra, tiempoEn1x, tiempoEnArchivo } from '@logica/velocidad'
 import type { CapituloResumen, EstadoAudioDTO, PartesCapitulo, ProgresoDTO, ResultDTO, TiemposCapitulo } from '@tipos'
 import type { Cinta } from '@utils/cinta'
+import { DatosDiario, TipoDiario, anotarDiario } from '@utils/diario'
 import { FalloCinta, clasificarFallo } from '@utils/fallosCinta'
 import { MENSAJES } from '@utils/mensajes'
 
@@ -30,6 +31,16 @@ import { MENSAJES } from '@utils/mensajes'
  * CAMBIAR DE VOZ NO CALLA (QA LV-07): si suena, la voz actual sigue hasta que
  * la nueva está lista (entera o, v1.5, con partes hasta la frase que suena);
  * entonces se cambia en la misma frase.
+ *
+ * BLINDADO (0.5.0, contrato C13) y CON DIARIO (C9):
+ *   · un vigilante mira cada 2 s si, queriendo sonar, la posición avanza; 8 s
+ *     quieta = `atasco` → se recarga en la misma posición (la cinta se rehace),
+ *     hasta 3 veces; luego error visible con «Reintentar»;
+ *   · una pausa que no pidió el usuario (llamada, Siri, otra app, iOS) es
+ *     `pausa-sistema`: al volver la página (visible/focus) se reanuda sola; una
+ *     pausa del usuario, nunca;
+ *   · todo lo que pasa (inicio, pausas, atascos, esperas largas, fallos, cambios
+ *     de capítulo, página oculta/visible) va al diario, que nunca frena nada.
  *
  * SUENA ANTES DE ESTAR ENTERO (v1.5, contratos §6 bis). Mientras el taller
  * genera un capítulo va dejando PARTES reproducibles (la primera, de 3 frases,
@@ -174,6 +185,18 @@ export interface DependenciasMotor {
   latido?: (d: LatidoVoz, o?: { alSalir?: boolean }) => Promise<unknown>
   /** Un identificador nuevo para cada sesión de escucha (uuid). */
   nuevoId?: () => string
+  /** (0.5.0, C9) Dónde se anota el diario. Por defecto, el diario de la página (utils/diario). */
+  diario?: (tipo: TipoDiario, d: DatosDiario) => void
+  /** (C13) Cada cuánto mira el vigilante de atascos (ms); 0 = no se arranca solo (las pruebas llaman a `vigilar`). */
+  vigilarCadaMs?: number
+  /** (C13) Avisa cuando la página se ve o se oculta (y al recuperar el foco). Por defecto, el `document`. */
+  alCambiarVisibilidad?: (fn: (visible: boolean) => void) => () => void
+  /** ¿Hay red? Por defecto `navigator.onLine`. */
+  enLinea?: () => boolean
+  /** (C13) El origen de la web («https://casa…:7050»), para el artwork de la pantalla de bloqueo. */
+  origenWeb?: () => string | null
+  /** (C12) ¿Hay service worker sirviendo la página? (artwork servido desde el propio origen). */
+  conServiceWorker?: () => boolean
 }
 
 /** El capítulo siguiente pedido antes de que acabe el actual (para pasar a él sin esperar al servidor). */
@@ -220,7 +243,28 @@ export const TEXTOS_VOZ = {
   /** RP-04: la cinta (escucha continua del iPhone) se apagó tras fallar varias veces. */
   cintaApagada:
     'La escucha continua se apagó por un fallo: con la pantalla bloqueada la voz puede pararse al cambiar de capítulo.',
+  /** C13: el vigilante no logró que la voz siguiera tras varios intentos. */
+  atascada: 'La voz se quedó parada y no se pudo recuperar sola. Toca «Reintentar».',
 }
+
+/** C13: tanto rato sin avanzar queriendo sonar es un atasco. */
+export const ATASCO_MS = 8_000
+/** C13: recuperaciones seguidas antes de rendirse y decirlo. */
+export const MAX_RECUPERACIONES = 3
+/** C13: cada cuánto mira el vigilante. */
+const VIGILAR_CADA_MS = 2_000
+/** C13: una espera del <audio> (waiting/stalled) que dura más que esto va al diario. */
+export const ESPERA_LARGA_MS = 3_000
+/**
+ * C13: una pausa del sistema se reanuda al volver solo si fue hace poco (tras una llamada o Siri). Mucho después
+ * (p. ej. se quitaron los auriculares y el teléfono quedó en la mesa) no: sonaría por el altavoz sin esperarlo.
+ */
+const REANUDAR_HASTA_MS = 15 * 60 * 1000
+/** Una pausa justo tras cambiar la fuente es del propio cambio (el navegador para al recargar), no del sistema. */
+const PAUSA_DE_CAMBIO_MS = 1_500
+
+/** Por dónde se cambió de capítulo (va al diario). */
+export type ViaCambio = 'boton' | 'hoja' | 'fin' | 'media-session' | 'frase' | 'reintento' | 'voz' | 'abrir'
 
 const SALTO_SEG = 15
 const PAUSA_LARGA_MS = 5 * 60 * 1000
@@ -301,6 +345,20 @@ export const VELOCIDAD_PROGRESO = { min: 0.25, max: 5 }
 /** Un número finito dentro de [min, max] (si no es finito, el valor por defecto). */
 export function acotar(n: number, min: number, max: number, siNo: number): number {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : siNo
+}
+
+/** La visibilidad de la página (y el foco de la ventana) en el navegador; fuera de él, nada. */
+function visibilidadDelDocumento(fn: (visible: boolean) => void): () => void {
+  if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return () => {}
+  const alCambiar = () => fn(document.visibilityState !== 'hidden')
+  const alFoco = () => fn(true)
+  document.addEventListener('visibilitychange', alCambiar)
+  const w = typeof window !== 'undefined' && typeof window.addEventListener === 'function' ? window : null
+  w?.addEventListener('focus', alFoco)
+  return () => {
+    document.removeEventListener('visibilitychange', alCambiar)
+    w?.removeEventListener('focus', alFoco)
+  }
 }
 
 const inicial: EstadoVoz = {
@@ -398,6 +456,19 @@ export class MotorAudio {
     ultimoEnvio: number
     ultimaVez: number
   } | null = null
+  /** C13: el vigilante de atascos (intervalo) y lo que lleva visto. */
+  private vigia: ReturnType<typeof setInterval> | null = null
+  private atasco = { ultimaPos: -1, desde: 0, intentos: 0 }
+  /** C13: el <audio> dijo waiting/stalled y aún no ha vuelto a avanzar. */
+  private esperaAudio: { tipo: string; en: number; suspend: boolean } | null = null
+  /** C13: la última pausa la hizo el sistema (llamada, Siri, iOS), no el usuario: al volver se reanuda. */
+  private pausaSistema = false
+  /** Cuándo se cambió la fuente del <audio> por última vez (una pausa justo después es del cambio). */
+  private cambioFuenteEn = 0
+  /** Por dónde llega el próximo cambio de capítulo (para el diario). */
+  private viaCambio: ViaCambio | null = null
+  /** Ya se anotó el «sin red» de esta racha (hasta que el servidor vuelva a contestar). */
+  private rachaRed = false
 
   constructor(private deps: DependenciasMotor) {
     deps.alVolverLaRed?.(() => {
@@ -406,6 +477,47 @@ export class MotorAudio {
       if (this.estado.guardado?.estado === 'pendiente') this.guardar(true)
       if (!this.tiempos && this.tiemposPendientes) this.pedirTiempos(true)
     })
+    try {
+      const escuchar = deps.alCambiarVisibilidad ?? visibilidadDelDocumento
+      escuchar((visible) => this.alCambiarVisibilidad(visible))
+    } catch {
+      /* sin página: nada que vigilar */
+    }
+  }
+
+  // ------------------------------------------------------------ diario (C9)
+  /** Anota en el diario lo que le pasa a la voz. Nunca lanza ni espera. */
+  private anotar(tipo: TipoDiario, detalle: string | null = null, extra: Partial<DatosDiario> = {}) {
+    try {
+      const l = this.estado.libro
+      ;(this.deps.diario ?? anotarDiario)(tipo, {
+        ejemplarId: l?.ejemplarId ?? null,
+        capitulo: l ? this.estado.capitulo : null,
+        posicion: l ? this.estado.posicion : null,
+        detalle,
+        cinta: this.enCinta(),
+        ...extra,
+      })
+    } catch {
+      /* el diario nunca molesta */
+    }
+  }
+
+  private enLinea(): boolean {
+    try {
+      if (this.deps.enLinea) return this.deps.enLinea()
+      return typeof navigator === 'undefined' || navigator.onLine !== false
+    } catch {
+      return true
+    }
+  }
+
+  /** Estado del <audio> en corto, para el diario. */
+  private fotoAudio(): string {
+    const el = this.el
+    if (!el) return 'sin audio'
+    const t = Number.isFinite(el.currentTime) ? el.currentTime.toFixed(1) : '?'
+    return `rs=${el.readyState ?? '?'} ns=${el.networkState ?? '?'} paused=${el.paused} t=${t} fase=${this.estado.fase}`
   }
 
   /** ¿Se está llenando la cinta con un capítulo nuevo? */
@@ -438,9 +550,14 @@ export class MotorAudio {
     const ev = { ejemplarId: l.ejemplarId, fraseId: this.estado.fraseId, palabra: this.palabraActual }
     this.oyentesFrase.forEach((f) => f(ev))
   }
-  private fallar(tipo: TipoError, mensaje: string) {
+  private fallar(tipo: TipoError, mensaje: string, detalle?: string) {
     this.esperandoParte = false
+    // Un reintento sin red cada pocos segundos no debe llenar el diario: solo la primera vez de la racha.
+    if (tipo !== 'red' || !this.rachaRed)
+      this.anotar(tipo === 'red' ? 'error-red' : tipo === 'audio' ? 'error-audio' : `error-${tipo}`, detalle ?? mensaje)
+    if (tipo === 'red') this.rachaRed = true
     this.poner({ fase: 'error', tipoError: tipo, mensaje, preparacion: null })
+    this.posicionSesion()
   }
 
   /**
@@ -510,7 +627,16 @@ export class MotorAudio {
     el.addEventListener('timeupdate', this.alAvanzar)
     el.addEventListener('ended', this.alTerminar)
     // En la cinta no hay 'ended': al quedarse sin datos al final de un capítulo, se mira si toca pasar al siguiente.
-    el.addEventListener('waiting', () => this.vigilarFinCinta())
+    el.addEventListener('waiting', () => {
+      this.empezarEspera('waiting')
+      this.vigilarFinCinta()
+    })
+    // C13: esperas del <audio> (sin datos, red lenta): si duran, al diario.
+    el.addEventListener('stalled', () => this.empezarEspera('stalled'))
+    el.addEventListener('suspend', () => {
+      if (this.esperaAudio) this.esperaAudio.suspend = true
+    })
+    el.addEventListener('playing', () => this.acabarEspera())
     el.addEventListener('play', () => {
       // El silencio de desbloqueo no es "sonar": no debe tapar el «Preparando…».
       if (!this.estado.libro || el.src === SILENCIO) return
@@ -518,21 +644,29 @@ export class MotorAudio {
     })
     el.addEventListener('pause', () => {
       if (el.src === SILENCIO) return
+      this.clasificarPausa(el)
       if (this.estado.fase === 'reproduciendo') this.poner({ fase: 'pausado' })
       this.ultimaPausa = this.deps.ahora()
       this.pausarTemporizador()
       this.guardar(true)
       this.latir(true)
       this.estadoSesion('paused')
+      this.posicionSesion()
     })
     el.addEventListener('loadedmetadata', this.alCargarMetadatos)
+    el.addEventListener('ratechange', () => this.posicionSesion())
     el.addEventListener('error', () => {
       // Mientras se rehace la cinta, el <audio> se queda un instante sin fuente: no es un fallo del capítulo.
       if (this.cargandoCinta) return
       if (el.src && el.src !== SILENCIO && this.estado.libro && this.hayAudio()) {
+        const me = (el as { error?: { code?: number; message?: string } | null }).error
+        const detalle = `media ${me?.code ?? '?'} ${me?.message ?? ''} ${this.fotoAudio()}`.trim()
         // Una parte que ya no está (el capítulo se terminó y se limpió): se sigue en el archivo entero.
-        if (this.enPartes() && this.urls.u1) return this.aCompleto(this.posicion(), this.quiereSonar)
-        this.fallar('audio', TEXTOS_VOZ.audioFallo)
+        if (this.enPartes() && this.urls.u1) {
+          this.anotar('error-audio', `parte: ${detalle}`)
+          return this.aCompleto(this.posicion(), this.quiereSonar)
+        }
+        this.fallar('audio', TEXTOS_VOZ.audioFallo, detalle)
       }
     })
     this.el = el
@@ -574,6 +708,11 @@ export class MotorAudio {
     },
   ) {
     this.desbloquear()
+    this.anotar('inicio', `voz ${o.vozId} x${o.velocidad}${o.fraseId ? ` frase ${o.fraseId}` : ''}`, {
+      ejemplarId: libro.ejemplarId,
+      capitulo: o.capitulo,
+      posicion: o.posicion ?? 0,
+    })
     const mismo =
       this.estado.libro?.ejemplarId === libro.ejemplarId &&
       this.estado.capitulo === o.capitulo &&
@@ -595,6 +734,7 @@ export class MotorAudio {
       if (reproducir) this.reproducir()
       return
     }
+    this.viaCambio = 'abrir'
     this.cargar(o.capitulo, o.posicion ?? 0, reproducir, o.fraseId ?? null)
   }
 
@@ -618,7 +758,18 @@ export class MotorAudio {
     if (!l) return
     const turno = ++this.turno
     this.cancelarSondeo()
+    const via = this.viaCambio ?? (automatico ? 'fin' : reintentar ? 'reintento' : null)
+    this.viaCambio = null
+    if (capitulo !== this.estado.capitulo || via)
+      this.anotar('cambio-capitulo', `${this.estado.capitulo}→${capitulo} via ${via ?? 'otro'} sonar=${reproducir}`, {
+        capitulo,
+        posicion,
+      })
     this.quiereSonar = reproducir
+    this.pausaSistema = false
+    this.atasco.intentos = 0
+    this.acabarEspera(false)
+    if (reproducir) this.asegurarVigia()
     if (this.pedido?.capitulo !== capitulo) this.fallosAcceso = 0
     this.pedido = { capitulo, posicion, fraseId }
     this.tiempos = null
@@ -679,6 +830,8 @@ export class MotorAudio {
       const e = r.object
       if (e.estado === 'LISTO') {
         this.saltosSeguidos = 0
+        // C12: sin red y aun así LISTO = lo sirvió la copia del dispositivo.
+        if (!this.enLinea()) this.anotar('sin-conexion-uso', `cap ${capitulo}`, { capitulo })
         this.urls = { u1: this.deps.resolverUrl(e.url1x), u2: this.deps.resolverUrl(e.url2x) }
         this.errorEnPartes = null
         this.poner({ preparacion: null, ...(e.duracionSeg ? { duracion: e.duracionSeg } : {}) })
@@ -940,6 +1093,14 @@ export class MotorAudio {
   private entrarEnPrecargado(p: Precarga) {
     const turno = ++this.turno
     this.cancelarSondeo()
+    this.anotar('cambio-capitulo', `${this.estado.capitulo}→${p.capitulo} via ${this.viaCambio ?? 'fin'} precargado`, {
+      capitulo: p.capitulo,
+      posicion: 0,
+    })
+    this.viaCambio = null
+    this.pausaSistema = false
+    this.atasco.intentos = 0
+    this.asegurarVigia()
     this.precarga = null
     this.saltosSeguidos = 0
     this.quiereSonar = true
@@ -1064,6 +1225,7 @@ export class MotorAudio {
     this.rate = Math.min(this.estado.velocidad, 4)
     this.posPendiente = Math.max(parte.t0, Math.min(pos1x, parte.t1))
     this.cinta?.soltar() // las partes van por el <audio> normal; al acabar el capítulo se vuelve a la cinta
+    this.cambioFuenteEn = this.deps.ahora()
     el.src = p.url.replace(/cap-\d{3}\.partes\.json/, parte.archivo)
     el.playbackRate = this.rate
     el.defaultPlaybackRate = this.rate
@@ -1147,6 +1309,7 @@ export class MotorAudio {
     }
     const turno = this.turno
     this.cargasCinta++
+    this.cambioFuenteEn = this.deps.ahora()
     this.srcCargando = src
     // El tramo nuevo es otro objeto (su final se vigila); el que suena ahora ya no cuenta como fin (V-NUEVO-5).
     this.finAvisado = c.actual
@@ -1176,6 +1339,9 @@ export class MotorAudio {
    */
   private fallarCinta(tipo: FalloCinta, e: unknown, pos1x: number, reproducir: boolean) {
     if (this.estado.carga != null) this.poner({ carga: null })
+    // Sin red, la racha ya está anotada (error-red): no se repite en cada reintento.
+    if (!((tipo === 'red' || tipo === 'servidor') && this.rachaRed))
+      this.anotar('cinta-fallo', `${tipo}: ${String((e as { message?: string } | null)?.message ?? e).slice(0, 200)}`)
     const capitulo = this.pedido?.capitulo ?? this.estado.capitulo
     this.pedido = { capitulo, posicion: pos1x, fraseId: null }
     if (tipo === 'red' || tipo === 'servidor') {
@@ -1209,6 +1375,7 @@ export class MotorAudio {
       // Ya no es un tropiezo: el resto de la sesión, con el <audio> normal; y se dice por qué.
       this.cinta = null
       this.poner({ escuchaContinua: 'apagada' })
+      this.anotar('cinta-apagada', `tras ${this.fallosCinta} fallos de plataforma`)
     }
     this.ponerFuente(pos1x, reproducir)
   }
@@ -1223,6 +1390,7 @@ export class MotorAudio {
   /** RP-08: el navegador cerró la cinta (iOS bajo presión): se rehace en la misma posición. */
   private rehacerCinta() {
     if (!this.estado.libro || !this.urls.u1 || this.enPartes() || !this.cinta) return
+    this.anotar('cinta-fallo', 'el navegador cerró la cinta: se rehace')
     const sonar = this.quiereSonar
     this.ponerFuente(this.estado.posicion, sonar)
   }
@@ -1232,6 +1400,7 @@ export class MotorAudio {
     const c = this.cinta
     if (!c) return
     console.warn('[voz] cinta: la descarga se cortó a medias', e)
+    this.anotar('cinta-fallo', `descarga cortada (${c.actual?.clave === url ? 'actual' : 'siguiente'})`)
     if (c.actual?.clave === url && !this.cargandoCinta) {
       // Lo que falta no llegará: se rehace la cinta desde donde va (si sigue sin red, el reintento de siempre).
       const pos = this.posicion()
@@ -1263,6 +1432,7 @@ export class MotorAudio {
     }
     if (el.src !== absoluto(src) && el.src !== src) {
       this.posPendiente = pos1x
+      this.cambioFuenteEn = this.deps.ahora()
       el.src = src
       el.playbackRate = rate
       el.defaultPlaybackRate = rate
@@ -1308,7 +1478,11 @@ export class MotorAudio {
   reproducir() {
     const el = this.audio()
     if (!el || !this.estado.libro) return
+    if (this.estado.fase === 'pausado' && this.hayAudio())
+      this.anotar('reanuda', this.pausaSistema ? 'tras pausa del sistema' : null)
     this.quiereSonar = true
+    this.pausaSistema = false
+    this.asegurarVigia()
     if (this.estado.fase === 'error') {
       // ▶ en un fallo = reintentar ya (también desde la pantalla de bloqueo).
       if (this.estado.tipoError !== 'conversion') this.reintentar()
@@ -1348,8 +1522,10 @@ export class MotorAudio {
     const p = el.play()
     if (p && typeof p.catch === 'function') {
       p.catch((e: unknown) => {
-        if ((e as { name?: string } | null)?.name === 'NotAllowedError')
-          this.poner({ fase: 'pausado', mensaje: MENSAJES.vozToqueParaEmpezar })
+        const nombre = (e as { name?: string } | null)?.name
+        // AbortError = otro src/pause lo sustituyó (normal al cambiar de capítulo); lo demás, al diario.
+        if (nombre !== 'AbortError') this.anotar('interrupcion', `play() rechazado: ${nombre ?? e} ${this.fotoAudio()}`)
+        if (nombre === 'NotAllowedError') this.poner({ fase: 'pausado', mensaje: MENSAJES.vozToqueParaEmpezar })
       })
     }
     if (yaSonaba && this.estado.fase !== 'reproduciendo') this.alEmpezarASonar()
@@ -1357,6 +1533,7 @@ export class MotorAudio {
 
   /** Empieza a sonar de verdad: fase, palabra a 60 fps, pantalla de bloqueo, temporizador y sesión de escucha. */
   private alEmpezarASonar() {
+    this.rachaRed = false
     this.poner({ fase: 'reproduciendo', mensaje: null, tipoError: null, preparacion: null, finDelLibro: false })
     this.reanudarTemporizador()
     this.empezarSesionVoz()
@@ -1375,7 +1552,160 @@ export class MotorAudio {
 
   pausar() {
     this.quiereSonar = false
+    this.pausaSistema = false
+    this.atasco.intentos = 0
     this.el?.pause()
+  }
+
+  // ------------------------------------------------------------ blindaje (C13)
+  /** Arranca el vigilante de atascos si no lo está (se para solo cuando ya no se quiere sonar). */
+  private asegurarVigia() {
+    if (this.vigia) return
+    const ms = this.deps.vigilarCadaMs ?? VIGILAR_CADA_MS
+    if (!(ms > 0)) return
+    this.atasco.desde = this.deps.ahora()
+    this.atasco.ultimaPos = -1
+    const t = setInterval(() => {
+      this.vigilar()
+      if (!this.quiereSonar && this.vigia) {
+        clearInterval(this.vigia)
+        this.vigia = null
+      }
+    }, ms)
+    // En node (pruebas) que el intervalo no retenga el proceso.
+    ;(t as { unref?: () => void }).unref?.()
+    this.vigia = t
+  }
+
+  private pararVigia() {
+    if (this.vigia) clearInterval(this.vigia)
+    this.vigia = null
+  }
+
+  /**
+   * Una vuelta del vigilante (C13). Si se quiere sonar y la posición no avanza en ATASCO_MS, es un atasco: se anota y
+   * se recupera en la misma posición; tras MAX_RECUPERACIONES se para y se dice («Reintentar»). Público para las
+   * pruebas (que llevan su propio reloj).
+   */
+  vigilar() {
+    const el = this.el
+    const a = this.atasco
+    if (!el || !this.estado.libro) return
+    const ahora = this.deps.ahora()
+    const fase = this.estado.fase
+    const queriendo =
+      this.quiereSonar &&
+      this.hayAudio() &&
+      !this.esperandoParte &&
+      !this.cargandoCinta &&
+      (fase === 'reproduciendo' || fase === 'cargando')
+    const pos = this.posicion()
+    if (!queriendo) {
+      a.ultimaPos = pos
+      a.desde = ahora
+      return
+    }
+    if (a.ultimaPos < 0 || Math.abs(pos - a.ultimaPos) > 0.5) {
+      if (a.intentos > 0 && a.ultimaPos >= 0 && pos > a.ultimaPos) {
+        this.anotar('atasco-recuperado', `tras ${a.intentos} intento(s)`)
+        a.intentos = 0
+      }
+      a.ultimaPos = pos
+      a.desde = ahora
+      return
+    }
+    const quieta = ahora - a.desde
+    if (quieta < ATASCO_MS) return
+    a.desde = ahora
+    a.ultimaPos = pos
+    // Parado justo al final del capítulo sin que llegara el 'ended' (iOS suspendido, WebKit 173332): se pasa al siguiente.
+    const dur = this.estado.duracion
+    if (dur > 0 && pos >= dur - 0.5 && !this.enPartes()) {
+      if (this.enCinta()) {
+        const antes = this.finAvisado
+        this.vigilarFinCinta()
+        if (this.finAvisado !== antes) return this.anotar('atasco', `al final del capítulo (cinta): se sigue`)
+      } else {
+        this.anotar('atasco', `al final del capítulo sin 'ended': se sigue ${this.fotoAudio()}`)
+        return this.alTerminar()
+      }
+    }
+    a.intentos++
+    const detalle = `${a.intentos}/${MAX_RECUPERACIONES} ${(quieta / 1000).toFixed(0)} s sin avanzar ${this.fotoAudio()}`
+    this.anotar('atasco', detalle)
+    if (a.intentos > MAX_RECUPERACIONES) {
+      a.intentos = 0
+      this.fallar('audio', TEXTOS_VOZ.atascada, `atasco sin remedio ${this.fotoAudio()}`)
+      this.el?.pause()
+      return
+    }
+    this.recuperarAtasco(pos)
+  }
+
+  /** Recarga lo que suena en la misma posición: la parte, la cinta (se rehace) o el archivo. */
+  private recuperarAtasco(pos: number) {
+    const el = this.el
+    if (!el) return
+    this.cambioFuenteEn = this.deps.ahora()
+    this.acabarEspera(false)
+    if (this.enPartes()) return this.ponerParte(this.parteActual, pos, true)
+    if (this.cinta && this.urls.u1) {
+      this.cinta.soltar()
+      return this.ponerFuente(pos, true)
+    }
+    this.posPendiente = pos
+    try {
+      el.load?.()
+    } catch {
+      /* nada */
+    }
+    this.reproducir()
+  }
+
+  /** waiting/stalled: empieza una espera del <audio> (se mide hasta que vuelve a sonar). */
+  private empezarEspera(tipo: string) {
+    if (!this.estado.libro || this.el?.src === SILENCIO) return
+    if (!this.esperaAudio) this.esperaAudio = { tipo, en: this.deps.ahora(), suspend: false }
+    else if (tipo === 'stalled' && !this.esperaAudio.tipo.includes('stalled')) this.esperaAudio.tipo += '+stalled'
+  }
+
+  /** La espera acabó (vuelve a sonar o se cambió de fuente): si fue larga, al diario. */
+  private acabarEspera(anotar = true) {
+    const e = this.esperaAudio
+    this.esperaAudio = null
+    if (!e || !anotar) return
+    const ms = this.deps.ahora() - e.en
+    if (ms >= ESPERA_LARGA_MS)
+      this.anotar('espera-larga', `${e.tipo}${e.suspend ? '+suspend' : ''} ${(ms / 1000).toFixed(1)} s`)
+  }
+
+  /** La página se ve o se oculta (o recupera el foco). */
+  private alCambiarVisibilidad(visible: boolean) {
+    if (!this.estado.libro) return
+    this.anotar(visible ? 'visible' : 'oculta', `fase=${this.estado.fase} sonar=${this.quiereSonar}`)
+    if (!visible) return
+    this.posicionSesion()
+    // Lo pausó el sistema (llamada, Siri, otra app) y el usuario quería oírlo: se sigue.
+    const reciente = this.deps.ahora() - this.ultimaPausa < REANUDAR_HASTA_MS
+    if (this.pausaSistema && this.quiereSonar && this.estado.fase === 'pausado' && reciente) {
+      this.reproducir() // anota «reanuda · tras pausa del sistema»
+    } else if (this.quiereSonar && this.estado.fase === 'reproduciendo') {
+      // Al volver se mira ya si la voz avanza (sin esperar a la siguiente vuelta del vigilante).
+      this.vigilar()
+    }
+  }
+
+  /** ¿La pausa que acaba de llegar la pidió el usuario o la hizo el sistema? */
+  private clasificarPausa(el: HTMLAudioElement) {
+    if (this.estado.fase !== 'reproduciendo') return
+    if (!this.quiereSonar) {
+      this.anotar('pausa-usuario')
+      return
+    }
+    // El final del archivo también pausa (antes de 'ended'), y recargar la fuente también: no son del sistema.
+    if (el.ended || this.deps.ahora() - this.cambioFuenteEn < PAUSA_DE_CAMBIO_MS) return
+    this.pausaSistema = true
+    this.anotar('pausa-sistema', this.fotoAudio())
   }
 
   alternar() {
@@ -1469,24 +1799,28 @@ export class MotorAudio {
     return this.estado.fase === 'reproduciendo' || this.quiereSonar
   }
 
-  capituloSiguiente() {
+  capituloSiguiente(via: ViaCambio = 'boton') {
     const l = this.estado.libro
     if (!l) return
-    // Un capítulo que no se llegó a oír por falta de red no se salta: se reintenta (QA LV-02).
-    if (this.estado.fase === 'error' && (this.estado.tipoError === 'red' || this.estado.tipoError === 'audio'))
-      return this.reintentar()
+    this.viaCambio = via
+    // Un capítulo que no se llegó a oír por falta de red no se salta: se reintenta (QA LV-02). Con el audio roto
+    // (o atascado sin remedio), en cambio, «siguiente» es siguiente: el usuario lo pide a sabiendas (C13).
+    if (this.estado.fase === 'error' && this.estado.tipoError === 'red') return this.reintentar()
     const sig = this.vecinoConVoz(this.estado.capitulo, 1)
     if (sig >= 0) this.cargar(sig, 0, this.seguirSonando())
+    else this.viaCambio = null
   }
 
-  capituloAnterior() {
+  capituloAnterior(via: ViaCambio = 'boton') {
     if (this.estado.fase !== 'error' && (this.posicion() > 5 || this.estado.capitulo === 0)) return this.buscar(0)
+    this.viaCambio = via
     if (this.estado.capitulo === 0) return this.reintentar()
     const ant = this.vecinoConVoz(this.estado.capitulo, -1)
     this.cargar(ant >= 0 ? ant : this.estado.capitulo - 1, 0, this.seguirSonando())
   }
 
-  irACapitulo(capitulo: number, reproducir = true) {
+  irACapitulo(capitulo: number, reproducir = true, via: ViaCambio = 'hoja') {
+    this.viaCambio = via
     this.cargar(capitulo, 0, reproducir)
   }
 
@@ -1494,6 +1828,7 @@ export class MotorAudio {
   irAFrase(fraseId: string, reproducir = true) {
     const cap = capituloDeFrase(fraseId)
     if ((cap >= 0 && cap !== this.estado.capitulo) || this.estado.fase === 'error') {
+      this.viaCambio = 'frase'
       this.cargar(cap >= 0 ? cap : this.estado.capitulo, 0, reproducir, fraseId)
       return
     }
@@ -1695,6 +2030,7 @@ export class MotorAudio {
       this.vigilarFinCinta()
     }
     const ahora = this.deps.ahora()
+    if (this.esperaAudio && !el.paused && (el.readyState ?? 4) >= 3) this.acabarEspera()
     if (!el.paused) this.contarEscucha(ahora)
     if (ahora - this.ultimoLocal >= CADA_LOCAL_MS) this.guardar(false)
     if (ahora - this.ultimoServidor >= CADA_SERVIDOR_MS) this.guardar(true)
@@ -1725,6 +2061,7 @@ export class MotorAudio {
       }
     }
     const sig = this.vecinoConVoz(this.estado.capitulo, 1)
+    this.anotar('fin-capitulo', sig >= 0 ? `sigue ${sig}` : 'último')
     if (this.estado.temporizador?.tipo === 'capitulo') {
       this.quiereSonar = false
       // RP-01: ▶ seguirá con el siguiente (no relee este ni deja la cuenta atrás en la cinta).
@@ -1748,6 +2085,7 @@ export class MotorAudio {
       this.cargar(sig, 0, true, null, false, true)
     } else {
       this.quiereSonar = false
+      this.anotar('fin-libro')
       this.el?.pause()
       this.poner({ fase: 'pausado', mensaje: TEXTOS_VOZ.finLibro, finDelLibro: true })
       this.guardar(true)
@@ -1900,7 +2238,8 @@ export class MotorAudio {
       dispositivo: this.deps.dispositivo(),
     }
     Promise.resolve()
-      .then(() => enviar(d, alSalir ? { alSalir: true } : undefined))
+      // Sin red, el keepalive se perdería: por la vía normal, que lo deja en la cola sin red (C12).
+      .then(() => enviar(d, alSalir && this.enLinea() ? { alSalir: true } : undefined))
       .catch((e) => {
         // Sin red: lo escuchado no se pierde, va en el siguiente latido (sin pasar del máximo).
         console.warn('[voz] latido de sesión', e)
@@ -1922,6 +2261,10 @@ export class MotorAudio {
     if (o.servidor ?? true) this.latir(true)
     this.sesionVoz = null
     this.quiereSonar = false
+    this.pausaSistema = false
+    this.pararVigia()
+    this.atasco.intentos = 0
+    this.esperaAudio = null
     this.paradoAlFinal = false
     this.tiemposPendientes = null
     this.pedido = null
@@ -1950,15 +2293,7 @@ export class MotorAudio {
           title: cap?.titulo || `Capítulo ${this.estado.capitulo + 1}`,
           artist: l.autores.join(', '),
           album: l.titulo,
-          artwork: l.portadaUrl
-            ? [
-                {
-                  src: l.portadaUrl,
-                  sizes: '600x900',
-                  type: l.portadaUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg',
-                },
-              ]
-            : [],
+          artwork: this.artwork(),
         })
       }
       const h = (accion: MediaSessionAction, fn: MediaSessionActionHandler | null) => {
@@ -1972,15 +2307,61 @@ export class MotorAudio {
       h('pause', () => this.pausar())
       h('seekbackward', (d) => this.saltar(-(d?.seekOffset || SALTO_SEG)))
       h('seekforward', (d) => this.saltar(d?.seekOffset || SALTO_SEG))
-      h('previoustrack', () => this.capituloAnterior())
-      h('nexttrack', () => this.capituloSiguiente())
+      h('previoustrack', () => this.capituloAnterior('media-session'))
+      h('nexttrack', () => this.capituloSiguiente('media-session'))
       // La pantalla de bloqueo ve la línea de tiempo 1x del capítulo (ver posicionSesion).
-      h('seekto', (d) => d?.seekTime != null && this.buscar(d.seekTime))
+      h('seekto', (d) => {
+        if (d?.seekTime == null || !Number.isFinite(d.seekTime)) return
+        this.buscar(d.seekTime)
+      })
       this.estadoSesion(this.estado.fase === 'reproduciendo' ? 'playing' : 'paused')
       this.posicionSesion()
     } catch (e) {
       console.error('[voz] Media Session', e)
     }
+  }
+
+  /** El origen de la web («https://casa…:7050»), o null fuera del navegador. */
+  private origenWeb(): string | null {
+    try {
+      if (this.deps.origenWeb) return this.deps.origenWeb()
+      const o = typeof location !== 'undefined' ? location.origin : ''
+      return /^https?:\/\//.test(o) ? o : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * C13: el artwork de la pantalla de bloqueo, SIEMPRE con URL absoluta del propio origen de la web (tocar la carátula
+   * en el centro de control del iPhone abre ese origen; con la de la API, en otro puerto, abría otra cosa). La portada
+   * del libro va por el service worker (`/__bah/portada?u=…`, que la saca de la copia local o de la API); sin service
+   * worker, el icono de la biblioteca.
+   */
+  artwork(): MediaImage[] {
+    const origen = this.origenWeb()
+    if (!origen) return []
+    const icono: MediaImage[] = [{ src: `${origen}/iconos/icono-512.png`, sizes: '512x512', type: 'image/png' }]
+    const portada = this.estado.libro?.portadaUrl
+    if (!portada) return icono
+    let abs: string
+    try {
+      abs = new URL(portada, origen).href
+    } catch {
+      return icono
+    }
+    const tipo = /\.svg(\?|$)/.test(abs) ? 'image/svg+xml' : 'image/jpeg'
+    if (abs.startsWith(`${origen}/`)) return [{ src: abs, sizes: '600x900', type: tipo }, ...icono]
+    let conSw = false
+    try {
+      conSw = this.deps.conServiceWorker
+        ? this.deps.conServiceWorker()
+        : typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller
+    } catch {
+      conSw = false
+    }
+    if (!conSw) return icono
+    return [{ src: `${origen}/__bah/portada?u=${encodeURIComponent(abs)}`, sizes: '600x900', type: tipo }, ...icono]
   }
 
   private limpiarSesionMedios() {
@@ -2018,7 +2399,16 @@ export class MotorAudio {
     const ms = sesion()
     const el = this.el
     const duracion = this.estado.duracion
-    if (!ms?.setPositionState || !el || !(duracion > 0)) return
+    if (!ms?.setPositionState || !el) return
+    if (!(duracion > 0)) {
+      // Capítulo nuevo aún sin duración: que la pantalla de bloqueo no siga con la barra del anterior.
+      try {
+        ms.setPositionState()
+      } catch {
+        /* nada */
+      }
+      return
+    }
     try {
       ms.setPositionState({
         duration: duracion,

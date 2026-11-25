@@ -28,6 +28,7 @@ let mockAlCaducar: (() => void) | null = null
 jest.mock('@servicios/api', () => ({
   TOKEN_KEY: '@token',
   fijarTokenEnMemoria: jest.fn(),
+  olvidarColaSinRed: jest.fn(),
   registrarCierreDeSesion: (fn: (() => void) | null) => {
     mockAlCaducar = fn
   },

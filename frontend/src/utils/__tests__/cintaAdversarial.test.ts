@@ -313,6 +313,9 @@ function montar(
     resolverUrl: (r) => r,
     dispositivo: () => 'iPhone',
     ahora: () => Date.now(),
+    // El vigilante de atascos (C13) usa el reloj real; aquí el audio es simulado: se prueba aparte.
+    vigilarCadaMs: 0,
+    diario: () => {},
     cinta: (e) => (cinta = new Cinta(e as unknown as HTMLAudioElement, descargar, true, o.sinDatosMs)),
   })
   /** Reproduce `seg` segundos reales en pasos de 0,25 s (un timeupdate cada paso), como el navegador. */
