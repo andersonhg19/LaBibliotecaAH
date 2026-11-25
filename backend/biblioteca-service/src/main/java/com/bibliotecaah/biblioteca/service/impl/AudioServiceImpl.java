@@ -8,7 +8,9 @@ import com.bibliotecaah.biblioteca.dto.output.PreparacionLibroDTO;
 import com.bibliotecaah.biblioteca.entity.Archivo;
 import com.bibliotecaah.biblioteca.entity.Ejemplar;
 import com.bibliotecaah.biblioteca.enums.Message;
+import com.bibliotecaah.biblioteca.entity.Progreso;
 import com.bibliotecaah.biblioteca.repository.EjemplarRepository;
+import com.bibliotecaah.biblioteca.repository.ProgresoRepository;
 import com.bibliotecaah.biblioteca.repository.TrabajoRepository;
 import com.bibliotecaah.biblioteca.service.AudioService;
 import com.bibliotecaah.biblioteca.service.CapituloVozService;
@@ -59,11 +61,13 @@ public class AudioServiceImpl implements AudioService {
     private final VozService voces;
     private final AlmacenDeArchivos almacen;
     private final CapituloVozService capitulosEnVoz;
+    private final ProgresoRepository progresos;
 
     public AudioServiceImpl(EjemplarRepository ejemplares, TrabajoRepository trabajos, VozService voces,
-                            AlmacenDeArchivos almacen, CapituloVozService capitulosEnVoz,
+                            AlmacenDeArchivos almacen, CapituloVozService capitulosEnVoz, ProgresoRepository progresos,
                             @Value("${biblioteca.prefijo-publico}") String prefijo) {
         this.capitulosEnVoz = capitulosEnVoz;
+        this.progresos = progresos;
         this.ejemplares = ejemplares;
         this.trabajos = trabajos;
         this.prefijo = prefijo;
@@ -77,8 +81,7 @@ public class AudioServiceImpl implements AudioService {
         Long yo = SecurityUtils.usuarioActual();
         Ejemplar e = ValidationUtils.encontrado(ejemplares.delUsuario(peticion.getEjemplarId(), yo),
                 Message.Msj.libroNoEncontrado);
-        Archivo a = e.getArchivo();
-        ValidationUtils.exigir(a != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
+        Archivo a = ValidationUtils.archivoDe(e);
         String voz = ValidationUtils.vozId(peticion.getVozId());
         /* QA SE-06 / DA-12: solo voces del catalogo. Antes se encolaban voces y
            motores inventados y el taller los reintentaba como si fuera una caida. */
@@ -160,11 +163,19 @@ public class AudioServiceImpl implements AudioService {
         UUID archivo = e.getArchivo().getId();
         Map<Integer, String> estados = trabajos.estadosDeVoz(archivo, voz);
         Set<Integer> enCola = trabajos.capitulosEnCola(archivo, voz);
+        int desde = peticion.getDesdeCapitulo() != null ? peticion.getDesdeCapitulo()
+                : progresos.findByUsuarioIdAndEjemplarId(yo, e.getId()).map(Progreso::getCapitulo).orElse(0);
         int encolados = 0;
-        for (int capitulo : enVoz(yo, e)) {
+        int orden = 0;
+        for (int capitulo : enOrden(enVoz(yo, e), desde)) {
             String estado = estados.get(capitulo);
-            if (LISTO.equals(estado) || ERROR.equals(estado) || enCola.contains(capitulo)) continue;
-            if (trabajos.encolarVozSiFalta(archivo, voz, capitulo, TrabajoRepository.PRIORIDAD_PREPARAR_LIBRO)) {
+            if (LISTO.equals(estado) || ERROR.equals(estado)) continue;
+            orden++;
+            if (enCola.contains(capitulo)) {
+                /* Ya esperaba (p. ej. de una preparacion anterior desde otro capitulo): se recoloca. */
+                trabajos.ordenarEnCola(archivo, voz, capitulo, TrabajoRepository.PRIORIDAD_PREPARAR_LIBRO, orden);
+            } else if (trabajos.encolarVozSiFalta(archivo, voz, capitulo, TrabajoRepository.PRIORIDAD_PREPARAR_LIBRO,
+                    orden)) {
                 encolados++;
             }
         }
@@ -198,10 +209,20 @@ public class AudioServiceImpl implements AudioService {
         return PreparacionLibroDTO.builder().total(capitulos.size()).listos(listos).enCola(cola).error(error).build();
     }
 
+    /**
+     * (0.5.0, C10.2) Orden de encolado: de {@code desde} al final y despues los anteriores (del primero
+     * en adelante). Si {@code desde} pasa del ultimo, todos en su orden.
+     */
+    static List<Integer> enOrden(List<Integer> capitulos, int desde) {
+        List<Integer> orden = new ArrayList<>();
+        capitulos.stream().filter(c -> c >= desde).sorted().forEach(orden::add);
+        capitulos.stream().filter(c -> c < desde).sorted().forEach(orden::add);
+        return orden;
+    }
+
     private Ejemplar paraPreparar(Long yo, UUID ejemplarId) {
         Ejemplar e = ValidationUtils.encontrado(ejemplares.delUsuario(ejemplarId, yo), Message.Msj.libroNoEncontrado);
-        ValidationUtils.exigir(e.getArchivo() != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
-        ValidationUtils.exigir(Archivo.LISTO.equals(e.getArchivo().getEstadoConversion()),
+        ValidationUtils.exigir(Archivo.LISTO.equals(ValidationUtils.archivoDe(e).getEstadoConversion()),
                 Message.Msj.capitulosNoDisponibles, CodigoError.DATO_INVALIDO);
         return e;
     }

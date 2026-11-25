@@ -5,6 +5,7 @@ import com.bibliotecaah.biblioteca.dto.filter.FiltroLibrosDTO;
 import com.bibliotecaah.biblioteca.exception.ValidationException;
 import com.bibliotecaah.biblioteca.dto.input.DeseoDTO;
 import com.bibliotecaah.biblioteca.dto.input.LibroSaveDTO;
+import com.bibliotecaah.biblioteca.dto.input.RegistroDTO;
 import com.bibliotecaah.biblioteca.dto.output.EjemplarDTO;
 import com.bibliotecaah.biblioteca.dto.output.EjemplarDetalleDTO;
 import com.bibliotecaah.biblioteca.dto.output.FacetasDTO;
@@ -260,6 +261,56 @@ public class LibroServiceImpl implements LibroService {
                 .nota(vacioComoNulo(dto.getNota()))
                 .build());
         cambio(e, EntityChangeEvent.Accion.CREAR, "Deseo: " + obra.getTitulo());
+        return ensamblador.uno(yo, e);
+    }
+
+    // ------------------------------------------------------------------ solo registro (0.5.0, C11)
+
+    /** Cuanto puede adelantarse la fecha de fin (zona horaria del dispositivo, "hoy" a ultima hora). */
+    static final java.time.Duration TOLERANCIA_FECHA_FIN = java.time.Duration.ofDays(1);
+
+    /**
+     * (0.5.0, C11) Un libro "solo registro": ejemplar LIBRO sin archivo (el mismo modelo que un deseo, pero
+     * de tipo LIBRO). Sale en TODO, LEIDOS, POR_LEER, LEYENDO, favoritos, facetas (sin formato) y sesiones;
+     * lo que necesita el archivo (voz, preparar, capitulos, pronunciacion, traduccion) responde 120
+     * libroSoloRegistro via ValidationUtils.archivoDe. Borrarlo lo borra de verdad (no hay archivo con el que
+     * reencontrarlo). Estado por defecto LEIDO; con LEIDO cuenta una lectura y la fecha de fin es la dada
+     * (o ninguna: no se inventa "hoy" para algo leido hace anos).
+     */
+    @Override
+    @Transactional
+    public EjemplarDTO registro(RegistroDTO dto) {
+        Long yo = SecurityUtils.usuarioActual();
+        EstadoLectura estado = dto.getEstado() == null ? EstadoLectura.LEIDO : dto.getEstado();
+        if (dto.getFechaFin() != null) {
+            ValidationUtils.exigir(estado == EstadoLectura.LEIDO
+                            && !dto.getFechaFin().isAfter(Instant.now().plus(TOLERANCIA_FECHA_FIN)),
+                    Message.Msj.fechaFinInvalida, CodigoError.DATO_INVALIDO);
+        }
+        java.math.BigDecimal calificacion = ValidationUtils.calificacion(dto.getCalificacion());
+        Obra obra = obras.save(Obra.builder()
+                .id(UUID.randomUUID())
+                .titulo(dto.getTitulo().trim())
+                .autores(limpiar(dto.getAutores()))
+                .generos(new ArrayList<>())
+                .fuenteMetadatos(FuenteMetadatos.MANUAL)
+                .build());
+        Ejemplar e = Ejemplar.builder()
+                .id(UUID.randomUUID())
+                .usuarioId(yo)
+                .obra(obra)
+                .tipo(TipoEjemplar.LIBRO)
+                .estado(EstadoLectura.POR_LEER)
+                .fechaLlegada(Instant.now())
+                .etiquetas(new ArrayList<>())
+                .calificacion(calificacion)
+                .nota(vacioComoNulo(dto.getNota()))
+                .build();
+        cambiarEstado(e, estado);
+        if (estado == EstadoLectura.LEIDO) e.setFechaFin(dto.getFechaFin());
+        e = ejemplares.save(e);
+        cambio(e, EntityChangeEvent.Accion.CREAR, "Solo registro: " + obra.getTitulo());
+        log.info("Usuario {}: libro solo registro {} ({})", yo, e.getId(), estado);
         return ensamblador.uno(yo, e);
     }
 

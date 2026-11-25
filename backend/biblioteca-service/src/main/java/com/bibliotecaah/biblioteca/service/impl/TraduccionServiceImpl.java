@@ -106,8 +106,7 @@ public class TraduccionServiceImpl implements TraduccionService {
         Long yo = SecurityUtils.usuarioActual();
         Ejemplar e = ValidationUtils.encontrado(ejemplares.delUsuario(peticion.getEjemplarId(), yo),
                 Message.Msj.libroNoEncontrado);
-        Archivo a = e.getArchivo();
-        ValidationUtils.exigir(a != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
+        Archivo a = ValidationUtils.archivoDe(e);
         ValidationUtils.exigir(Archivo.LISTO.equals(a.getEstadoConversion()), Message.Msj.libroAunSinConvertir,
                 CodigoError.DATO_INVALIDO);
         String destino = idioma(peticion.getDestino(), DESTINO_POR_DEFECTO, false);

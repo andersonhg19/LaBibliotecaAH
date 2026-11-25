@@ -27,6 +27,9 @@ public interface LibroService {
 
     EjemplarDTO deseo(DeseoDTO dto);
 
+    /** (0.5.0, C11) Libro "solo registro": ejemplar LIBRO sin archivo (ya leido, por leer, abandonado...). */
+    EjemplarDTO registro(com.bibliotecaah.biblioteca.dto.input.RegistroDTO dto);
+
     PageDTO<EjemplarDTO> getAll(FiltroLibrosDTO filtro);
 
     EjemplarDetalleDTO getById(UUID ejemplarId);

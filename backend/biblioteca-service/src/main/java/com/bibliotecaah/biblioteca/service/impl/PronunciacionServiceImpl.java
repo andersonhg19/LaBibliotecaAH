@@ -102,8 +102,7 @@ public class PronunciacionServiceImpl implements PronunciacionService {
 
     private Archivo archivoPropio(Long yo, UUID ejemplarId) {
         Ejemplar e = ValidationUtils.encontrado(ejemplares.delUsuario(ejemplarId, yo), Message.Msj.libroNoEncontrado);
-        ValidationUtils.exigir(e.getArchivo() != null, Message.Msj.libroSinArchivo, CodigoError.DATO_INVALIDO);
-        return e.getArchivo();
+        return ValidationUtils.archivoDe(e);
     }
 
     /**
